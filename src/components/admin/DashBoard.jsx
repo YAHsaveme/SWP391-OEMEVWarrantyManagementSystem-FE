@@ -154,7 +154,7 @@ export default function Dashboard() {
             </Drawer>
 
             {/* Main content */}
-            <Box component="main" sx={{ flexGrow: 1, p: 3, ml: `${drawerWidth}px`, mt: "64px" }}>
+            <Box component="main" sx={{ flexGrow: 1, p: 3, mt: "64px" }}>
                 {/* OVERVIEW */}
                 {activeTab === "overview" && (
                     <Box>
