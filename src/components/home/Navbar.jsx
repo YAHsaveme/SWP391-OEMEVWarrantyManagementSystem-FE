@@ -1,7 +1,10 @@
 import React, { useState } from 'react';
+import { useNavigate } from "react-router-dom";
+import Button from '@mui/material/Button';
 
 const Navbar = () => {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
+  const navigate = useNavigate();
 
   return (
     <nav className="bg-gray-900/95 backdrop-blur-md border-b border-gray-700/50 sticky top-0 z-50 shadow-lg">
@@ -47,9 +50,18 @@ const Navbar = () => {
 
           {/* Login Button */}
           <div className="hidden md:block">
-            <button className="bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-white px-6 py-2 rounded-lg text-sm font-bold transition-all duration-200 transform hover:scale-105 shadow-xl border border-cyan-400/30">
+            <Button
+              onClick={() => navigate("/login")}
+              variant="contained"
+              sx={{
+                backgroundColor: "#1565c0",
+                "&:hover": {
+                  backgroundColor: "#0d47a1"
+                }
+              }}
+            >
               Đăng nhập
-            </button>
+            </Button>
           </div>
 
           {/* Mobile menu button */}
@@ -107,9 +119,19 @@ const Navbar = () => {
               Hỗ trợ
             </a>
             <div className="pt-2">
-              <button className="w-full bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-white px-4 py-2 rounded-lg text-sm font-bold transition-all duration-200 shadow-xl border border-cyan-400/30">
+              <Button
+                onClick={() => navigate("/login")}
+                variant="contained"
+                sx={{
+                  backgroundColor: "#1565c0",
+                  "&:hover": {
+                    backgroundColor: "#0d47a1"
+                  }
+                }}
+                className="w-full"
+              >
                 Đăng nhập
-              </button>
+              </Button>
             </div>
           </div>
         </div>
