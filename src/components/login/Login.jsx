@@ -15,16 +15,22 @@ import {
     FormControlLabel,
     Link,
     Fade,
+    Alert,
 } from "@mui/material"
 import { Visibility, VisibilityOff } from "@mui/icons-material"
 import ElectricBoltIcon from "@mui/icons-material/ElectricBolt"
 import ShieldIcon from "@mui/icons-material/Security"
 import BatteryChargingFullIcon from "@mui/icons-material/BatteryChargingFull"
 import DirectionsCarIcon from "@mui/icons-material/DirectionsCar"
+import { login } from "../../services/authService"; // import API
 
 function Login() {
     const [showPassword, setShowPassword] = useState(false)
     const [rememberMe, setRememberMe] = useState(true)
+    const [email, setEmail] = useState("")
+    const [password, setPassword] = useState("")
+    const [error, setError] = useState("")
+    const [loading, setLoading] = useState(false)
     const inputRef = useRef(null)
 
     useEffect(() => {
@@ -35,6 +41,21 @@ function Login() {
 
     const handleTogglePassword = () => {
         setShowPassword((prev) => !prev)
+    }
+
+    const handleSubmit = async (e) => {
+        e.preventDefault()
+        setError("")
+        setLoading(true)
+        try {
+            const data = await login(email, password)   // gọi API login
+            console.log("Login success:", data)
+            window.location.href = "/dashboard"         // redirect
+        } catch (err) {
+            setError("Sai email hoặc mật khẩu")
+        } finally {
+            setLoading(false)
+        }
     }
 
     return (
@@ -155,7 +176,6 @@ function Login() {
 
                     {/* Right side - Login form */}
                     <Grid item xs={12} md={6} display="flex" flexDirection="column" justifyContent="center" p={6}>
-                        {/* Mobile logo */}
                         <Box
                             display={{ xs: "flex", md: "none" }}
                             justifyContent="center"
@@ -178,23 +198,25 @@ function Login() {
                                 Access your EV warranty dashboard and manage your electric vehicle protection coverage.
                             </Typography>
 
-                            <Box component="form" noValidate autoComplete="off" display="flex" flexDirection="column" gap={3}>
+                            <Box component="form" onSubmit={handleSubmit} display="flex" flexDirection="column" gap={3}>
                                 <TextField
-                                    id="username"
-                                    label="Username"
+                                    label="Email"
                                     inputRef={inputRef}
                                     fullWidth
                                     required
                                     variant="outlined"
+                                    value={email}
+                                    onChange={(e) => setEmail(e.target.value)}
                                 />
 
                                 <TextField
-                                    id="password"
                                     label="Password"
                                     type={showPassword ? "text" : "password"}
                                     required
                                     fullWidth
                                     variant="outlined"
+                                    value={password}
+                                    onChange={(e) => setPassword(e.target.value)}
                                     InputProps={{
                                         endAdornment: (
                                             <InputAdornment position="end">
@@ -205,6 +227,8 @@ function Login() {
                                         ),
                                     }}
                                 />
+
+                                {error && <Alert severity="error">{error}</Alert>}
 
                                 <Box display="flex" justifyContent="space-between" alignItems="center">
                                     <FormControlLabel
@@ -220,6 +244,7 @@ function Login() {
                                     type="submit"
                                     fullWidth
                                     variant="contained"
+                                    disabled={loading}
                                     sx={{
                                         py: 1.5,
                                         borderRadius: 2,
@@ -229,16 +254,9 @@ function Login() {
                                         },
                                     }}
                                 >
-                                    Sign In
+                                    {loading ? "Signing In..." : "Sign In"}
                                 </Button>
                             </Box>
-
-                            <Typography variant="body2" align="center" mt={3} color="text.secondary">
-                                Don’t have an account?{" "}
-                                <Link href="#" underline="hover" fontWeight="medium">
-                                    Register here
-                                </Link>
-                            </Typography>
                         </Box>
                     </Grid>
                 </Grid>
