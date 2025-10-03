@@ -166,29 +166,6 @@ export default function Testimonials() {
             </div>
           ))}
         </div>
-
-        {/* Call to Action */}
-        <div className="text-center mt-20">
-          <div className="bg-white/80 backdrop-blur-sm rounded-3xl p-12 shadow-2xl border border-white/60 max-w-4xl mx-auto">
-            <h3 className="text-3xl font-bold mb-6 bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">
-              Tham gia cùng chúng tôi ngay hôm nay!
-            </h3>
-            <p className="text-lg text-gray-600 mb-8 leading-relaxed">
-              Khám phá hệ thống quản lý bảo hành xe điện hiện đại, 
-              được tin dùng bởi hàng trăm chuyên gia trong ngành.
-            </p>
-            <div className="flex flex-col sm:flex-row gap-4 justify-center items-center">
-              <button className="bg-gradient-to-r from-blue-500 to-purple-600 hover:from-blue-600 hover:to-purple-700 text-white px-10 py-4 rounded-2xl font-bold text-lg shadow-xl hover:shadow-2xl transition-all duration-500 transform hover:scale-105 flex items-center space-x-3">
-                <Users className="w-6 h-6" />
-                <span>Bắt đầu ngay</span>
-              </button>
-              <button className="bg-white/80 hover:bg-white text-gray-800 border-2 border-gray-200 hover:border-blue-300 px-10 py-4 rounded-2xl font-bold text-lg shadow-lg hover:shadow-xl transition-all duration-500 transform hover:scale-105 flex items-center space-x-3">
-                <Award className="w-6 h-6" />
-                <span>Tìm hiểu thêm</span>
-              </button>
-            </div>
-          </div>
-        </div>
       </div>
     </section>
   );

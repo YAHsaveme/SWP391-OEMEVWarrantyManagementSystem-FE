@@ -22,7 +22,8 @@ import ElectricBoltIcon from "@mui/icons-material/ElectricBolt"
 import ShieldIcon from "@mui/icons-material/Security"
 import BatteryChargingFullIcon from "@mui/icons-material/BatteryChargingFull"
 import DirectionsCarIcon from "@mui/icons-material/DirectionsCar"
-import { login } from "../../services/authService"; // import API
+import { login } from "../../services/authService"  // gọi API login
+import { useNavigate } from "react-router-dom"
 
 function Login() {
     const [showPassword, setShowPassword] = useState(false)
@@ -32,6 +33,7 @@ function Login() {
     const [error, setError] = useState("")
     const [loading, setLoading] = useState(false)
     const inputRef = useRef(null)
+    const navigate = useNavigate()
 
     useEffect(() => {
         if (inputRef.current) {
@@ -44,19 +46,49 @@ function Login() {
     }
 
     const handleSubmit = async (e) => {
-        e.preventDefault()
-        setError("")
-        setLoading(true)
-        try {
-            const data = await login(email, password)   // gọi API login
-            console.log("Login success:", data)
-            window.location.href = "/dashboard"         // redirect
-        } catch (err) {
-            setError("Sai email hoặc mật khẩu")
-        } finally {
-            setLoading(false)
+    e.preventDefault()
+    setError("")
+    setLoading(true)
+
+    try {
+        const data = await login(email, password) // gọi API login
+
+        if (data?.token) {
+            localStorage.setItem("token", data.token)
+            localStorage.setItem("fullName", data.fullName)
+            localStorage.setItem("role", data.role)
+
+            // Điều hướng theo role backend trả về
+            switch (data.role) {
+                case "ADMIN":
+                    navigate("/dashboard")
+                    break
+                case "EVM_STAFF":
+                    navigate("/overview")
+                    break
+                case "SC_STAFF":
+                    navigate("/scstaff")
+                    break
+                case "SC_TECH":
+                    navigate("/sctech")
+                    break
+                default:
+                    navigate("/")
+            }
+        } else {
+            setError("Phản hồi không hợp lệ từ server")
         }
+    } catch (err) {
+        const msg =
+            err.response?.data?.message ||
+            err.response?.data?.error ||
+            "Sai email hoặc mật khẩu"
+        setError(msg)
+    } finally {
+        setLoading(false)
     }
+}
+
 
     return (
         <Box

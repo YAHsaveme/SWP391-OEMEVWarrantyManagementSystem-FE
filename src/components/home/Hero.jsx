@@ -3,9 +3,17 @@ import { useState, useEffect } from 'react';
 export default function Hero() {
   const [mousePosition, setMousePosition] = useState({ x: 0, y: 0 });
   const [isVisible, setIsVisible] = useState(false);
+  const [fullName, setFullName] = useState("");
+  const [role, setRole] = useState("");
 
   useEffect(() => {
     setIsVisible(true);
+
+    // Lấy user từ localStorage
+    const storedName = localStorage.getItem("fullName") || "Guest";
+    const storedRole = localStorage.getItem("role") || "Unknown";
+    setFullName(storedName);
+    setRole(storedRole);
     
     const handleMouseMove = (e) => {
       setMousePosition({
@@ -76,6 +84,17 @@ export default function Hero() {
 
       {/* Enhanced Content */}
       <div className="relative z-10 flex flex-col items-center justify-center min-h-screen text-center px-6 py-24">
+
+        {/* Hiển thị user info */}
+        <div className="mb-6">
+          <p className="text-xl md:text-2xl text-slate-200 font-semibold">
+            Xin chào, <span className="text-blue-400">{fullName}</span> 👋
+          </p>
+          <p className="text-lg text-slate-400 italic">
+            Vai trò: <span className="font-bold text-purple-300">{role}</span>
+          </p>
+        </div>
+
         {/* Premium Logo with glow effect */}
         <div className={`mb-10 transform transition-all duration-1200 ${isVisible ? 'translate-y-0 opacity-100 scale-100' : 'translate-y-12 opacity-0 scale-95'}`}>
           <div className="relative">
@@ -136,23 +155,6 @@ export default function Hero() {
           <p className="text-lg md:text-xl text-slate-400 leading-relaxed max-w-4xl mx-auto">
             trong việc quản lý bảo hành xe điện một cách hiệu quả và chuyên nghiệp
           </p>
-        </div>
-
-        {/* Premium CTA Buttons */}
-        <div className={`flex flex-col sm:flex-row gap-6 mb-16 transform transition-all duration-1200 delay-600 ${isVisible ? 'translate-y-0 opacity-100' : 'translate-y-12 opacity-0'}`}>
-          <button className="group relative px-8 py-4 bg-gradient-to-r from-blue-500 via-purple-600 to-cyan-500 text-white font-bold rounded-2xl shadow-2xl shadow-blue-500/30 hover:shadow-blue-400/50 transform hover:scale-105 transition-all duration-400 text-lg overflow-hidden">
-            <div className="absolute inset-0 bg-gradient-to-r from-blue-400 via-purple-500 to-cyan-400 opacity-0 group-hover:opacity-100 transition-opacity duration-400"></div>
-            <span className="relative flex items-center justify-center gap-3 z-10">
-              Bắt đầu ngay
-              <svg className="w-5 h-5 group-hover:translate-x-2 transition-transform duration-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M13 7l5 5m0 0l-5 5m5-5H6" />
-              </svg>
-            </span>
-          </button>
-          
-          <button className="px-8 py-4 bg-white/10 backdrop-blur-md text-white font-semibold rounded-2xl border border-white/30 hover:bg-white/20 hover:border-white/50 transform hover:scale-105 transition-all duration-400 text-lg shadow-xl">
-            Tìm hiểu thêm
-          </button>
         </div>
 
         {/* Enhanced Stats with better design */}
