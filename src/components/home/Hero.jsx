@@ -88,7 +88,7 @@ export default function Hero() {
         {/* Hiển thị user info */}
         <div className="mb-6">
           <p className="text-xl md:text-2xl text-slate-200 font-semibold">
-            Xin chào, <span className="text-blue-400">{fullName}</span> 👋
+            Xin chào, <span className="text-blue-400">{fullName}</span>
           </p>
           <p className="text-lg text-slate-400 italic">
             Vai trò: <span className="font-bold text-purple-300">{role}</span>
@@ -178,7 +178,7 @@ export default function Hero() {
       <div className="absolute -top-48 -right-48 w-96 h-96 bg-gradient-to-bl from-blue-500/30 via-purple-500/20 to-transparent rounded-full blur-3xl"></div>
       <div className="absolute -bottom-48 -left-48 w-96 h-96 bg-gradient-to-tr from-purple-500/30 via-pink-500/20 to-transparent rounded-full blur-3xl"></div>
       
-      <style jsx>{`
+      <style>{`
         @keyframes float {
           0%, 100% { transform: translateY(0px) rotate(0deg); }
           50% { transform: translateY(-20px) rotate(180deg); }

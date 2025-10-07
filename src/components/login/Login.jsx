@@ -1,6 +1,7 @@
 "use client"
 
 import React, { useState, useEffect, useRef } from "react"
+import HomeIcon from "@mui/icons-material/Home"
 import {
     Box,
     Grid,
@@ -35,6 +36,10 @@ function Login() {
     const inputRef = useRef(null)
     const navigate = useNavigate()
 
+    const goHome = () => {
+        navigate("/")
+    }
+
     useEffect(() => {
         if (inputRef.current) {
             inputRef.current.focus()
@@ -55,11 +60,11 @@ function Login() {
 
         if (data?.token) {
             localStorage.setItem("token", data.token)
-            localStorage.setItem("fullName", data.fullName)
-            localStorage.setItem("role", data.role)
+            localStorage.setItem("fullName", data.user.fullName)
+            localStorage.setItem("role", data.user.role)
 
             // Điều hướng theo role backend trả về
-            switch (data.role) {
+            switch (data.user.role) {
                 case "ADMIN":
                     navigate("/dashboard")
                     break
@@ -69,7 +74,7 @@ function Login() {
                 case "SC_STAFF":
                     navigate("/scstaff")
                     break
-                case "SC_TECH":
+                case "SC_TECHNICIAN":
                     navigate("/sctech")
                     break
                 default:
@@ -89,7 +94,6 @@ function Login() {
     }
 }
 
-
     return (
         <Box
             sx={{
@@ -100,8 +104,33 @@ function Login() {
                 background: "linear-gradient(135deg, #e3f2fd, #e8f5e9)",
                 overflow: "hidden",
                 p: 2,
+                position: "relative",
             }}
         >
+            {/* Nút Home */}
+            <Button
+                onClick={goHome}
+                startIcon={<HomeIcon />}
+                sx={{
+                    position: "absolute",
+                    top: 20,
+                    left: 20,
+                    py: 1,
+                    px: 2,
+                    borderRadius: 3,
+                    fontWeight: "bold",
+                    textTransform: "none",
+                    background: "linear-gradient(90deg, #1565c0, #2e7d32)",
+                    color: "white",
+                    boxShadow: 3,
+                    "&:hover": {
+                        background: "linear-gradient(90deg, #0d47a1, #1b5e20)",
+                    },
+                }}
+            >
+                Trang chủ
+            </Button>
+
             <Card
                 sx={{
                     width: "100%",
