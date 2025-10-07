@@ -200,26 +200,6 @@ export default function FeatureCard() {
           })}
         </div>
 
-        {/* Bottom CTA Section */}
-        <div className="mt-20 text-center">
-          <div className="bg-white/10 backdrop-blur-lg rounded-3xl p-8 md:p-12 border border-white/20 max-w-4xl mx-auto">
-            <h3 className="text-3xl md:text-4xl font-bold text-white mb-4">
-              Khám phá sức mạnh của hệ thống
-            </h3>
-            <p className="text-slate-300 mb-8 text-lg">
-              Trải nghiệm ngay các tính năng mạnh mẽ và tối ưu quy trình quản lý bảo hành của bạn.
-            </p>
-            <div className="flex flex-col sm:flex-row gap-4 justify-center">
-              <button className="px-8 py-4 bg-gradient-to-r from-blue-500 to-purple-600 text-white font-bold rounded-2xl shadow-xl hover:shadow-2xl transform hover:scale-105 transition-all duration-300">
-                Dùng thử miễn phí
-              </button>
-              <button className="px-8 py-4 bg-white/20 backdrop-blur-sm text-white font-semibold rounded-2xl border border-white/30 hover:bg-white/30 transform hover:scale-105 transition-all duration-300">
-                Xem tất cả tính năng
-              </button>
-            </div>
-          </div>
-        </div>
-
         {/* Floating elements */}
         <div className="absolute top-20 right-20 text-6xl opacity-10 animate-bounce">⚡</div>
         <div className="absolute bottom-32 left-10 text-4xl opacity-10 animate-pulse">🚗</div>

@@ -167,31 +167,6 @@ export default function About() {
             );
           })}
         </div>
-
-        {/* Bottom CTA Section */}
-        <div className="text-center bg-white/50 backdrop-blur-sm rounded-3xl p-8 md:p-12 shadow-xl border border-white/50">
-          <h3 className="text-2xl md:text-3xl font-bold text-slate-800 mb-4">
-            Sẵn sàng trải nghiệm?
-          </h3>
-          <p className="text-slate-600 mb-8 max-w-2xl mx-auto">
-            Khám phá cách hệ thống của chúng tôi có thể tối ưu hóa quy trình quản lý bảo hành xe điện của bạn.
-          </p>
-          <div className="flex flex-col sm:flex-row gap-4 justify-center">
-            <button className="px-8 py-4 bg-gradient-to-r from-blue-500 to-purple-600 text-white font-semibold rounded-2xl shadow-lg hover:shadow-xl transform hover:scale-105 transition-all duration-300">
-              Bắt đầu ngay
-            </button>
-            <button className="px-8 py-4 bg-white/80 text-slate-700 font-semibold rounded-2xl border border-slate-200 hover:bg-white hover:shadow-lg transform hover:scale-105 transition-all duration-300">
-              Xem demo
-            </button>
-          </div>
-        </div>
-      </div>
-
-      {/* Bottom wave decoration */}
-      <div className="absolute bottom-0 left-0 right-0">
-        <svg viewBox="0 0 1200 120" preserveAspectRatio="none" className="w-full h-20 fill-slate-100">
-          <path d="M0,0 C150,100 350,0 600,50 C850,100 1050,0 1200,50 L1200,120 L0,120 Z"></path>
-        </svg>
       </div>
     </section>
   );
