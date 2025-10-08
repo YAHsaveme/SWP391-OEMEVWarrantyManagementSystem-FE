@@ -1,112 +1,110 @@
 // src/services/authService.js
-import axios from "axios";
+import axiosInstance from "./axiosInstance";
 
-const API = axios.create({
-  baseURL: "http://localhost:8080/api/auth",
-  headers: { "Content-Type": "application/json" },
-});
+const AUTH_API = "/auth";
 
-// === GẮN TOKEN VÀO HEADER MỖI REQUEST ===
-API.interceptors.request.use((config) => {
-  const token = localStorage.getItem("token");
-  if (token) config.headers.Authorization = `Bearer ${token}`;
-  return config;
-});
+const authService = {
+  // 🟩 Đăng nhập
+  async login(email, password) {
+    try {
+      // ⚠️ Backend yêu cầu "username", nên truyền email vào field này
+      const res = await axiosInstance.post(`${AUTH_API}/login`, {
+        username: email,
+        password,
+      });
 
-// === AUTH CORE ===
+      const data = res.data;
 
-// 🟢 Đăng nhập
-export const login = async (email, password) => {
-  const res = await API.post("/login", { username: email, password });
-  const { token, user } = res.data;
+      // Lưu token và thông tin người dùng nếu có
+      if (data?.token) {
+        localStorage.setItem("token", data.token);
+      }
+      if (data?.user) {
+        localStorage.setItem("fullName", data.user.fullName || "");
+        localStorage.setItem("role", data.user.role || "");
+      }
 
-  if (token && user) {
-    localStorage.setItem("token", token);
-    localStorage.setItem("role", user.role);
-    localStorage.setItem("fullName", user.fullName);
-    localStorage.setItem("email", user.email);
-    localStorage.setItem("userId", user.id);
-  }
+      return data;
+    } catch (error) {
+      console.error("Login failed:", error.response?.data || error.message);
+      throw error;
+    }
+  },
 
-  // ✅ Trả nguyên cấu trúc { token, user } cho frontend
-  return { token, user };
-};
+  // 🟨 Đăng ký tài khoản mới
+  async register(data) {
+    try {
+      const res = await axiosInstance.post(`${AUTH_API}/register`, data);
+      return res.data;
+    } catch (error) {
+      console.error("Register failed:", error.response?.data || error.message);
+      throw error;
+    }
+  },
 
-// 🔴 Đăng xuất (logout)
-export const logout = async () => {
-  try {
-    await API.post("/logout");
-  } catch (e) {
-    console.warn("⚠️ Logout API failed, but continuing cleanup");
-  } finally {
-    localStorage.clear();
-    delete API.defaults.headers.common["Authorization"];
+  // 🟦 Lấy thông tin người dùng hiện tại
+  async getCurrentUser() {
+    try {
+      const res = await axiosInstance.get(`${AUTH_API}/me`);
+      return res.data;
+    } catch (error) {
+      console.error("Get current user failed:", error.response?.data || error.message);
+      throw error;
+    }
+  },
+
+  // 🟩 Cập nhật thông tin người dùng
+  async updateUser(id, data) {
+    try {
+      const res = await axiosInstance.put(`${AUTH_API}/users/${id}`, data);
+      return res.data;
+    } catch (error) {
+      console.error("Update user failed:", error.response?.data || error.message);
+      throw error;
+    }
+  },
+
+  // 🟧 Đổi mật khẩu
+  async changePassword(id, data) {
+    try {
+      const res = await axiosInstance.put(`${AUTH_API}/users/${id}/password`, data);
+      return res.data;
+    } catch (error) {
+      console.error("Change password failed:", error.response?.data || error.message);
+      throw error;
+    }
+  },
+
+  // 🟦 Lấy danh sách tất cả người dùng
+  async getAllUsers() {
+    try {
+      const res = await axiosInstance.get(`${AUTH_API}/users`);
+      return res.data;
+    } catch (error) {
+      console.error("Get users failed:", error.response?.data || error.message);
+      throw error;
+    }
+  },
+
+  // 🟨 Lấy người dùng theo ID
+  async getUserById(id) {
+    try {
+      const res = await axiosInstance.get(`${AUTH_API}/users/${id}`);
+      return res.data;
+    } catch (error) {
+      console.error("Get user by id failed:", error.response?.data || error.message);
+      throw error;
+    }
+  },
+
+  // 🟥 Đăng xuất
+  logout() {
+    localStorage.removeItem("token");
+    localStorage.removeItem("fullName");
+    localStorage.removeItem("role");
     window.location.href = "/login";
-  }
+  },
 };
 
-// 🟢 Đăng ký (register)
-export const register = async (data) => {
-  return await API.post("/register", data);
-};
-
-// 🟢 Lấy thông tin người dùng hiện tại
-export const getCurrentUser = async () => {
-  return await API.get("/users/me");
-};
-
-// 🟢 Lấy danh sách tất cả người dùng
-export const getAllUsers = async () => {
-  return await API.get("/users/get-all-user");
-};
-
-// === USER MANAGEMENT ===
-
-// 🟢 Cập nhật thông tin người dùng
-export const updateUser = async (userId, data) => {
-  return await API.put(`/users/${userId}/update`, data);
-};
-
-// 🟢 Đổi mật khẩu
-export const changePassword = async (userId, data) => {
-  return await API.put(`/users/${userId}/password`, data);
-};
-
-// 🔴 Xóa người dùng
-export const deleteUser = async (userId) => {
-  return await API.delete(`/users/${userId}`);
-};
-
-// === TECHNICIAN MANAGEMENT ===
-
-// 🟢 Thêm kỹ thuật viên
-export const addTechnician = async (userId, data) => {
-  return await API.post(`/users/${userId}/technician`, data);
-};
-
-// 🟢 Cập nhật kỹ thuật viên
-export const updateTechnician = async (userId, data) => {
-  return await API.put(`/users/${userId}/technician`, data);
-};
-
-// === RECOVERY ===
-
-// 🟢 Phục hồi tài khoản
-export const recoverAccount = async (userId, data) => {
-  return await API.post(`/users/${userId}/recovery`, data);
-};
-
-// === EXPORT MẶC ĐỊNH ===
-export default {
-  login,
-  logout,
-  register,
-  getCurrentUser,
-  getAllUsers,
-  updateUser,
-  changePassword,
-  deleteUser,
-  addTechnician,
-  updateTechnician,
-  recoverAccount,
-};
+export default authService;
+export const { login, logout } = authService;

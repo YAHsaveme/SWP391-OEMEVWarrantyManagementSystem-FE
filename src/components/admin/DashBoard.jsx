@@ -57,6 +57,8 @@ import {
   Tooltip as RTooltip,
 } from "recharts";
 
+import UserManagement from "./UserManagement";
+
 const drawerWidth = 264;
 
 /* ---------- Styled Helpers ---------- */
@@ -550,88 +552,12 @@ export default function Dashboard() {
 
           {/* USERS MANAGEMENT */}
           {activeTab === "users" && (
-            <Box>
-              <Stack direction={{ xs: "column", sm: "row" }} justifyContent="space-between" alignItems={{ xs: "stretch", sm: "flex-end" }} gap={2} mb={2}>
-                <Box>
-                  <Typography variant="h5" fontWeight={800} gutterBottom>
-                    Quản lý người dùng
-                  </Typography>
-                  <Typography variant="body2" color="text.secondary">Tạo, phân quyền, khóa/mở khóa tài khoản.</Typography>
-                </Box>
-                <Stack direction="row" spacing={1}>
-                  <Button variant="contained">Thêm người dùng</Button>
-                  <Button variant="outlined">Nhập CSV</Button>
-                </Stack>
-              </Stack>
-
-              <GlassCard>
-                <CardContent>
-                  {/* Filters */}
-                  <Stack direction={{ xs: "column", md: "row" }} spacing={1.5} alignItems={{ xs: "stretch", md: "center" }} mb={2}>
-                    <TextField
-                      size="small"
-                      placeholder="Tìm theo tên, email..."
-                      value={search}
-                      onChange={(e) => setSearch(e.target.value)}
-                      InputProps={{ startAdornment: (<InputAdornment position="start"><SearchIcon /></InputAdornment>) }}
-                      sx={{ minWidth: { xs: "100%", md: 320 } }}
-                    />
-                    <TextField size="small" label="Vai trò" select SelectProps={{ native: true }} defaultValue="">
-                      <option value="">Tất cả</option>
-                      <option value="admin">Admin</option>
-                      <option value="manager">Manager</option>
-                      <option value="technician">Technician</option>
-                      <option value="viewer">Viewer</option>
-                    </TextField>
-                    <TextField size="small" label="Trạng thái" select SelectProps={{ native: true }} defaultValue="">
-                      <option value="">Tất cả</option>
-                      <option value="active">Đang hoạt động</option>
-                      <option value="suspended">Bị khóa</option>
-                    </TextField>
-                  </Stack>
-
-                  {/* Table */}
-                  <Box sx={{ width: "100%", overflow: "auto" }}>
-                    <Box component="table" sx={{ width: "100%", borderCollapse: "separate", borderSpacing: 0 }}>
-                      <Box component="thead" sx={{ bgcolor: alpha(theme.palette.primary.main, 0.05) }}>
-                        <Box component="tr">
-                          {['Mã', 'Họ tên', 'Email', 'Vai trò', 'Trạng thái', 'Lần hoạt động cuối', 'Hành động'].map((h) => (
-                            <Box key={h} component="th" sx={{ textAlign: 'left', p: 1.25, fontSize: 13, color: 'text.secondary', borderBottom: `1px solid ${theme.palette.divider}` }}>{h}</Box>
-                          ))}
-                        </Box>
-                      </Box>
-                      <Box component="tbody">
-                        {users
-                          .filter(u => u.name.toLowerCase().includes(search.toLowerCase()) || u.email.toLowerCase().includes(search.toLowerCase()))
-                          .map((u) => (
-                            <Box key={u.id} component="tr" sx={{ '&:hover': { backgroundColor: alpha(theme.palette.primary.main, 0.03) } }}>
-                              <Box component="td" sx={{ p: 1.25, borderBottom: `1px solid ${theme.palette.divider}` }}>{u.id}</Box>
-                              <Box component="td" sx={{ p: 1.25, borderBottom: `1px solid ${theme.palette.divider}` }}>{u.name}</Box>
-                              <Box component="td" sx={{ p: 1.25, borderBottom: `1px solid ${theme.palette.divider}` }}>{u.email}</Box>
-                              <Box component="td" sx={{ p: 1.25, borderBottom: `1px solid ${theme.palette.divider}` }}>
-                                <Chip size="small" label={u.role} color={u.role === 'admin' ? 'secondary' : u.role === 'manager' ? 'info' : u.role === 'technician' ? 'warning' : 'default'} variant="outlined" />
-                              </Box>
-                              <Box component="td" sx={{ p: 1.25, borderBottom: `1px solid ${theme.palette.divider}` }}>
-                                <Chip size="small" label={u.status === 'active' ? 'Đang hoạt động' : 'Bị khóa'} color={u.status === 'active' ? 'success' : 'error'} variant="outlined" />
-                              </Box>
-                              <Box component="td" sx={{ p: 1.25, borderBottom: `1px solid ${theme.palette.divider}` }}>{new Date(u.lastActive).toLocaleDateString()}</Box>
-                              <Box component="td" sx={{ p: 1.25, borderBottom: `1px solid ${theme.palette.divider}` }}>
-                                <Stack direction="row" spacing={1}>
-                                  <Button size="small" variant="text">Xem / Sửa</Button>
-                                  <Button size="small" variant="outlined" color={u.status === 'active' ? 'error' : 'success'}>
-                                    {u.status === 'active' ? 'Khóa' : 'Mở khóa'}
-                                  </Button>
-                                  <Button size="small" variant="outlined">Đặt lại mật khẩu</Button>
-                                </Stack>
-                              </Box>
-                            </Box>
-                          ))}
-                      </Box>
-                    </Box>
-                  </Box>
-                </CardContent>
-              </GlassCard>
-            </Box>
+            <UserManagement
+              search={search}
+              setSearch={setSearch}
+              theme={theme}
+              GlassCard={GlassCard}
+            />
           )}
 
           {/* Placeholder tabs (extend later) */}
