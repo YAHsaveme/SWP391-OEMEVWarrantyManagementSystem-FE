@@ -1,6 +1,7 @@
 "use client"
 
 import React, { useState, useEffect, useRef } from "react"
+import HomeIcon from "@mui/icons-material/Home"
 import {
     Box,
     Grid,
@@ -22,7 +23,8 @@ import ElectricBoltIcon from "@mui/icons-material/ElectricBolt"
 import ShieldIcon from "@mui/icons-material/Security"
 import BatteryChargingFullIcon from "@mui/icons-material/BatteryChargingFull"
 import DirectionsCarIcon from "@mui/icons-material/DirectionsCar"
-import { login } from "../../services/authService"; // import API
+import { login } from "../../services/authService"  // gọi API login
+import { useNavigate } from "react-router-dom"
 
 function Login() {
     const [showPassword, setShowPassword] = useState(false)
@@ -32,6 +34,11 @@ function Login() {
     const [error, setError] = useState("")
     const [loading, setLoading] = useState(false)
     const inputRef = useRef(null)
+    const navigate = useNavigate()
+
+    const goHome = () => {
+        navigate("/")
+    }
 
     useEffect(() => {
         if (inputRef.current) {
@@ -44,19 +51,48 @@ function Login() {
     }
 
     const handleSubmit = async (e) => {
-        e.preventDefault()
-        setError("")
-        setLoading(true)
-        try {
-            const data = await login(email, password)   // gọi API login
-            console.log("Login success:", data)
-            window.location.href = "/dashboard"         // redirect
-        } catch (err) {
-            setError("Sai email hoặc mật khẩu")
-        } finally {
-            setLoading(false)
+    e.preventDefault()
+    setError("")
+    setLoading(true)
+
+    try {
+        const data = await login(email, password) // gọi API login
+
+        if (data?.token) {
+            localStorage.setItem("token", data.token)
+            localStorage.setItem("fullName", data.user.fullName)
+            localStorage.setItem("role", data.user.role)
+
+            // Điều hướng theo role backend trả về
+            switch (data.user.role) {
+                case "ADMIN":
+                    navigate("/dashboard")
+                    break
+                case "EVM_STAFF":
+                    navigate("/overview")
+                    break
+                case "SC_STAFF":
+                    navigate("/scstaff")
+                    break
+                case "SC_TECHNICIAN":
+                    navigate("/sctech")
+                    break
+                default:
+                    navigate("/")
+            }
+        } else {
+            setError("Phản hồi không hợp lệ từ server")
         }
+    } catch (err) {
+        const msg =
+            err.response?.data?.message ||
+            err.response?.data?.error ||
+            "Sai email hoặc mật khẩu"
+        setError(msg)
+    } finally {
+        setLoading(false)
     }
+}
 
     return (
         <Box
@@ -68,8 +104,33 @@ function Login() {
                 background: "linear-gradient(135deg, #e3f2fd, #e8f5e9)",
                 overflow: "hidden",
                 p: 2,
+                position: "relative",
             }}
         >
+            {/* Nút Home */}
+            <Button
+                onClick={goHome}
+                startIcon={<HomeIcon />}
+                sx={{
+                    position: "absolute",
+                    top: 20,
+                    left: 20,
+                    py: 1,
+                    px: 2,
+                    borderRadius: 3,
+                    fontWeight: "bold",
+                    textTransform: "none",
+                    background: "linear-gradient(90deg, #1565c0, #2e7d32)",
+                    color: "white",
+                    boxShadow: 3,
+                    "&:hover": {
+                        background: "linear-gradient(90deg, #0d47a1, #1b5e20)",
+                    },
+                }}
+            >
+                Trang chủ
+            </Button>
+
             <Card
                 sx={{
                     width: "100%",

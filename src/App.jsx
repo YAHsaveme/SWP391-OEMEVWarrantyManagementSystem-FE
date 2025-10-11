@@ -1,5 +1,6 @@
 import { BrowserRouter as Router, Routes, Route } from "react-router-dom";
 
+
 // Public (tùy bạn giữ/đổi)
 import HomePage from "./components/home/HomePage.jsx";
 import Dashboard from "./components/admin/DashBoard.jsx";
@@ -17,10 +18,14 @@ import TechniciansPage from "./components/staff/TechniciansPage.jsx";
 import EvModelsPage from "./components/staff/EvModelsPage.jsx";
 import ServiceCentersPage from "./components/staff/ServiceCentersPage.jsx";
 
+
 export default function App() {
   return (
     <Router>
+      <AutoLogoutWrapper />
+
       <Routes>
+
         {/* Public */}
         <Route path="/" element={<HomePage />} />
         <Route path="/login" element={<Login />} />

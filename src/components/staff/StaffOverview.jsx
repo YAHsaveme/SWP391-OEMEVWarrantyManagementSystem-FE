@@ -88,7 +88,7 @@ const quickActions = [
     },
 ];
 
-export default function DashboardOverview() {
+export default function StaffOverview() {
     return (
         <Container maxWidth="lg" sx={{ py: 6 }}>
             {/* Header */}
