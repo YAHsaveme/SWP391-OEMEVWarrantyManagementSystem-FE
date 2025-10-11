@@ -1,23 +1,40 @@
 import { BrowserRouter as Router, Routes, Route } from "react-router-dom";
 
+// Hooks
+import useAutoLogout from "./hooks/useAutoLogout";
 
-// Public (tùy bạn giữ/đổi)
-import HomePage from "./components/home/HomePage.jsx";
-import Dashboard from "./components/admin/DashBoard.jsx";
-import Login from "./components/login/Login.jsx";
-import Overview from "./components/evm/Overview.jsx";
+// Routes protection
+import PrivateRoute from "./routes/PrivateRoute";
 
-// Staff
-import StaffLayout from "./components/staff/StaffLayout.jsx";
-import StaffOverview from "./components/staff/StaffOverview.jsx";
-import CampaignsPage from "./components/staff/CampaignsPage.jsx";
-import VehiclesPage from "./components/staff/VehiclesPage.jsx";
-import VehicleDetailPage from "./components/staff/VehicleDetailPage.jsx";
-import WarrantyClaimsPage from "./components/staff/WarrantyClaim.jsx"; // <-- file của bạn tên WarrantyClaim.jsx
-import TechniciansPage from "./components/staff/TechniciansPage.jsx";
-import EvModelsPage from "./components/staff/EvModelsPage.jsx";
-import ServiceCentersPage from "./components/staff/ServiceCentersPage.jsx";
+// Public pages
+import HomePage from "./components/home/HomePage";
+import Login from "./components/login/Login";
+import Unauthorized from "./pages/Unauthorized";
+import NotFound from "./pages/NotFound";
 
+// Admin & EVM
+import Dashboard from "./components/admin/DashBoard";
+import Overview from "./components/evm/Overview";
+
+// Service Center
+import SCStaffDashboard from "./components/sc/SCStaffDashboard";
+import SCTechnicianDashboard from "./components/sc/SCTechnicianDashboard";
+
+// Staff (nested layout)
+import StaffLayout from "./components/staff/StaffLayout";
+import StaffOverview from "./components/staff/StaffOverview";
+import CampaignsPage from "./components/staff/CampaignsPage";
+import VehiclesPage from "./components/staff/VehiclesPage";
+import VehicleDetailPage from "./components/staff/VehicleDetailPage";
+import WarrantyClaimsPage from "./components/staff/WarrantyClaim";
+import TechniciansPage from "./components/staff/TechniciansPage";
+import EvModelsPage from "./components/staff/EvModelsPage";
+import ServiceCentersPage from "./components/staff/ServiceCentersPage";
+
+function AutoLogoutWrapper() {
+  useAutoLogout();
+  return null;
+}
 
 export default function App() {
   return (
@@ -25,27 +42,72 @@ export default function App() {
       <AutoLogoutWrapper />
 
       <Routes>
-
-        {/* Public */}
+        {/* ===== PUBLIC ROUTES ===== */}
         <Route path="/" element={<HomePage />} />
         <Route path="/login" element={<Login />} />
-        <Route path="/evm" element={<Overview />} />
-        <Route path="/admin" element={<Dashboard />} />
+        <Route path="/unauthorized" element={<Unauthorized />} />
 
-        {/* Staff (nested) */}
-        <Route path="/staff" element={<StaffLayout />}>
-          <Route index element={<StaffOverview />} />                     {/* /staff */}
-          <Route path="campaigns" element={<CampaignsPage />} />           {/* /staff/campaigns */}
-          <Route path="vehicles" element={<VehiclesPage />} />            {/* /staff/vehicles */}
-          <Route path="vehicles/:vin" element={<VehicleDetailPage />} />  {/* /staff/vehicles/1HGB... */}
-          <Route path="claims" element={<WarrantyClaimsPage />} />        {/* /staff/claims */}
-          <Route path="technicians" element={<TechniciansPage />} />      {/* /staff/technicians */}
-          <Route path="ev-models" element={<EvModelsPage />} />           {/* /staff/ev-models */}
-          <Route path="centers" element={<ServiceCentersPage />} />       {/* /staff/centers */}
+        {/* ===== ADMIN ===== */}
+        <Route
+          path="/admin"
+          element={
+            <PrivateRoute roles={["ADMIN"]}>
+              <Dashboard />
+            </PrivateRoute>
+          }
+        />
+
+        {/* ===== EVM STAFF ===== */}
+        <Route
+          path="/evm"
+          element={
+            <PrivateRoute roles={["EVM_STAFF"]}>
+              <Overview />
+            </PrivateRoute>
+          }
+        />
+
+        {/* ===== SC STAFF ===== */}
+        <Route
+          path="/scstaff"
+          element={
+            <PrivateRoute roles={["SC_STAFF"]}>
+              <SCStaffDashboard />
+            </PrivateRoute>
+          }
+        />
+
+        {/* ===== SC TECHNICIAN ===== */}
+        <Route
+          path="/sctech"
+          element={
+            <PrivateRoute roles={["SC_TECHNICIAN"]}>
+              <SCTechnicianDashboard />
+            </PrivateRoute>
+          }
+        />
+
+        {/* ===== STAFF (nested) ===== */}
+        <Route
+          path="/staff"
+          element={
+            <PrivateRoute roles={["SC_STAFF", "EVM_STAFF"]}>
+              <StaffLayout />
+            </PrivateRoute>
+          }
+        >
+          <Route index element={<StaffOverview />} />
+          <Route path="campaigns" element={<CampaignsPage />} />
+          <Route path="vehicles" element={<VehiclesPage />} />
+          <Route path="vehicles/:vin" element={<VehicleDetailPage />} />
+          <Route path="claims" element={<WarrantyClaimsPage />} />
+          <Route path="technicians" element={<TechniciansPage />} />
+          <Route path="ev-models" element={<EvModelsPage />} />
+          <Route path="centers" element={<ServiceCentersPage />} />
         </Route>
 
-        {/* 404 */}
-        <Route path="*" element={<div style={{ padding: 24 }}>404 - Not Found</div>} />
+        {/* ===== 404 ===== */}
+        <Route path="*" element={<NotFound />} />
       </Routes>
     </Router>
   );
