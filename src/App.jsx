@@ -49,7 +49,7 @@ export default function App() {
 
         {/* ===== ADMIN ===== */}
         <Route
-          path="/admin"
+          path="/dashboard"
           element={
             <PrivateRoute roles={["ADMIN"]}>
               <Dashboard />
@@ -59,7 +59,7 @@ export default function App() {
 
         {/* ===== EVM STAFF ===== */}
         <Route
-          path="/evm"
+          path="/overview"
           element={
             <PrivateRoute roles={["EVM_STAFF"]}>
               <Overview />
