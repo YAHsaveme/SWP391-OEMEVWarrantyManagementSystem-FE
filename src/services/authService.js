@@ -108,3 +108,19 @@ const authService = {
 
 export default authService;
 export const { login, logout } = authService;
+// Lấy danh sách user theo centerId
+export const getUsersByCenter = async (centerId, page = 0, size = 10) => {
+  const res = await axiosInstance.get(`/auth/admin/users/by-center/${centerId}`, {
+    params: { page, size },
+  });
+  return res.data;
+};
+
+// Cập nhật / gán center cho user
+export const updateUserCenter = async (centerId, userId) => {
+  const res = await axiosInstance.put(`/auth/admin/users/${centerId}/update-center`, null, {
+    params: { userId },
+  });
+  return res.data;
+};
+
