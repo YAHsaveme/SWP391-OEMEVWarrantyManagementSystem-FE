@@ -45,7 +45,7 @@ const authService = {
   // 🟦 Lấy thông tin người dùng hiện tại
   async getCurrentUser() {
     try {
-      const res = await axiosInstance.get(`${AUTH_API}/me`);
+      const res = await axiosInstance.get(`${AUTH_API}/users/me`);
       return res.data;
     } catch (error) {
       console.error("Get current user failed:", error.response?.data || error.message);

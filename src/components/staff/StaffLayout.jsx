@@ -21,7 +21,7 @@ const theme = createTheme({
     shape: { borderRadius: 14 },
 });
 
-// ❗ TẤT CẢ link phải nằm dưới /staff
+// TẤT CẢ link phải nằm dưới /staff
 const NAV_ITEMS = [
     { label: "Dashboard", to: "/staff", icon: <DashboardIcon />, end: true },
     { label: "Vehicles", to: "/staff/vehicles", icon: <DirectionsCarIcon /> },

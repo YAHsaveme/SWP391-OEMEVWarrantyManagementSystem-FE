@@ -1,6 +1,7 @@
 "use client"
 
-import React, { useMemo, useState } from "react";
+import React, { useMemo, useState, useEffect } from "react";
+import axiosInstance from "../../services/axiosInstance";
 import {
   AppBar,
   Toolbar,
@@ -28,6 +29,8 @@ import {
   Stack,
   useMediaQuery,
   CssBaseline,
+  Menu,
+  MenuItem,
 } from "@mui/material";
 import { createTheme, ThemeProvider, alpha, styled } from "@mui/material/styles";
 
@@ -216,6 +219,50 @@ export default function Dashboard() {
   const [mode, setMode] = useState(prefersDark ? "dark" : "light");
   const [activeTab, setActiveTab] = useState("overview");
   const [search, setSearch] = useState("");
+  const [anchorEl, setAnchorEl] = useState(null);
+  const [user, setUser] = useState(null);
+
+  useEffect(() => {
+  const fetchUser = async () => {
+    try {
+      const res = await axiosInstance.get("/auth/users/me");
+
+      // debug xem API trả về gì
+      console.log("Dữ liệu user nhận được:", res.data);
+
+      // set đúng field name và role
+      setUser({
+        fullName: res.data.fullName || res.data.name || res.data.username,
+        role: res.data.role?.name || res.data.role || "Không rõ vai trò",
+      });
+    } catch (error) {
+      console.error("❌ Lỗi tải thông tin người dùng:", error);
+      if (error.response?.status === 401) {
+        localStorage.removeItem("token");
+        window.location.href = "/login";
+      }
+    }
+  };
+
+  fetchUser();
+}, []);
+
+  const handleProfile = () => {
+  setAnchorEl(null);
+  window.location.href = "/profile";
+};
+
+const handleHome = () => {
+  setAnchorEl(null);
+  window.location.href = "/";
+};
+
+const handleLogout = () => {
+  setAnchorEl(null);
+  localStorage.removeItem("token");
+  localStorage.removeItem("user");
+  window.location.href = "/login";
+};
 
   const theme = useMemo(
     () =>
@@ -328,14 +375,6 @@ export default function Dashboard() {
                   </Badge>
                 </IconButton>
               </Tooltip>
-
-              <Tooltip title="Cài đặt">
-                <IconButton color="inherit">
-                  <SettingsIcon />
-                </IconButton>
-              </Tooltip>
-
-              <Avatar sx={{ width: 32, height: 32 }}>AD</Avatar>
             </Stack>
           </Toolbar>
         </AppBar>
@@ -345,12 +384,18 @@ export default function Dashboard() {
           variant="permanent"
           sx={{
             width: drawerWidth,
+            flexShrink: 0,
             [`& .MuiDrawer-paper`]: {
               width: drawerWidth,
               backgroundColor: "background.paper",
               borderRight: `1px solid ${alpha(theme.palette.divider, 0.6)}`,
               top: 64,
               p: 1,
+              height: "calc(100vh - 64px)", // đảm bảo chiếm toàn bộ chiều cao còn lại
+              display: "flex",
+              flexDirection: "column",
+              justifyContent: "space-between", // chia 2 phần: nội dung + avatar
+              zIndex: theme.zIndex.appBar - 1,
             },
           }}
         >
@@ -376,12 +421,79 @@ export default function Dashboard() {
           </List>
 
           <Divider sx={{ my: 1.5 }} />
+          {/* Avatar + Tên người dùng */}
+          <Box>
+    <Divider sx={{ my: 1.5 }} />
 
-          <Box sx={{ p: 2 }}>
-            <Button fullWidth startIcon={<FilterListIcon />} variant="outlined">
-              Bộ lọc nhanh
-            </Button>
-          </Box>
+    <Box
+      sx={{
+        p: 2,
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "flex-start",
+        cursor: "pointer",
+        borderRadius: 2,
+        "&:hover": {
+          backgroundColor: (theme) => alpha(theme.palette.primary.main, 0.08),
+        },
+        transition: "all 0.2s ease",
+      }}
+      onClick={(e) => setAnchorEl(e.currentTarget)}
+    >
+      <Avatar
+        sx={{
+          bgcolor: "primary.main",
+          color: "white",
+          fontWeight: 600,
+          width: 42,
+          height: 42,
+          mr: 1.5,
+          flexShrink: 0,
+        }}
+      >
+        {user?.fullName
+          ? user.fullName.charAt(0).toUpperCase()
+          : user?.name
+          ? user.name.charAt(0).toUpperCase()
+          : "U"}
+      </Avatar>
+
+      <Box sx={{ overflow: "hidden" }}>
+        <Typography
+          variant="subtitle2"
+          noWrap
+          sx={{ fontWeight: 600, lineHeight: 1.2 }}
+        >
+          {user?.fullName || user?.name || "Người dùng"}
+        </Typography>
+        <Typography variant="caption" color="text.secondary" noWrap>
+          {user?.role || "Vai trò"}
+        </Typography>
+      </Box>
+    </Box>
+
+    {/* --- Menu bật ra khi click avatar --- */}
+    <Menu
+      anchorEl={anchorEl}
+      open={Boolean(anchorEl)}
+      onClose={() => setAnchorEl(null)}
+      PaperProps={{
+        sx: {
+          mt: 1,
+          borderRadius: 2,
+          minWidth: 180,
+          boxShadow: "0 6px 20px rgba(0,0,0,0.15)",
+        },
+      }}
+    >
+      <MenuItem onClick={handleProfile}>Hồ sơ</MenuItem>
+      <MenuItem onClick={handleHome}>Về trang chủ</MenuItem>
+      <Divider />
+      <MenuItem onClick={handleLogout} sx={{ color: "error.main" }}>
+        Đăng xuất
+      </MenuItem>
+    </Menu>
+  </Box>
         </Drawer>
 
         {/* Main */}

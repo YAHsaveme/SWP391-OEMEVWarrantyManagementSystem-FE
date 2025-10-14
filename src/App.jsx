@@ -16,11 +16,10 @@ import NotFound from "./pages/NotFound";
 import Dashboard from "./components/admin/DashBoard";
 import Overview from "./components/evm/Overview";
 
-// Service Center
-import SCStaffDashboard from "./components/sc/SCStaffDashboard";
-import SCTechnicianDashboard from "./components/sc/SCTechnicianDashboard";
+// Technician
+import SCTechnicianDashboard from "./components/tech/SCTechnicianDashboard";
 
-// Staff (nested layout)
+// SC_Staff
 import StaffLayout from "./components/staff/StaffLayout";
 import StaffOverview from "./components/staff/StaffOverview";
 import CampaignsPage from "./components/staff/CampaignsPage";
@@ -67,19 +66,9 @@ export default function App() {
           }
         />
 
-        {/* ===== SC STAFF ===== */}
-        <Route
-          path="/scstaff"
-          element={
-            <PrivateRoute roles={["SC_STAFF"]}>
-              <SCStaffDashboard />
-            </PrivateRoute>
-          }
-        />
-
         {/* ===== SC TECHNICIAN ===== */}
         <Route
-          path="/sctech"
+          path="/tech"
           element={
             <PrivateRoute roles={["SC_TECHNICIAN"]}>
               <SCTechnicianDashboard />
@@ -87,11 +76,11 @@ export default function App() {
           }
         />
 
-        {/* ===== STAFF (nested) ===== */}
+        {/* ===== SC STAFF ===== */}
         <Route
           path="/staff"
           element={
-            <PrivateRoute roles={["SC_STAFF", "EVM_STAFF"]}>
+            <PrivateRoute roles={["SC_STAFF"]}>
               <StaffLayout />
             </PrivateRoute>
           }

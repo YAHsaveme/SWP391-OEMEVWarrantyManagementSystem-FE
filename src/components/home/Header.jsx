@@ -36,10 +36,10 @@ const Header = () => {
         navigate("/overview");
         break;
       case "SC_STAFF":
-        navigate("/scstaff");
+        navigate("/staff");
         break;
       case "SC_TECH":
-        navigate("/sctech");
+        navigate("/tech");
         break;
       default:
         navigate("/");

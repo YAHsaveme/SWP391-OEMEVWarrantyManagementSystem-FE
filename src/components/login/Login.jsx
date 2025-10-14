@@ -72,10 +72,10 @@ function Login() {
                     navigate("/overview")
                     break
                 case "SC_STAFF":
-                    navigate("/scstaff")
+                    navigate("/staff")
                     break
                 case "SC_TECHNICIAN":
-                    navigate("/sctech")
+                    navigate("/tech")
                     break
                 default:
                     navigate("/")

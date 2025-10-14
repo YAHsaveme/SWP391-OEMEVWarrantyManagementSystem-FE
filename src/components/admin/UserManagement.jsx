@@ -456,7 +456,7 @@ export default function UserManagement({ search, setSearch, theme }) {
             <Box component="table" sx={{ width: "100%", borderCollapse: "separate", borderSpacing: 0 }}>
               <Box component="thead" sx={{ bgcolor: alpha(theme.palette.primary.main, 0.05) }}>
                 <Box component="tr">
-                  {["#", "Họ tên", "Email", "SĐT", "Vai trò", "CenterID", "Ngày tạo", "Hành động"].map((h) => (
+                  {["ID", "Họ tên", "Email", "SĐT", "Vai trò", "CenterID", "Ngày tạo", "Hành động"].map((h) => (
                     <Box key={h} component="th" sx={{
                       textAlign: "center",
                       verticalAlign: "middle",
