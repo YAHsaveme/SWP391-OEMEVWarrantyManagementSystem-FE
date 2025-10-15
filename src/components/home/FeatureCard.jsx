@@ -82,8 +82,8 @@ export default function FeatureCard() {
   }, []);
 
   return (
-    <section 
-      id="features" 
+    <section
+      id="features"
       ref={sectionRef}
       className="py-20 bg-gradient-to-br from-slate-900 via-blue-900 to-purple-900 relative overflow-hidden"
     >
@@ -93,7 +93,7 @@ export default function FeatureCard() {
         <div className="absolute top-1/4 left-10 w-72 h-72 bg-blue-500 rounded-full mix-blend-multiply filter blur-xl opacity-20 animate-pulse"></div>
         <div className="absolute bottom-1/4 right-10 w-96 h-96 bg-purple-500 rounded-full mix-blend-multiply filter blur-xl opacity-20 animate-pulse delay-1000"></div>
         <div className="absolute top-1/2 left-1/3 w-80 h-80 bg-cyan-500 rounded-full mix-blend-multiply filter blur-xl opacity-15 animate-pulse delay-2000"></div>
-        
+
         {/* Grid pattern */}
         <div className="absolute inset-0 opacity-10">
           <div className="absolute inset-0" style={{
@@ -114,12 +114,12 @@ export default function FeatureCard() {
               ✨ Tính năng nổi bật
             </span>
           </div>
-          
+
           <h2 className="text-4xl md:text-6xl lg:text-7xl font-black text-transparent bg-clip-text bg-gradient-to-r from-white via-blue-100 to-purple-200 mb-6">
             <span className="block">Tính năng</span>
             <span className="block bg-gradient-to-r from-blue-400 to-purple-400 bg-clip-text">Mạnh mẽ</span>
           </h2>
-          
+
           <div className="max-w-4xl mx-auto">
             <p className="text-xl md:text-2xl text-slate-300 font-light leading-relaxed mb-4">
               Hệ thống cung cấp đầy đủ công cụ để{" "}
@@ -140,41 +140,40 @@ export default function FeatureCard() {
             const IconComponent = feature.icon;
             const isVisible = visibleCards.includes(index);
             const isHovered = hoveredCard === index;
-            
+
             return (
               <div
                 key={index}
-                className={`group relative transform transition-all duration-700 ${
-                  isVisible 
-                    ? 'translate-y-0 opacity-100' 
+                className={`group relative transform transition-all duration-700 ${isVisible
+                    ? 'translate-y-0 opacity-100'
                     : 'translate-y-16 opacity-0'
-                }`}
+                  }`}
                 style={{ transitionDelay: `${index * 100}ms` }}
                 onMouseEnter={() => setHoveredCard(index)}
                 onMouseLeave={() => setHoveredCard(null)}
               >
                 {/* Glow effect */}
                 <div className={`absolute inset-0 bg-gradient-to-r ${feature.gradient} rounded-3xl blur-xl opacity-0 group-hover:opacity-30 transition-opacity duration-500 scale-105`}></div>
-                
+
                 {/* Main card */}
                 <div className="relative h-full bg-white/10 backdrop-blur-lg rounded-3xl p-8 border border-white/20 hover:border-white/40 transition-all duration-500 transform hover:-translate-y-2">
                   {/* Pattern decoration */}
                   <div className="absolute top-4 right-4 text-4xl opacity-20 group-hover:opacity-40 transition-opacity duration-300">
                     {feature.pattern}
                   </div>
-                  
+
                   {/* Icon */}
                   <div className="relative mb-6">
                     <div className={`w-16 h-16 bg-gradient-to-br ${feature.gradient} rounded-2xl flex items-center justify-center shadow-lg group-hover:scale-110 transition-transform duration-500`}>
                       <IconComponent className="w-8 h-8 text-white" />
                     </div>
-                    
+
                     {/* Floating mini icon */}
                     <div className={`absolute -top-2 -right-2 w-6 h-6 bg-gradient-to-br ${feature.gradient} rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transform scale-0 group-hover:scale-100 transition-all duration-500 shadow-lg`}>
                       <IconComponent className="w-3 h-3 text-white" />
                     </div>
                   </div>
-                  
+
                   {/* Content */}
                   <div className="relative z-10">
                     <h3 className="text-xl font-bold text-white mb-4 group-hover:text-transparent group-hover:bg-clip-text group-hover:bg-gradient-to-r group-hover:from-white group-hover:to-blue-200 transition-all duration-300">
@@ -187,7 +186,7 @@ export default function FeatureCard() {
 
                   {/* Animated border */}
                   <div className={`absolute inset-0 rounded-3xl bg-gradient-to-r ${feature.gradient} opacity-0 group-hover:opacity-20 transition-opacity duration-500`}></div>
-                  
+
                   {/* Interactive dots */}
                   <div className="absolute bottom-4 left-4 flex space-x-1 opacity-0 group-hover:opacity-100 transition-opacity duration-300">
                     <div className={`w-2 h-2 bg-gradient-to-r ${feature.gradient} rounded-full animate-pulse`}></div>
