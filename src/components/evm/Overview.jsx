@@ -5,6 +5,7 @@ import Analytics from "./Analytics";
 import RecallForm from "./RecallForm";
 import ProductManagement from "./ProductManagement";
 import WarrantyRequests from "./WarrantyRequests";
+import WarrantyPolicy from "./WarrantyPolicy";
 // import SupplyChain from "./SupplyChain"; // Nếu có file này, bỏ comment và dùng ở tab 3
 
 import {
@@ -406,6 +407,7 @@ export default function Overview() {
                             />
                             <Tab iconPosition="start" icon={<SettingsIcon />} label="Chuỗi Cung ứng" />
                             <Tab iconPosition="start" icon={<BarChartIcon />} label="Báo cáo & Phân tích" />
+                            <Tab iconPosition="start" icon={<FileText />} label="Chính sách Bảo hành" />
                         </Tabs>
 
                         <Box sx={{ p: 2.5, bgcolor: 'background.paper', borderRadius: 2 }}>
@@ -419,6 +421,7 @@ export default function Overview() {
                                 </Typography>
                             )}
                             {tab === 4 && <Analytics />}
+                            {tab === 5 && <WarrantyPolicy />}
                         </Box>
                     </Paper>
 
