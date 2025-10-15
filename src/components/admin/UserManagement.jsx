@@ -231,44 +231,44 @@ export default function UserManagement({ search, setSearch, theme }) {
 
   // Edit
   const openEditModal = async (user) => {
-  try {
-    setEditForm({
-      id: user.id,
-      fullName: user.fullName || "",
-      email: user.email || "",
-      phone: user.phone || "",
-      role: user.role || "",
-      centerId: user.centerId || user.centerID || "",
-      newPassword: "",
-      hvCertExpiry: "",
-      skills: "",
-      hasTechnicianProfile: false, // mặc định
-    });
+    try {
+      setEditForm({
+        id: user.id,
+        fullName: user.fullName || "",
+        email: user.email || "",
+        phone: user.phone || "",
+        role: user.role || "",
+        centerId: user.centerId || user.centerID || "",
+        newPassword: "",
+        hvCertExpiry: "",
+        skills: "",
+        hasTechnicianProfile: false, // mặc định
+      });
 
-    // Nếu là kỹ thuật viên → gọi API lấy thông tin kỹ thuật viên
-    if (user.role === "SC_TECHNICIAN" || user.role === "TECHNICIAN") {
-      const res = await axiosInstance.get(`/auth/users/${user.id}/technician`);
-      if (res.data) {
-        setEditForm((prev) => ({
-          ...prev,
-          hvCertExpiry: res.data.hvCertExpiry || "",
-          skills: res.data.skills || "",
-          hasTechnicianProfile: true,
-        }));
+      // Nếu là kỹ thuật viên → gọi API lấy thông tin kỹ thuật viên
+      if (user.role === "SC_TECHNICIAN" || user.role === "TECHNICIAN") {
+        const res = await axiosInstance.get(`/auth/users/${user.id}/technician`);
+        if (res.data) {
+          setEditForm((prev) => ({
+            ...prev,
+            hvCertExpiry: res.data.hvCertExpiry || "",
+            skills: res.data.skills || "",
+            hasTechnicianProfile: true,
+          }));
+        }
       }
-    }
 
-    setEditErrors({});
-    setOpenEdit(true);
-  } catch (err) {
-    console.error("Lỗi khi mở form edit:", err);
-    setSnack({
-      open: true,
-      severity: "error",
-      message: "Không thể mở form chỉnh sửa người dùng",
-    });
-  }
-};
+      setEditErrors({});
+      setOpenEdit(true);
+    } catch (err) {
+      console.error("Lỗi khi mở form edit:", err);
+      setSnack({
+        open: true,
+        severity: "error",
+        message: "Không thể mở form chỉnh sửa người dùng",
+      });
+    }
+  };
 
   const validateEditForm = () => {
     const err = {};
@@ -279,67 +279,67 @@ export default function UserManagement({ search, setSearch, theme }) {
   };
 
   const handleUpdateUser = async () => {
-  if (!validateEditForm()) {
-    setSnack({ open: true, severity: "error", message: "Vui lòng sửa lỗi trên form" });
-    return;
-  }
-
-  try {
-    setActionLoading(true);
-
-    // Cập nhật thông tin chung
-    const payload = {
-      fullName: editForm.fullName,
-      email: editForm.email,
-      phone: editForm.phone,
-      role: editForm.role,
-      centerId: editForm.centerId || undefined,
-    };
-    await axiosInstance.put(`/auth/admin/users/${editForm.id}`, payload);
-
-    // Nếu cần mật khẩu mới → gọi API đổi mật khẩu riêng
-    if (editForm.newPassword?.trim()) {
-      await axiosInstance.put(`/auth/admin/users/${editForm.id}/password`, {
-        newPassword: editForm.newPassword,
-      });
+    if (!validateEditForm()) {
+      setSnack({ open: true, severity: "error", message: "Vui lòng sửa lỗi trên form" });
+      return;
     }
 
-    // Nếu có centerId → gọi API gán/cập nhật center riêng
-    if (editForm.centerId) {
-      await axiosInstance.put(`/auth/admin/users/${editForm.centerId}/update-center`, null, {
-        params: { userId: editForm.id },
-      });
-    }
+    try {
+      setActionLoading(true);
 
-    // ===== Nếu là Technician → xử lý hồ sơ kỹ thuật viên =====
-    if (editForm.role === "TECHNICIAN") {
-      const techPayload = {
-        hvCertExpiry: editForm.hvCertExpiry || null,
-        skills: editForm.skills || "",
+      // Cập nhật thông tin chung
+      const payload = {
+        fullName: editForm.fullName,
+        email: editForm.email,
+        phone: editForm.phone,
+        role: editForm.role,
+        centerId: editForm.centerId || undefined,
       };
+      await axiosInstance.put(`/auth/admin/users/${editForm.id}`, payload);
 
-      if (editForm.hasTechnicianProfile) {
-        // Nếu đã có hồ sơ technician → cập nhật
-        await axiosInstance.put(`/auth/users/${editForm.id}/technician`, techPayload);
-      } else {
-        // Nếu chưa có → tạo mới
-        await axiosInstance.post(`/auth/users/${editForm.id}/technician`, techPayload);
+      // Nếu cần mật khẩu mới → gọi API đổi mật khẩu riêng
+      if (editForm.newPassword?.trim()) {
+        await axiosInstance.put(`/auth/admin/users/${editForm.id}/password`, {
+          newPassword: editForm.newPassword,
+        });
       }
-    }
 
-    // Hoàn tất
-    setSnack({ open: true, severity: "success", message: "Cập nhật người dùng thành công" });
-    setOpenEdit(false);
-    fetchUsers(page, pageSize, search, roleFilter);
-  } catch (err) {
-    console.error("Lỗi cập nhật user:", err);
-    const parsed = parseServerErrors(err);
-    setEditErrors(parsed.fieldErrors || {});
-    setSnack({ open: true, severity: "error", message: parsed.message || "Cập nhật thất bại" });
-  } finally {
-    setActionLoading(false);
-  }
-};
+      // Nếu có centerId → gọi API gán/cập nhật center riêng
+      if (editForm.centerId) {
+        await axiosInstance.put(`/auth/admin/users/${editForm.centerId}/update-center`, null, {
+          params: { userId: editForm.id },
+        });
+      }
+
+      // ===== Nếu là Technician → xử lý hồ sơ kỹ thuật viên =====
+      if (editForm.role === "TECHNICIAN") {
+        const techPayload = {
+          hvCertExpiry: editForm.hvCertExpiry || null,
+          skills: editForm.skills || "",
+        };
+
+        if (editForm.hasTechnicianProfile) {
+          // Nếu đã có hồ sơ technician → cập nhật
+          await axiosInstance.put(`/auth/users/${editForm.id}/technician`, techPayload);
+        } else {
+          // Nếu chưa có → tạo mới
+          await axiosInstance.post(`/auth/users/${editForm.id}/technician`, techPayload);
+        }
+      }
+
+      // Hoàn tất
+      setSnack({ open: true, severity: "success", message: "Cập nhật người dùng thành công" });
+      setOpenEdit(false);
+      fetchUsers(page, pageSize, search, roleFilter);
+    } catch (err) {
+      console.error("Lỗi cập nhật user:", err);
+      const parsed = parseServerErrors(err);
+      setEditErrors(parsed.fieldErrors || {});
+      setSnack({ open: true, severity: "error", message: parsed.message || "Cập nhật thất bại" });
+    } finally {
+      setActionLoading(false);
+    }
+  };
 
   // Delete
   const openDeleteDialog = (userId) => {
