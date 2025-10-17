@@ -1,4 +1,5 @@
-import React, { useMemo, useState } from "react";
+import React, { useMemo, useState, useEffect } from "react";
+import axios from "axios";
 import {
     Container,
     Box,
@@ -10,84 +11,84 @@ import {
     TextField,
     InputAdornment,
     Button,
-    Chip,
+    Divider,
+    Alert,
+    Table,
+    TableHead,
+    TableRow,
+    TableCell,
+    TableBody,
     Dialog,
     DialogTitle,
     DialogContent,
     DialogActions,
-    MenuItem,
-    Select,
-    FormControl,
-    InputLabel,
-    Divider,
+    IconButton,
+    CircularProgress,
 } from "@mui/material";
 import SearchIcon from "@mui/icons-material/Search";
 import DescriptionIcon from "@mui/icons-material/Description";
-import PendingActionsIcon from "@mui/icons-material/PendingActions";
-import CheckCircleIcon from "@mui/icons-material/CheckCircle";
-import DoneAllIcon from "@mui/icons-material/DoneAll";
+import CloseIcon from "@mui/icons-material/Close";
 
-const statusColor = {
-    SUBMITTED: "info",
-    PENDING: "warning",
-    APPROVED: "success",
-    COMPLETED: "default",
-    REJECTED: "error",
-};
+/* ================== API BASE ================== */
+const API_BASE = "http://localhost:8080";
 
-/** ---- Mock data ---- */
-const mockClaims = [
-    {
-        id: "WC-001",
-        vin: "1HGBH41JXMN109186",
-        vehicleModel: "Tesla Model 3",
-        issueDescription: "Battery degradation beyond warranty threshold",
-        status: "APPROVED",
-        createdAt: "2025-01-05",
-        assignedTo: "John Doe",
-        parts: ["Battery Pack"],
-    },
-    {
-        id: "WC-002",
-        vin: "5YJ3E1EA1KF123456",
-        vehicleModel: "BYD Atto 3",
-        issueDescription: "Motor controller malfunction",
-        status: "PENDING",
-        createdAt: "2025-01-07",
-    },
-    {
-        id: "WC-003",
-        vin: "LSJW54EV8HS123456",
-        vehicleModel: "VinFast VF8",
-        issueDescription: "Charging port not working",
-        status: "SUBMITTED",
-        createdAt: "2025-01-08",
-    },
-];
+/* ================== AXIOS INSTANCE ================== */
+const api = axios.create({
+    baseURL: API_BASE,
+    withCredentials: true,
+});
 
-/** ---- Stat Card ---- */
+api.interceptors.request.use((config) => {
+    const token = localStorage.getItem("token") || localStorage.getItem("access_token");
+    if (token) config.headers.Authorization = `Bearer ${token}`;
+    config.headers.Accept = "application/json";
+    return config;
+});
+
+/* ================== HELPERS ================== */
+const Mono = ({ children }) => (
+    <Box component="span" sx={{ fontFamily: "monospace" }}>{children}</Box>
+);
+
+function fmtDate(d) {
+    if (!d) return "—";
+    const date = new Date(d);
+    return isNaN(date.getTime()) ? String(d) : date.toLocaleString("vi-VN");
+}
+function fmtPct(v) {
+    return v != null ? `${v}%` : "—";
+}
+function fmtMoney(v) {
+    return v != null
+        ? v.toLocaleString("vi-VN", { style: "currency", currency: "VND" })
+        : "—";
+}
+function Row({ label, value }) {
+    return (
+        <Stack direction="row" spacing={1.5} alignItems="baseline">
+            <Typography variant="caption" color="text.secondary" sx={{ minWidth: 180 }}>
+                {label}
+            </Typography>
+            <Typography variant="body2" fontWeight={600}>{value}</Typography>
+        </Stack>
+    );
+}
 function StatCard({ icon, label, value }) {
     return (
         <Card elevation={3}>
             <CardContent>
                 <Stack direction="row" spacing={2} alignItems="center">
-                    <Box
-                        sx={{
-                            p: 1.25,
-                            borderRadius: 2,
-                            bgcolor: (t) => t.palette.action.hover,
-                            display: "inline-flex",
-                        }}
-                    >
+                    <Box sx={{
+                        p: 1.25,
+                        borderRadius: 2,
+                        bgcolor: (t) => t.palette.action.hover,
+                        display: "inline-flex",
+                    }}>
                         {icon}
                     </Box>
                     <Box>
-                        <Typography variant="caption" color="text.secondary">
-                            {label}
-                        </Typography>
-                        <Typography variant="h5" fontWeight={800}>
-                            {value}
-                        </Typography>
+                        <Typography variant="caption" color="text.secondary">{label}</Typography>
+                        <Typography variant="h5" fontWeight={800}>{value}</Typography>
                     </Box>
                 </Stack>
             </CardContent>
@@ -95,416 +96,248 @@ function StatCard({ icon, label, value }) {
     );
 }
 
-export default function WarrantyClaimsPage() {
-    const [claims, setClaims] = useState(mockClaims);
-    const [q, setQ] = useState("");
-    const [statusFilter, setStatusFilter] = useState("all");
+/* ================== MAIN ================== */
+export default function WarrantyVehiclesPage() {
+    const [vehicles, setVehicles] = useState([]);
+    const [filtered, setFiltered] = useState([]);
+    const [query, setQuery] = useState("");
+    const [warranty, setWarranty] = useState(null);
+    const [error, setError] = useState("");
+    const [loading, setLoading] = useState(false);
 
-    const [createOpen, setCreateOpen] = useState(false);
-    const [viewOpen, setViewOpen] = useState(false);
-    const [activeClaim, setActiveClaim] = useState(null);
+    // NEW (UI): Dialog state
+    const [dialogOpen, setDialogOpen] = useState(false);
 
-    const totals = useMemo(() => {
-        const count = claims.length;
-        const pending = claims.filter((c) => c.status === "PENDING").length;
-        const approved = claims.filter((c) => c.status === "APPROVED").length;
-        const completed = claims.filter((c) => c.status === "COMPLETED").length;
-        return { count, pending, approved, completed };
-    }, [claims]);
+    // Fetch all vehicles
+    useEffect(() => {
+        api.get("/api/vehicles/get-all")
+            .then((res) => {
+                const list = Array.isArray(res.data)
+                    ? res.data
+                    : res.data?.vehicles || res.data?.data || [];
+                setVehicles(list);
+                setFiltered(list);
+            })
+            .catch((err) =>
+                setError(err?.response?.data?.message || err.message)
+            );
+    }, []);
 
-    const filtered = useMemo(() => {
-        const text = q.trim().toLowerCase();
-        return claims.filter((c) => {
-            const matchedText =
-                !text ||
-                c.vin.toLowerCase().includes(text) ||
-                c.vehicleModel.toLowerCase().includes(text) ||
-                c.id.toLowerCase().includes(text);
+    // Filter by VIN, model, modelCode
+    useEffect(() => {
+        const q = query.trim().toLowerCase();
+        if (!q) return setFiltered(vehicles);
+        setFiltered(
+            vehicles.filter(
+                (v) =>
+                    v.vin?.toLowerCase().includes(q) ||
+                    v.model?.toLowerCase().includes(q) ||
+                    v.modelCode?.toLowerCase().includes(q)
+            )
+        );
+    }, [query, vehicles]);
 
-            const matchedStatus = statusFilter === "all" || c.status === statusFilter;
-            return matchedText && matchedStatus;
-        });
-    }, [claims, q, statusFilter]);
+    // ✅ Fetch warranty by VIN (giữ nguyên logic, chỉ thêm mở dialog)
+    async function fetchWarranty(vin) {
+        setWarranty(null);
+        setError("");
+        setLoading(true);
+        try {
+            const res = await api.get(`/api/vehicle-warranties/${encodeURIComponent(vin)}/get`, {
+                headers: { Accept: "application/json" },
+                validateStatus: () => true,
+            });
+
+            if (res.status >= 400) {
+                throw new Error(res.data?.message || `HTTP ${res.status}`);
+            }
+
+            const raw = res.data;
+            const list =
+                Array.isArray(raw) ? raw :
+                    Array.isArray(raw?.warranties) ? raw.warranties :
+                        Array.isArray(raw?.data) ? raw.data :
+                            raw ? [raw] : [];
+
+            if (!list.length || typeof list[0] !== "object") {
+                throw new Error("Không nhận được dữ liệu bảo hành hợp lệ.");
+            }
+
+            const w = list[0];
+            const normalized = {
+                ...w,
+                expiresDate: w.expiresDate ?? w.expireDate ?? null,
+                exclusions: Array.isArray(w.exclusions) ? w.exclusions : [],
+                goodwill: w.goodwill && typeof w.goodwill === "object" ? w.goodwill : null,
+            };
+
+            setWarranty(normalized);
+        } catch (err) {
+            console.error("fetchWarranty error:", err);
+            setError(err?.message || "Lỗi không xác định khi tải bảo hành.");
+        } finally {
+            setLoading(false);
+        }
+    }
+
+    const totals = useMemo(() => ({ count: vehicles.length }), [vehicles]);
 
     return (
         <Container maxWidth="lg" sx={{ py: 5 }}>
             {/* Header */}
             <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb: 2 }}>
                 <Box>
-                    <Typography variant="h4" fontWeight={800}>Warranty Claims</Typography>
-                    <Typography color="text.secondary">Manage and track warranty claims</Typography>
+                    <Typography variant="h4" fontWeight={800}>Warranty Vehicles</Typography>
+                    <Typography color="text.secondary">Danh sách xe & tra cứu bảo hành</Typography>
                 </Box>
-                <Button variant="contained" onClick={() => setCreateOpen(true)}>
-                    Create Claim
-                </Button>
             </Stack>
 
             {/* Stats */}
             <Grid container spacing={2} sx={{ mb: 3 }}>
                 <Grid item xs={12} sm={6} md={3}>
-                    <StatCard icon={<DescriptionIcon />} label="Total Claims" value={totals.count} />
-                </Grid>
-                <Grid item xs={12} sm={6} md={3}>
-                    <StatCard icon={<PendingActionsIcon />} label="Pending" value={totals.pending} />
-                </Grid>
-                <Grid item xs={12} sm={6} md={3}>
-                    <StatCard icon={<CheckCircleIcon />} label="Approved" value={totals.approved} />
-                </Grid>
-                <Grid item xs={12} sm={6} md={3}>
-                    <StatCard icon={<DoneAllIcon />} label="Completed" value={totals.completed} />
+                    <StatCard icon={<DescriptionIcon />} label="Total Vehicles" value={totals.count} />
                 </Grid>
             </Grid>
 
-            {/* Search & Filter */}
-            <Grid container spacing={2} sx={{ mb: 2 }}>
-                <Grid item xs={12} md={8}>
-                    <TextField
-                        fullWidth
-                        placeholder="Search by VIN, model, or claim ID..."
-                        value={q}
-                        onChange={(e) => setQ(e.target.value)}
-                        InputProps={{
-                            startAdornment: (
-                                <InputAdornment position="start">
-                                    <SearchIcon fontSize="small" />
-                                </InputAdornment>
-                            ),
-                        }}
-                    />
-                </Grid>
-                <Grid item xs={12} md={4}>
-                    <FormControl fullWidth>
-                        <InputLabel id="status-label">Filter by status</InputLabel>
-                        <Select
-                            labelId="status-label"
-                            label="Filter by status"
-                            value={statusFilter}
-                            onChange={(e) => setStatusFilter(e.target.value)}
-                        >
-                            <MenuItem value="all">All Status</MenuItem>
-                            <MenuItem value="SUBMITTED">Submitted</MenuItem>
-                            <MenuItem value="PENDING">Pending</MenuItem>
-                            <MenuItem value="APPROVED">Approved</MenuItem>
-                            <MenuItem value="COMPLETED">Completed</MenuItem>
-                            <MenuItem value="REJECTED">Rejected</MenuItem>
-                        </Select>
-                    </FormControl>
-                </Grid>
-            </Grid>
+            {/* Search */}
+            <Card sx={{ mb: 3 }}>
+                <CardContent>
+                    <Stack direction={{ xs: "column", sm: "row" }} spacing={2}>
+                        <TextField
+                            fullWidth
+                            placeholder="Search by VIN or model..."
+                            value={query}
+                            onChange={(e) => setQuery(e.target.value)}
+                            InputProps={{
+                                startAdornment: (
+                                    <InputAdornment position="start">
+                                        <SearchIcon fontSize="small" />
+                                    </InputAdornment>
+                                ),
+                            }}
+                        />
+                    </Stack>
+                </CardContent>
+            </Card>
 
-            {/* Claims List */}
-            <Stack spacing={2}>
-                {filtered.map((claim) => (
-                    <Card key={claim.id} elevation={3} sx={{ "&:hover": { boxShadow: 8 } }}>
-                        <CardContent>
-                            <Stack direction={{ xs: "column", sm: "row" }} spacing={2} justifyContent="space-between">
-                                <Box flex={1}>
-                                    <Stack direction="row" spacing={1.5} alignItems="center">
-                                        <Typography variant="h6" fontWeight={700}>{claim.id}</Typography>
-                                        <Chip
+            {/* Table Vehicles */}
+            <Card variant="outlined" sx={{ mb: 3 }}>
+                <Box sx={{ overflowX: "auto" }}>
+                    <Table size="small">
+                        <TableHead>
+                            <TableRow>
+                                <TableCell>VIN</TableCell>
+                                <TableCell>Model</TableCell>
+                                <TableCell>Model Code</TableCell>
+                                <TableCell>Production Date</TableCell>
+                                <TableCell>In Service Date</TableCell>
+                                <TableCell align="right">Action</TableCell>
+                            </TableRow>
+                        </TableHead>
+                        <TableBody>
+                            {filtered.map((v) => (
+                                <TableRow key={v.vin} hover>
+                                    <TableCell><Mono>{v.vin}</Mono></TableCell>
+                                    <TableCell>{v.model}</TableCell>
+                                    <TableCell>{v.modelCode}</TableCell>
+                                    <TableCell>{fmtDate(v.productionDate)}</TableCell>
+                                    <TableCell>{fmtDate(v.inServiceDate)}</TableCell>
+                                    <TableCell align="right">
+                                        <Button
                                             size="small"
-                                            label={claim.status}
-                                            color={statusColor[claim.status]}
-                                            variant={claim.status === "APPROVED" ? "filled" : "outlined"}
-                                            sx={{ fontWeight: 700 }}
-                                        />
-                                    </Stack>
+                                            variant="outlined"
+                                            onClick={() => {
+                                                setDialogOpen(true);     // mở popup ngay
+                                                fetchWarranty(v.vin);    // gọi fetch (logic giữ nguyên)
+                                            }}
+                                        >
+                                            View Warranty
+                                        </Button>
+                                    </TableCell>
+                                </TableRow>
+                            ))}
+                        </TableBody>
+                    </Table>
+                </Box>
+            </Card>
 
-                                    <Stack spacing={1} sx={{ mt: 1 }}>
-                                        <Row label="VIN" value={<Mono>{claim.vin}</Mono>} />
-                                        <Row label="Model" value={claim.vehicleModel} />
-                                        <Row label="Issue" value={claim.issueDescription} />
-                                        {claim.assignedTo && <Row label="Assigned to" value={claim.assignedTo} />}
-                                        {Array.isArray(claim.parts) && claim.parts.length > 0 && (
-                                            <Stack direction="row" spacing={1} alignItems="center">
-                                                <Typography variant="caption" color="text.secondary" sx={{ minWidth: 88 }}>
-                                                    Parts
-                                                </Typography>
-                                                <Stack direction="row" spacing={1} useFlexGap flexWrap="wrap">
-                                                    {claim.parts.map((p) => (
-                                                        <Chip key={p} label={p} size="small" variant="outlined" />
-                                                    ))}
-                                                </Stack>
-                                            </Stack>
-                                        )}
-                                        <Row
-                                            label="Created"
-                                            value={new Date(claim.createdAt).toLocaleDateString()}
-                                        />
-                                    </Stack>
-                                </Box>
+            {/* Error chung (nếu muốn vẫn giữ ngoài) */}
+            {error && !dialogOpen && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
 
-                                <Stack direction="row" spacing={1} alignSelf={{ xs: "flex-start", sm: "center" }}>
-                                    <Button
-                                        variant="outlined"
-                                        onClick={() => {
-                                            setActiveClaim(claim);
-                                            setViewOpen(true);
-                                        }}
-                                    >
-                                        View Details
-                                    </Button>
-                                </Stack>
-                            </Stack>
-                        </CardContent>
-                    </Card>
-                ))}
+            {/* ===== POPUP WARRANTY DETAIL (UI/UX mới) ===== */}
+            <Dialog
+                fullWidth
+                maxWidth="sm"
+                open={dialogOpen}
+                onClose={() => setDialogOpen(false)}
+            >
+                <DialogTitle sx={{ pr: 6 }}>
+                    Warranty Detail
+                    <IconButton
+                        aria-label="close"
+                        onClick={() => setDialogOpen(false)}
+                        sx={{ position: "absolute", right: 8, top: 8 }}
+                    >
+                        <CloseIcon />
+                    </IconButton>
+                </DialogTitle>
 
-                {filtered.length === 0 && (
-                    <Card variant="outlined">
-                        <CardContent sx={{ textAlign: "center", color: "text.secondary" }}>
-                            No claims found.
-                        </CardContent>
-                    </Card>
-                )}
-            </Stack>
-
-            {/* Create Claim Dialog */}
-            <CreateClaimDialog
-                open={createOpen}
-                onClose={() => setCreateOpen(false)}
-                onCreate={(newClaim) => setClaims((prev) => [newClaim, ...prev])}
-            />
-
-            {/* View/Update Claim Dialog */}
-            <ViewClaimDialog
-                open={viewOpen}
-                claim={activeClaim}
-                onClose={() => setViewOpen(false)}
-                onUpdate={(updated) =>
-                    setClaims((prev) => prev.map((c) => (c.id === updated.id ? updated : c)))
-                }
-            />
-        </Container>
-    );
-}
-
-/* ---------- small helpers ---------- */
-function Mono({ children }) {
-    return <Box component="span" sx={{ fontFamily: "monospace" }}>{children}</Box>;
-}
-
-function Row({ label, value }) {
-    return (
-        <Stack direction="row" spacing={1.5} alignItems="flex-start">
-            <Typography variant="caption" color="text.secondary" sx={{ minWidth: 88 }}>
-                {label}
-            </Typography>
-            <Typography variant="body2" fontWeight={600} sx={{ wordBreak: "break-word" }}>
-                {value}
-            </Typography>
-        </Stack>
-    );
-}
-
-/* ---------- Create Claim Dialog ---------- */
-function CreateClaimDialog({ open, onClose, onCreate }) {
-    const [vin, setVin] = useState("");
-    const [issue, setIssue] = useState("");
-    const [diagnostic, setDiagnostic] = useState("");
-    const [status, setStatus] = useState("SUBMITTED");
-
-    const handleSubmit = (e) => {
-        e.preventDefault();
-        if (!vin || !issue) return;
-        const newClaim = {
-            id: `WC-${String(Math.floor(Math.random() * 900) + 100)}`, // mock id
-            vin,
-            vehicleModel: "Unknown Model",
-            issueDescription: issue + (diagnostic ? ` — ${diagnostic}` : ""),
-            status,
-            createdAt: new Date().toISOString().slice(0, 10),
-        };
-        // TODO: call API create
-        onCreate?.(newClaim);
-        onClose?.();
-        setVin(""); setIssue(""); setDiagnostic(""); setStatus("SUBMITTED");
-    };
-
-    return (
-        <Dialog open={open} onClose={onClose} fullWidth maxWidth="md">
-            <form onSubmit={handleSubmit} noValidate>
-                <DialogTitle>Create Warranty Claim</DialogTitle>
                 <DialogContent dividers>
-                    <Grid container spacing={2} sx={{ mt: 0 }}>
-                        <Grid item xs={12} md={6}>
-                            <TextField
-                                label="Vehicle VIN"
-                                placeholder="Enter VIN"
-                                value={vin}
-                                onChange={(e) => setVin(e.target.value)}
-                                fullWidth
-                                required
-                            />
-                        </Grid>
-                        <Grid item xs={12} md={6}>
-                            <FormControl fullWidth>
-                                <InputLabel id="status-create-label">Status</InputLabel>
-                                <Select
-                                    labelId="status-create-label"
-                                    label="Status"
-                                    value={status}
-                                    onChange={(e) => setStatus(e.target.value)}
-                                >
-                                    <MenuItem value="SUBMITTED">Submitted</MenuItem>
-                                    <MenuItem value="PENDING">Pending</MenuItem>
-                                    <MenuItem value="APPROVED">Approved</MenuItem>
-                                    <MenuItem value="COMPLETED">Completed</MenuItem>
-                                    <MenuItem value="REJECTED">Rejected</MenuItem>
-                                </Select>
-                            </FormControl>
-                        </Grid>
+                    {loading && (
+                        <Stack alignItems="center" justifyContent="center" sx={{ py: 5 }}>
+                            <CircularProgress />
+                            <Typography variant="body2" sx={{ mt: 2 }} color="text.secondary">
+                                Đang tải thông tin bảo hành...
+                            </Typography>
+                        </Stack>
+                    )}
 
-                        <Grid item xs={12}>
-                            <TextField
-                                label="Issue Description"
-                                placeholder="Describe the warranty issue"
-                                value={issue}
-                                onChange={(e) => setIssue(e.target.value)}
-                                multiline
-                                minRows={3}
-                                fullWidth
-                                required
-                            />
-                        </Grid>
+                    {!loading && error && (
+                        <Alert severity="error">{error}</Alert>
+                    )}
 
-                        <Grid item xs={12}>
-                            <TextField
-                                label="Diagnostic Information"
-                                placeholder="Enter diagnostic details"
-                                value={diagnostic}
-                                onChange={(e) => setDiagnostic(e.target.value)}
-                                multiline
-                                minRows={2}
-                                fullWidth
-                            />
-                        </Grid>
-
-                        {/* File inputs: bạn có thể gắn input type="file" với Upload service riêng */}
-                        {/* <Grid item xs={12} md={6}><Button variant="outlined" component="label">Attach Images<input hidden multiple type="file" accept="image/*" /></Button></Grid> */}
-                        {/* <Grid item xs={12} md={6}><Button variant="outlined" component="label">Attach Reports<input hidden multiple type="file" accept=".pdf,.doc,.docx" /></Button></Grid> */}
-                    </Grid>
-                </DialogContent>
-                <DialogActions>
-                    <Button onClick={onClose} variant="outlined">Cancel</Button>
-                    <Button type="submit" variant="contained">Submit Claim</Button>
-                </DialogActions>
-            </form>
-        </Dialog>
-    );
-}
-
-/* ---------- View/Update Claim Dialog ---------- */
-function ViewClaimDialog({ open, onClose, claim, onUpdate }) {
-    const [status, setStatus] = useState(claim?.status ?? "SUBMITTED");
-    const [assigned, setAssigned] = useState(claim?.assignedTo ?? "");
-    const [notes, setNotes] = useState("");
-
-    React.useEffect(() => {
-        setStatus(claim?.status ?? "SUBMITTED");
-        setAssigned(claim?.assignedTo ?? "");
-    }, [claim]);
-
-    const handleUpdate = () => {
-        if (!claim) return;
-        const updated = { ...claim, status, assignedTo: assigned };
-        // TODO: call API update
-        onUpdate?.(updated);
-        onClose?.();
-        setNotes("");
-    };
-
-    return (
-        <Dialog open={open} onClose={onClose} fullWidth maxWidth="md">
-            {claim && (
-                <>
-                    <DialogTitle>Claim Details — {claim.id}</DialogTitle>
-                    <DialogContent dividers>
-                        <Grid container spacing={2}>
-                            <Grid item xs={12} md={6}>
-                                <FormControl fullWidth>
-                                    <InputLabel id="status-view-label">Status</InputLabel>
-                                    <Select
-                                        labelId="status-view-label"
-                                        label="Status"
-                                        value={status}
-                                        onChange={(e) => setStatus(e.target.value)}
-                                    >
-                                        <MenuItem value="SUBMITTED">Submitted</MenuItem>
-                                        <MenuItem value="PENDING">Pending</MenuItem>
-                                        <MenuItem value="APPROVED">Approved</MenuItem>
-                                        <MenuItem value="COMPLETED">Completed</MenuItem>
-                                        <MenuItem value="REJECTED">Rejected</MenuItem>
-                                    </Select>
-                                </FormControl>
-                            </Grid>
-
-                            <Grid item xs={12} md={6}>
-                                <FormControl fullWidth>
-                                    <InputLabel id="tech-label">Assign Technician</InputLabel>
-                                    <Select
-                                        labelId="tech-label"
-                                        label="Assign Technician"
-                                        value={assigned}
-                                        onChange={(e) => setAssigned(e.target.value)}
-                                    >
-                                        <MenuItem value="John Doe">John Doe</MenuItem>
-                                        <MenuItem value="Jane Smith">Jane Smith</MenuItem>
-                                        <MenuItem value="Mike Johnson">Mike Johnson</MenuItem>
-                                    </Select>
-                                </FormControl>
-                            </Grid>
-
-                            <Grid item xs={12}>
-                                <TextField
-                                    label="Progress Notes"
-                                    placeholder="Add progress notes..."
-                                    value={notes}
-                                    onChange={(e) => setNotes(e.target.value)}
-                                    multiline
-                                    minRows={4}
-                                    fullWidth
+                    {!loading && !error && warranty && typeof warranty === "object" && (
+                        <>
+                            <Typography variant="subtitle1" fontWeight={700}>
+                                VIN: <Mono>{warranty.vin || "—"}</Mono>
+                            </Typography>
+                            <Divider sx={{ my: 2 }} />
+                            <Stack spacing={1}>
+                                <Row label="Warranty ID" value={<Mono>{warranty.id || "—"}</Mono>} />
+                                <Row label="Policy ID" value={<Mono>{warranty.policyId || "—"}</Mono>} />
+                                <Row label="Policy Version No" value={warranty.policyVersionNo ?? "—"} />
+                                <Row label="Start Date" value={fmtDate(warranty.startDate)} />
+                                <Row label="Expire Date" value={fmtDate(warranty.expiresDate)} />
+                                <Row label="Expire Odometer" value={warranty.expiresOdometer ? `${warranty.expiresOdometer.toLocaleString("vi-VN")} km` : "—"} />
+                                <Row label="Battery SOH Threshold" value={fmtPct(warranty.batterySohThreshold)} />
+                                <Row label="Labor Coverage" value={fmtPct(warranty.laborCoveragePct)} />
+                                <Row label="Parts Coverage" value={fmtPct(warranty.partsCoveragePct)} />
+                                <Row label="Per Claim Cap (VND)" value={fmtMoney(warranty.perClaimCapVND)} />
+                                {warranty.goodwill && (
+                                    <>
+                                        <Row label="Grace Months" value={warranty.goodwill.graceMonths ?? "—"} />
+                                        <Row label="Grace Km" value={warranty.goodwill.graceKm ?? "—"} />
+                                        <Row label="Tiers %" value={fmtPct(warranty.goodwill.tiersPct)} />
+                                    </>
+                                )}
+                                <Row
+                                    label="Exclusions"
+                                    value={
+                                        Array.isArray(warranty.exclusions) && warranty.exclusions.length
+                                            ? warranty.exclusions.join(", ")
+                                            : "—"
+                                    }
                                 />
-                            </Grid>
+                                <Row label="Created At" value={fmtDate(warranty.createAt)} />
+                            </Stack>
+                        </>
+                    )}
+                </DialogContent>
 
-                            <Grid item xs={12}>
-                                <Divider />
-                            </Grid>
-
-                            <Grid item xs={12} md={6}>
-                                <Row label="VIN" value={<Mono>{claim.vin}</Mono>} />
-                            </Grid>
-                            <Grid item xs={12} md={6}>
-                                <Row label="Model" value={claim.vehicleModel} />
-                            </Grid>
-                            <Grid item xs={12}>
-                                <Row label="Issue" value={claim.issueDescription} />
-                            </Grid>
-                            <Grid item xs={12} md={6}>
-                                <Row label="Created" value={new Date(claim.createdAt).toLocaleDateString()} />
-                            </Grid>
-                            {Array.isArray(claim.parts) && claim.parts.length > 0 && (
-                                <Grid item xs={12}>
-                                    <Stack direction="row" spacing={1} alignItems="center">
-                                        <Typography variant="caption" color="text.secondary" sx={{ minWidth: 88 }}>
-                                            Parts
-                                        </Typography>
-                                        <Stack direction="row" spacing={1} useFlexGap flexWrap="wrap">
-                                            {claim.parts.map((p) => (
-                                                <Chip key={p} label={p} size="small" variant="outlined" />
-                                            ))}
-                                        </Stack>
-                                    </Stack>
-                                </Grid>
-                            )}
-                        </Grid>
-                    </DialogContent>
-                    <DialogActions>
-                        <Button onClick={onClose} variant="outlined">Close</Button>
-                        <Button onClick={handleUpdate} variant="contained">Update Claim</Button>
-                    </DialogActions>
-                </>
-            )}
-        </Dialog>
+                <DialogActions>
+                    <Button onClick={() => setDialogOpen(false)} variant="contained">Close</Button>
+                </DialogActions>
+            </Dialog>
+        </Container>
     );
 }
