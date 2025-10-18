@@ -27,7 +27,8 @@ import {
 } from "@mui/material";
 import SearchIcon from "@mui/icons-material/Search";
 import { alpha, styled } from "@mui/material/styles";
-import axiosInstance from "../../services/axiosInstance"; // axiosInstance có baseURL + token
+import axiosInstance from "../../services/axiosInstance";
+import centerService from "../../services/centerService";
 
 // Local GlassCard (đơn giản, không phụ thuộc Dashboard export)
 const GlassCard = styled(Card)(({ theme }) => ({
@@ -156,6 +157,21 @@ export default function UserManagement({ search, setSearch, theme }) {
     }
   };
 
+  // Thêm state và useEffect để tải danh sách trung tâm
+  const [centers, setCenters] = useState([]);
+
+  useEffect(() => {
+  const fetchCenters = async () => {
+    try {
+      const res = await axiosInstance.get("/centers/get-all");
+      setCenters(res.data || []);
+    } catch (err) {
+      console.error("Lỗi tải trung tâm:", err);
+    }
+  };
+  fetchCenters();
+}, []);
+
   // initial load and pageSize changes
   useEffect(() => {
     fetchUsers(0, pageSize, search, roleFilter);
@@ -240,23 +256,8 @@ export default function UserManagement({ search, setSearch, theme }) {
         role: user.role || "",
         centerId: user.centerId || user.centerID || "",
         newPassword: "",
-        hvCertExpiry: "",
-        skills: "",
         hasTechnicianProfile: false, // mặc định
       });
-
-      // Nếu là kỹ thuật viên → gọi API lấy thông tin kỹ thuật viên
-      if (user.role === "SC_TECHNICIAN" || user.role === "TECHNICIAN") {
-        const res = await axiosInstance.get(`/auth/users/${user.id}/technician`);
-        if (res.data) {
-          setEditForm((prev) => ({
-            ...prev,
-            hvCertExpiry: res.data.hvCertExpiry || "",
-            skills: res.data.skills || "",
-            hasTechnicianProfile: true,
-          }));
-        }
-      }
 
       setEditErrors({});
       setOpenEdit(true);
@@ -311,22 +312,6 @@ export default function UserManagement({ search, setSearch, theme }) {
         });
       }
 
-      // ===== Nếu là Technician → xử lý hồ sơ kỹ thuật viên =====
-      if (editForm.role === "TECHNICIAN") {
-        const techPayload = {
-          hvCertExpiry: editForm.hvCertExpiry || null,
-          skills: editForm.skills || "",
-        };
-
-        if (editForm.hasTechnicianProfile) {
-          // Nếu đã có hồ sơ technician → cập nhật
-          await axiosInstance.put(`/auth/users/${editForm.id}/technician`, techPayload);
-        } else {
-          // Nếu chưa có → tạo mới
-          await axiosInstance.post(`/auth/users/${editForm.id}/technician`, techPayload);
-        }
-      }
-
       // Hoàn tất
       setSnack({ open: true, severity: "success", message: "Cập nhật người dùng thành công" });
       setOpenEdit(false);
@@ -378,6 +363,12 @@ export default function UserManagement({ search, setSearch, theme }) {
       return "-";
     }
   };
+
+  const getCenterName = (centerId) => {
+  if (!centerId) return "-";
+  const center = centers.find((c) => c.id === centerId || c.centerId === centerId);
+  return center ? center.centerName || center.name : `#${centerId}`;
+};
 
   return (
     <Box>
@@ -456,7 +447,7 @@ export default function UserManagement({ search, setSearch, theme }) {
             <Box component="table" sx={{ width: "100%", borderCollapse: "separate", borderSpacing: 0 }}>
               <Box component="thead" sx={{ bgcolor: alpha(theme.palette.primary.main, 0.05) }}>
                 <Box component="tr">
-                  {["ID", "Họ tên", "Email", "SĐT", "Vai trò", "CenterID", "Ngày tạo", "Hành động"].map((h) => (
+                  {["ID", "Họ tên", "Email", "SĐT", "Vai trò", "Center", "Ngày tạo", "Hành động"].map((h) => (
                     <Box key={h} component="th" sx={{
                       textAlign: "center",
                       verticalAlign: "middle",
@@ -486,7 +477,7 @@ export default function UserManagement({ search, setSearch, theme }) {
                         <Box component="td" sx={{ p: 1.25, borderBottom: `1px solid ${theme.palette.divider}`, textAlign: "center", verticalAlign: "middle", whiteSpace: "nowrap" }}>
                           <Chip size="small" label={u.role} color={u.role === "ADMIN" ? "secondary" : u.role === "EVM_STAFF" ? "info" : u.role === "SC_TECHNICIAN" ? "warning" : "default"} variant="outlined" />
                         </Box>
-                        <Box component="td" sx={{ p: 1.25, borderBottom: `1px solid ${theme.palette.divider}`, textAlign: "center", verticalAlign: "middle", whiteSpace: "nowrap" }}>{u.centerId || "-"}</Box>
+                        <Box component="td" sx={{ p: 1.25, borderBottom: `1px solid ${theme.palette.divider}`, textAlign: "center", verticalAlign: "middle", whiteSpace: "nowrap" }}>{getCenterName(u.centerId)}</Box>
                         <Box component="td" sx={{ p: 1.25, borderBottom: `1px solid ${theme.palette.divider}`, textAlign: "center", verticalAlign: "middle", whiteSpace: "nowrap" }}>{formatDate(u.createAt || u.createdAt)}</Box>
                         <Box component="td" sx={{ p: 1.25, borderBottom: `1px solid ${theme.palette.divider}`, textAlign: "center", verticalAlign: "middle", whiteSpace: "nowrap" }}>
                           <Stack direction="row" spacing={1}>
@@ -555,7 +546,23 @@ export default function UserManagement({ search, setSearch, theme }) {
                 ),
               }}
             />
-            <TextField label="Trung tâm (centerId)" value={createForm.centerId} onChange={(e) => setCreateForm({ ...createForm, centerId: e.target.value })} fullWidth error={!!createErrors.centerId} helperText={createErrors.centerId} />
+
+            <FormControl fullWidth>
+              <InputLabel>Trung tâm</InputLabel>
+              <Select
+                value={createForm.centerId}
+                label="Trung tâm"
+                onChange={(e) => setCreateForm({ ...createForm, centerId: e.target.value })}
+              >
+                <MenuItem value="">Không có</MenuItem>
+                {centers.map((c) => (
+                  <MenuItem key={c.id} value={c.id}>
+                    {c.centerName || c.name}
+                  </MenuItem>
+                ))}
+              </Select>
+            </FormControl>
+
             <TextField label="Vai trò" select value={createForm.role} onChange={(e) => setCreateForm({ ...createForm, role: e.target.value })} fullWidth>
               {["SC_STAFF", "SC_TECHNICIAN", "EVM_STAFF", "ADMIN"].map((r) => (<MenuItem key={r} value={r}>{r}</MenuItem>))}
             </TextField>
@@ -577,7 +584,22 @@ export default function UserManagement({ search, setSearch, theme }) {
             <TextField label="Họ tên" value={editForm.fullName} onChange={(e) => setEditForm({ ...editForm, fullName: e.target.value })} fullWidth error={!!editErrors.fullName} helperText={editErrors.fullName} />
             <TextField label="Email" value={editForm.email} onChange={(e) => setEditForm({ ...editForm, email: e.target.value })} fullWidth error={!!editErrors.email} helperText={editErrors.email} />
             <TextField label="Số điện thoại" value={editForm.phone} onChange={(e) => setEditForm({ ...editForm, phone: e.target.value })} fullWidth error={!!editErrors.phone} helperText={editErrors.phone} />
-            <TextField label="Trung tâm (centerId)" value={editForm.centerId} onChange={(e) => setEditForm({ ...editForm, centerId: e.target.value })} fullWidth error={!!editErrors.centerId} helperText={editErrors.centerId} />
+            <FormControl fullWidth>
+              <InputLabel>Trung tâm</InputLabel>
+              <Select
+                value={editForm.centerId || ""}
+                label="Trung tâm"
+                onChange={(e) => setEditForm({ ...editForm, centerId: e.target.value })}
+              >
+                <MenuItem value="">Không có</MenuItem>
+                {centers.map((c) => (
+                  <MenuItem key={c.id} value={c.id}>
+                    {c.centerName || c.name}
+                  </MenuItem>
+                ))}
+              </Select>
+            </FormControl>
+
             <TextField label="Vai trò" select value={editForm.role} onChange={(e) => setEditForm({ ...editForm, role: e.target.value })} fullWidth>
               {["SC_STAFF", "SC_TECHNICIAN", "EVM_STAFF", "ADMIN"].map((r) => (<MenuItem key={r} value={r}>{r}</MenuItem>))}
             </TextField>

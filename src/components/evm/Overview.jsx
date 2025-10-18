@@ -6,6 +6,7 @@ import RecallForm from "./RecallForm";
 import ProductManagement from "./ProductManagement";
 import WarrantyRequests from "./WarrantyRequests";
 import WarrantyPolicy from "./WarrantyPolicy";
+import ServiceCenters from "./ServiceCenters";
 // import SupplyChain from "./SupplyChain"; // Nếu có file này, bỏ comment và dùng ở tab 3
 
 import {
@@ -406,6 +407,7 @@ export default function Overview() {
                                 }
                             />
                             <Tab iconPosition="start" icon={<SettingsIcon />} label="Chuỗi Cung ứng" />
+                            <Tab iconPosition="start" icon={<CarIcon />} label="Trung tâm Dịch vụ" />
                             <Tab iconPosition="start" icon={<BarChartIcon />} label="Báo cáo & Phân tích" />
                             <Tab iconPosition="start" icon={<FileText />} label="Chính sách Bảo hành" />
                         </Tabs>
@@ -420,8 +422,9 @@ export default function Overview() {
                                     Chức năng Chuỗi Cung ứng đang được phát triển.
                                 </Typography>
                             )}
-                            {tab === 4 && <Analytics />}
-                            {tab === 5 && <WarrantyPolicy />}
+                            {tab === 4 && <ServiceCenters />}
+                            {tab === 5 && <Analytics />}
+                            {tab === 6 && <WarrantyPolicy />}
                         </Box>
                     </Paper>
 
