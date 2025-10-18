@@ -25,6 +25,7 @@ import {
   TableContainer,
   TableHead,
   TableRow,
+  Divider,
 } from "@mui/material";
 import {
   Add as AddIcon,
@@ -33,6 +34,7 @@ import {
   Restore as RestoreIcon,
   Search as SearchIcon,
   Refresh as RefreshIcon,
+  Visibility as VisibilityIcon,
 } from "@mui/icons-material";
 import { alpha } from "@mui/material/styles";
 import warrantyPolicyService from "../../services/warrantyPolicyService";
@@ -43,6 +45,8 @@ export default function WarrantyPolicy() {
   const [search, setSearch] = useState({ keyword: "", status: "", modelCode: "" });
   const [openForm, setOpenForm] = useState(false);
   const [editPolicy, setEditPolicy] = useState(null);
+  const [openDetail, setOpenDetail] = useState(false);
+  const [detailPolicy, setDetailPolicy] = useState(null);
   const [formData, setFormData] = useState({
     modelCode: "",
     effectiveFrom: "",
@@ -265,20 +269,10 @@ export default function WarrantyPolicy() {
           <TableHead>
             <TableRow>
               <TableCell>Mã Model</TableCell>
-              <TableCell>Phiên bản</TableCell>
-              <TableCell>Hiệu lực từ</TableCell>
-              <TableCell>Hiệu lực đến</TableCell>
               <TableCell>Thời hạn (tháng)</TableCell>
               <TableCell>Số km</TableCell>
-              <TableCell>SOH tối thiểu</TableCell>
-              <TableCell>Lao động (%)</TableCell>
-              <TableCell>Phụ tùng (%)</TableCell>
-              <TableCell>Giới hạn bồi thường (VND)</TableCell>
-              <TableCell>Thiện chí (tháng/km/% bồi thường)</TableCell>
-              <TableCell>Ngoại lệ</TableCell>
+              <TableCell>Hiệu lực</TableCell>
               <TableCell>Trạng thái</TableCell>
-              <TableCell>Ghi chú thay đổi</TableCell>
-              <TableCell>Ngày tạo</TableCell>
               <TableCell align="center">Thao tác</TableCell>
             </TableRow>
           </TableHead>
@@ -298,54 +292,57 @@ export default function WarrantyPolicy() {
     </TableRow>
   ) : (
     policies.map((p) => (
-      <TableRow key={p.id} hover>
-        <TableCell>{p.modelCode}</TableCell>
-        <TableCell>{p.versionNo}</TableCell>
-        <TableCell>{p.effectiveFrom ? new Date(p.effectiveFrom).toLocaleDateString() : "-"}</TableCell>
-        <TableCell>{p.effectiveTo ? new Date(p.effectiveTo).toLocaleDateString() : "-"}</TableCell>
-        <TableCell>{p.termMonths}</TableCell>
-        <TableCell>{p.mileageKm}</TableCell>
-        <TableCell>{p.batterySohThreshold}</TableCell>
-        <TableCell>{p.laborCoveragePct}</TableCell>
-        <TableCell>{p.partsCoveragePct}</TableCell>
-        <TableCell>{p.perClaimCapVND?.toLocaleString("vi-VN")}</TableCell>
-        <TableCell>
-          {p.goodwill
-            ? `${p.goodwill.graceMonths}/${p.goodwill.graceKm}/${p.goodwill.tiersPct}`
-            : "-"}
-        </TableCell>
-        <TableCell>{(p.exclusions || []).join(", ")}</TableCell>
-        <TableCell>
-          <Chip
-            label={p.status}
-            color={p.status === "ACTIVE" ? "success" : "default"}
-            size="small"
-          />
-        </TableCell>
-        <TableCell>{p.changeNotes}</TableCell>
-        <TableCell>{new Date(p.createAt).toLocaleString()}</TableCell>
-        <TableCell align="center">
-          <Tooltip title="Sửa">
-            <IconButton onClick={() => openEdit(p)} color="primary">
-              <EditIcon />
-            </IconButton>
-          </Tooltip>
-          {p.status === "ACTIVE" ? (
-            <Tooltip title="Vô hiệu hoá">
-              <IconButton onClick={() => handleDisable(p)} color="error">
-                <DisableIcon />
-              </IconButton>
-            </Tooltip>
-          ) : (
-            <Tooltip title="Khôi phục">
-              <IconButton onClick={() => handleRestore(p)} color="success">
-                <RestoreIcon />
-              </IconButton>
-            </Tooltip>
-          )}
-        </TableCell>
-      </TableRow>
-    ))
+  <TableRow key={p.id} hover>
+    <TableCell>{p.modelCode}</TableCell>
+    <TableCell>{p.termMonths}</TableCell>
+    <TableCell>{p.mileageKm}</TableCell>
+    <TableCell>
+      {p.effectiveFrom ? new Date(p.effectiveFrom).toLocaleDateString() : "-"}{" "}
+      →{" "}
+      {p.effectiveTo ? new Date(p.effectiveTo).toLocaleDateString() : "-"}
+    </TableCell>
+    <TableCell>
+      <Chip
+        label={p.status}
+        color={p.status === "ACTIVE" ? "success" : "default"}
+        size="small"
+      />
+    </TableCell>
+    <TableCell align="center">
+      <Tooltip title="Xem chi tiết">
+        <IconButton
+          color="info"
+          onClick={() => {
+            setDetailPolicy(p);
+            setOpenDetail(true);
+          }}
+        >
+          <VisibilityIcon />
+        </IconButton>
+      </Tooltip>
+
+      <Tooltip title="Sửa">
+        <IconButton onClick={() => openEdit(p)} color="primary">
+          <EditIcon />
+        </IconButton>
+      </Tooltip>
+
+      {p.status === "ACTIVE" ? (
+        <Tooltip title="Vô hiệu hoá">
+          <IconButton onClick={() => handleDisable(p)} color="error">
+            <DisableIcon />
+          </IconButton>
+        </Tooltip>
+      ) : (
+        <Tooltip title="Khôi phục">
+          <IconButton onClick={() => handleRestore(p)} color="success">
+            <RestoreIcon />
+          </IconButton>
+        </Tooltip>
+      )}
+    </TableCell>
+  </TableRow>
+))
   )}
 </TableBody>
         </Table>
@@ -547,6 +544,99 @@ export default function WarrantyPolicy() {
     >
       {loading ? <CircularProgress size={20} /> : "Lưu"}
     </Button>
+  </DialogActions>
+</Dialog>
+
+          {/* Popup xem chi tiết */}
+<Dialog open={openDetail} onClose={() => setOpenDetail(false)} maxWidth="md" fullWidth>
+  <DialogTitle>Chi tiết chính sách bảo hành</DialogTitle>
+  <DialogContent dividers>
+    {detailPolicy ? (
+      <Grid container spacing={2}>
+        <Grid item xs={6}>
+          <Typography variant="subtitle2">Mã Model:</Typography>
+          <Typography>{detailPolicy.modelCode}</Typography>
+        </Grid>
+        <Grid item xs={6}>
+          <Typography variant="subtitle2">Phiên bản:</Typography>
+          <Typography>{detailPolicy.versionNo || "-"}</Typography>
+        </Grid>
+
+        <Grid item xs={6}>
+          <Typography variant="subtitle2">Hiệu lực từ:</Typography>
+          <Typography>{detailPolicy.effectiveFrom ? new Date(detailPolicy.effectiveFrom).toLocaleDateString() : "-"}</Typography>
+        </Grid>
+        <Grid item xs={6}>
+          <Typography variant="subtitle2">Hiệu lực đến:</Typography>
+          <Typography>{detailPolicy.effectiveTo ? new Date(detailPolicy.effectiveTo).toLocaleDateString() : "-"}</Typography>
+        </Grid>
+
+        <Grid item xs={4}>
+          <Typography variant="subtitle2">Thời hạn:</Typography>
+          <Typography>{detailPolicy.termMonths} tháng</Typography>
+        </Grid>
+        <Grid item xs={4}>
+          <Typography variant="subtitle2">Số km:</Typography>
+          <Typography>{detailPolicy.mileageKm}</Typography>
+        </Grid>
+        <Grid item xs={4}>
+          <Typography variant="subtitle2">SOH tối thiểu:</Typography>
+          <Typography>{detailPolicy.batterySohThreshold}</Typography>
+        </Grid>
+
+        <Grid item xs={12}>
+          <Divider sx={{ my: 1 }} />
+          <Typography variant="subtitle1" fontWeight={600}>Chi tiết bảo hành</Typography>
+        </Grid>
+
+        <Grid item xs={4}>
+          <Typography variant="subtitle2">Lao động (%):</Typography>
+          <Typography>{detailPolicy.laborCoveragePct}</Typography>
+        </Grid>
+        <Grid item xs={4}>
+          <Typography variant="subtitle2">Phụ tùng (%):</Typography>
+          <Typography>{detailPolicy.partsCoveragePct}</Typography>
+        </Grid>
+        <Grid item xs={4}>
+          <Typography variant="subtitle2">Giới hạn bồi thường (VND):</Typography>
+          <Typography>{detailPolicy.perClaimCapVND?.toLocaleString("vi-VN")}</Typography>
+        </Grid>
+
+        <Grid item xs={12}>
+          <Typography variant="subtitle2">Ngoại lệ:</Typography>
+          <Typography>{(detailPolicy.exclusions || []).join(", ") || "-"}</Typography>
+        </Grid>
+
+        <Grid item xs={12}>
+          <Divider sx={{ my: 1 }} />
+          <Typography variant="subtitle1" fontWeight={600}>Thông tin thiện chí (Goodwill)</Typography>
+        </Grid>
+
+        <Grid item xs={4}>
+          <Typography variant="subtitle2">Grace Months:</Typography>
+          <Typography>{detailPolicy.goodwill?.graceMonths}</Typography>
+        </Grid>
+        <Grid item xs={4}>
+          <Typography variant="subtitle2">Grace Km:</Typography>
+          <Typography>{detailPolicy.goodwill?.graceKm}</Typography>
+        </Grid>
+        <Grid item xs={4}>
+          <Typography variant="subtitle2">Tiers Pct (%):</Typography>
+          <Typography>{detailPolicy.goodwill?.tiersPct}</Typography>
+        </Grid>
+
+        <Grid item xs={12}>
+          <Divider sx={{ my: 1 }} />
+          <Typography variant="subtitle2">Ghi chú thay đổi:</Typography>
+          <Typography>{detailPolicy.changeNotes || "-"}</Typography>
+        </Grid>
+      </Grid>
+    ) : (
+      <Typography>Đang tải...</Typography>
+    )}
+  </DialogContent>
+  <DialogActions>
+    <Button onClick={() => setOpenDetail(false)}>Đóng</Button>
   </DialogActions>
 </Dialog>
 
