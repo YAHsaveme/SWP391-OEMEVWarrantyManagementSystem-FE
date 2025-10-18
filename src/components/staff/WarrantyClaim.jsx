@@ -12,6 +12,7 @@ import {
   TextField,
   InputAdornment,
   Button,
+  Tooltip,
   Chip,
   Dialog,
   DialogTitle,
@@ -35,12 +36,12 @@ import claimService from "../../services/claimService";
 import { uploadToCloudinary } from "../../utils/cloudinary";
 
 const statusColor = {
-  SUBMITTED: "info",
-  PENDING: "warning",
+  DIAGNOSING: "warning",
+  ESTIMATING: "info",
+  UNDER_REVIEW: "secondary",
   APPROVED: "success",
   COMPLETED: "default",
   REJECTED: "error",
-  DIAGNOSING: "warning",
 };
 
 /** ---- Stat Card ---- */
@@ -84,6 +85,8 @@ export default function WarrantyClaimsPage() {
 
   const [loading, setLoading] = useState(true);
   const [snack, setSnack] = useState({ open: false, message: "", severity: "info" });
+
+  const [coverageType, setCoverageType] = useState("IN_WARRANTY");
 
   // Prepare upload placeholder
   const [selectedFiles, setSelectedFiles] = useState([]);
@@ -234,9 +237,9 @@ export default function WarrantyClaimsPage() {
               onChange={(e) => setStatusFilter(e.target.value)}
             >
               <MenuItem value="all">All Status</MenuItem>
-              <MenuItem value="SUBMITTED">Submitted</MenuItem>
               <MenuItem value="DIAGNOSING">Diagnosing</MenuItem>
-              <MenuItem value="PENDING">Pending</MenuItem>
+              <MenuItem value="ESTIMATING">Estimating</MenuItem>
+              <MenuItem value="UNDER_REVIEW">Under Review</MenuItem>
               <MenuItem value="APPROVED">Approved</MenuItem>
               <MenuItem value="COMPLETED">Completed</MenuItem>
               <MenuItem value="REJECTED">Rejected</MenuItem>
@@ -401,6 +404,7 @@ function CreateClaimDialog({ open, onClose, onCreate }) {
   const [odometerKm, setOdometerKm] = useState("");
   const [errorDate, setErrorDate] = useState("");
   const [claimType, setClaimType] = useState("NORMAL");
+  const [coverageType, setCoverageType] = useState("IN_WARRANTY");
 
   // File upload state
   const [files, setFiles] = useState([]);
@@ -411,12 +415,15 @@ function CreateClaimDialog({ open, onClose, onCreate }) {
 
   try {
     // Upload file lên Cloudinary trước
-    const uploadedUrls = files.length > 0 ? await uploadToCloudinary(files) : [];
+    const uploadedUrls = files.length > 0
+  ? await uploadToCloudinary(files.map(f => f.file))
+  : [];
 
     // Gửi payload JSON lên backend
     const payload = {
       vin,
       claimType,
+      coverageType,
       errorDate: errorDate ? new Date(errorDate).toISOString() : new Date().toISOString(),
       odometerKm: Number(odometerKm) || 0,
       summary,
@@ -437,6 +444,13 @@ function CreateClaimDialog({ open, onClose, onCreate }) {
     console.error("Create claim failed:", err);
   }
 };
+
+  // Cleanup preview URLs để tránh memory leak
+  useEffect(() => {
+    return () => {
+      files.forEach((f) => f.preview && URL.revokeObjectURL(f.preview));
+    };
+  }, [files]);
 
   return (
     <Dialog open={open} onClose={onClose} fullWidth maxWidth="md">
@@ -470,7 +484,24 @@ function CreateClaimDialog({ open, onClose, onCreate }) {
                   onChange={(e) => setClaimType(e.target.value)}
                 >
                   <MenuItem value="NORMAL">Normal</MenuItem>
-                  <MenuItem value="EXPEDITED">Expedited</MenuItem>
+                  <MenuItem value="RECALL">Recall</MenuItem>
+                  <MenuItem value="CAMPAIGN">Campaign</MenuItem>
+                </Select>
+              </FormControl>
+            </Grid>
+
+            <Grid item xs={12} md={6}>
+              <FormControl fullWidth>
+                <InputLabel id="coverage-type-label">Coverage Type</InputLabel>
+                <Select
+                  labelId="coverage-type-label"
+                  label="Coverage Type"
+                  value={coverageType}
+                  onChange={(e) => setCoverageType(e.target.value)}
+                >
+                  <MenuItem value="IN_WARRANTY">In Warranty</MenuItem>
+                  <MenuItem value="GOODWILL">Goodwill</MenuItem>
+                  <MenuItem value="OUT_OF_WARRANTY">Out of Warranty</MenuItem>
                 </Select>
               </FormControl>
             </Grid>
@@ -486,16 +517,32 @@ function CreateClaimDialog({ open, onClose, onCreate }) {
     <input
       type="file"
       multiple
+      accept="image/*,.pdf,.doc,.docx,.xls,.xlsx"
       hidden
-      onChange={(e) => setFiles([...files, ...Array.from(e.target.files)])}
+      onChange={(e) => {
+        const newFiles = Array.from(e.target.files || []);
+        const withPreview = newFiles.map((file) => ({
+        file,
+        preview: file.type.startsWith("image/") ? URL.createObjectURL(file) : null,
+        }));
+        setFiles((prev) => [...prev, ...withPreview]);
+
+        // Reset input để chọn lại file cũ hoặc upload mới sau khi xóa
+        e.target.value = null;
+      }}
     />
   </Button>
 
   {files.length > 0 && (
-    <Box sx={{ mt: 1 }}>
-      <Typography variant="subtitle2">Selected Files:</Typography>
-      <Stack spacing={0.5} sx={{ mt: 0.5 }}>
-        {files.map((file, index) => (
+  <Box sx={{ mt: 1 }}>
+    <Typography variant="subtitle2">Selected Files:</Typography>
+    <Stack spacing={1} sx={{ mt: 0.5 }}>
+      {files.map((f, index) => {
+        const fileName = f.file.name;
+        const isImage = f.file.type.startsWith("image/");
+        const isPdf = f.file.type === "application/pdf";
+
+        return (
           <Box
             key={index}
             sx={{
@@ -508,29 +555,64 @@ function CreateClaimDialog({ open, onClose, onCreate }) {
               py: 0.5,
             }}
           >
-            <Typography
-              variant="body2"
-              sx={{
-                wordBreak: "break-all",
-                maxWidth: "80%",
-                overflow: "hidden",
-                textOverflow: "ellipsis",
-              }}
-            >
-              {file.name}
-            </Typography>
+            <Stack direction="row" spacing={1} alignItems="center">
+              {isImage ? (
+                <Tooltip title="Click to view" arrow>
+                  <img
+                    src={f.preview}
+                    alt={fileName}
+                    style={{
+                      width: 60,
+                      height: 60,
+                      objectFit: "cover",
+                      borderRadius: 6,
+                      border: "1px solid #ccc",
+                      cursor: "pointer",
+                    }}
+                    onClick={() => window.open(f.preview, "_blank")}
+                  />
+                </Tooltip>
+              ) : isPdf ? (
+                <Tooltip title="Click to view PDF" arrow>
+                  <DescriptionIcon
+                    color="action"
+                    sx={{ fontSize: 40, cursor: "pointer" }}
+                    onClick={() => window.open(URL.createObjectURL(f.file), "_blank")}
+                  />
+                </Tooltip>
+              ) : (
+                <DescriptionIcon color="action" />
+              )}
+
+              <Typography
+                variant="body2"
+                sx={{
+                  wordBreak: "break-all",
+                  maxWidth: 200,
+                  overflow: "hidden",
+                  textOverflow: "ellipsis",
+                }}
+              >
+                {fileName}
+              </Typography>
+            </Stack>
+
             <Button
               size="small"
               color="error"
-              onClick={() => setFiles(files.filter((_, i) => i !== index))}
+              onClick={() => {
+                if (f.preview) URL.revokeObjectURL(f.preview);
+                setFiles((prev) => prev.filter((_, i) => i !== index));
+              }}
             >
               ❌
             </Button>
           </Box>
-        ))}
-      </Stack>
-    </Box>
-  )}
+        );
+      })}
+    </Stack>
+  </Box>
+)}
 </Grid>
           </Grid>
         </DialogContent>
@@ -548,6 +630,8 @@ function ViewClaimDialog({ open, onClose, claim, onUpdateStatus, onUpdateClaim }
   const [status, setStatus] = useState(claim?.status || "");
   const [editSummary, setEditSummary] = useState(claim?.summary || "");
   const [editOdometer, setEditOdometer] = useState(claim?.odometerKm || "");
+  const [editErrorDate, setEditErrorDate] = useState(claim?.errorDate || "");
+  const [editCoverageType, setEditCoverageType] = useState(claim?.coverageType || "IN_WARRANTY");
   const [saving, setSaving] = useState(false);
 
   // File upload state (for edit)
@@ -558,6 +642,8 @@ function ViewClaimDialog({ open, onClose, claim, onUpdateStatus, onUpdateClaim }
       setStatus(claim.status || "");
       setEditSummary(claim.summary || "");
       setEditOdometer(claim.odometerKm || "");
+      setEditErrorDate(claim.errorDate ? new Date(claim.errorDate).toISOString().slice(0, 16) : "");
+      setEditCoverageType(claim.coverageType || "IN_WARRANTY");
     }
   }, [claim]);
 
@@ -565,7 +651,9 @@ function ViewClaimDialog({ open, onClose, claim, onUpdateStatus, onUpdateClaim }
   if (!claim?.id) return;
   setSaving(true);
   try {
-    const uploadedUrls = files.length > 0 ? await uploadToCloudinary(files) : [];
+    const uploadedUrls = files.length > 0
+  ? await uploadToCloudinary(files.map(f => f.file))
+  : [];
 
     const payload = {
       summary: editSummary,
@@ -574,6 +662,8 @@ function ViewClaimDialog({ open, onClose, claim, onUpdateStatus, onUpdateClaim }
         ...(claim.attachmentUrls || []),
         ...uploadedUrls,
       ], // merge file cũ và mới
+      errorDate: editErrorDate ? new Date(editErrorDate).toISOString() : new Date().toISOString(),
+      coverageType: editCoverageType,
     };
 
     await onUpdateClaim(claim.id, payload);
@@ -598,6 +688,13 @@ function ViewClaimDialog({ open, onClose, claim, onUpdateStatus, onUpdateClaim }
     }
   };
 
+  // Cleanup preview URLs để tránh memory leak
+  useEffect(() => {
+    return () => {
+      files.forEach((f) => f.preview && URL.revokeObjectURL(f.preview));
+    };
+  }, [files]);
+
   return (
     <Dialog open={open} onClose={onClose} fullWidth maxWidth="md">
       <DialogTitle>View / Update Claim</DialogTitle>
@@ -607,11 +704,78 @@ function ViewClaimDialog({ open, onClose, claim, onUpdateStatus, onUpdateClaim }
         ) : (
           <Grid container spacing={2}>
             <Grid item xs={12} sm={6}>
-              <TextField label="Claim ID" value={claim.id} fullWidth disabled />
+              <TextField label="Claim ID" value={claim.id || ""} fullWidth disabled />
             </Grid>
             <Grid item xs={12} sm={6}>
-              <TextField label="VIN" value={claim.vin} fullWidth disabled />
+              <TextField label="VIN" value={claim.vin || ""} fullWidth disabled />
             </Grid>
+            <Grid item xs={12} sm={6}>
+    <TextField label="Center ID" value={claim.centerId || ""} fullWidth disabled />
+  </Grid>
+  <Grid item xs={12} sm={6}>
+    <TextField label="Opened By" value={claim.openedBy || ""} fullWidth disabled />
+  </Grid>
+
+  <Grid item xs={12} sm={6}>
+    <TextField label="Claim Type" value={claim.claimType || ""} fullWidth disabled />
+  </Grid>
+
+  <Grid item xs={12} sm={6}>
+    <TextField
+      label="Opened At"
+      value={claim.openedAt ? new Date(claim.openedAt).toLocaleString() : ""}
+      fullWidth
+      disabled
+    />
+  </Grid>
+
+  <Grid item xs={12} sm={6}>
+  <TextField
+    label="Error Date"
+    type="datetime-local"
+    value={editErrorDate}
+    onChange={(e) => setEditErrorDate(e.target.value)}
+    fullWidth
+    InputLabelProps={{ shrink: true }}
+  />
+</Grid>
+
+<Grid item xs={12} sm={6}>
+  <FormControl fullWidth>
+    <InputLabel id="coverage-type-label">Coverage Type</InputLabel>
+    <Select
+      labelId="coverage-type-label"
+      label="Coverage Type"
+      value={editCoverageType}
+      onChange={(e) => setEditCoverageType(e.target.value)}
+    >
+      <MenuItem value="IN_WARRANTY">In Warranty</MenuItem>
+      <MenuItem value="GOODWILL">Goodwill</MenuItem>
+      <MenuItem value="OUT_OF_WARRANTY">Out of Warranty</MenuItem>
+    </Select>
+  </FormControl>
+</Grid>
+
+  <Grid item xs={12} sm={6}>
+    <TextField
+      label="Odometer (km)"
+      type="number"
+      value={editOdometer}
+      onChange={(e) => setEditOdometer(e.target.value)}
+      fullWidth
+    />
+  </Grid>
+
+  <Grid item xs={12}>
+    <TextField
+      label="Summary"
+      multiline
+      minRows={3}
+      value={editSummary}
+      onChange={(e) => setEditSummary(e.target.value)}
+      fullWidth
+    />
+  </Grid>
             <Grid item xs={12} sm={6}>
               <TextField
                 label="Status"
@@ -620,112 +784,176 @@ function ViewClaimDialog({ open, onClose, claim, onUpdateStatus, onUpdateClaim }
                 fullWidth
                 select
               >
-                <MenuItem value="SUBMITTED">Submitted</MenuItem>
                 <MenuItem value="DIAGNOSING">Diagnosing</MenuItem>
-                <MenuItem value="PENDING">Pending</MenuItem>
+                <MenuItem value="ESTIMATING">Estimating</MenuItem>
+                <MenuItem value="UNDER_REVIEW">Under Review</MenuItem>
                 <MenuItem value="APPROVED">Approved</MenuItem>
                 <MenuItem value="COMPLETED">Completed</MenuItem>
                 <MenuItem value="REJECTED">Rejected</MenuItem>
               </TextField>
             </Grid>
-            <Grid item xs={12} sm={6}>
-              <TextField
-                label="Odometer (km)"
-                type="number"
-                value={editOdometer}
-                onChange={(e) => setEditOdometer(e.target.value)}
-                fullWidth
-              />
-            </Grid>
-            <Grid item xs={12}>
-              <TextField
-                label="Summary"
-                multiline
-                minRows={3}
-                value={editSummary}
-                onChange={(e) => setEditSummary(e.target.value)}
-                fullWidth
-              />
-            </Grid>
 
-            {/* ⚙️ File Upload (future use) */}
-            <Grid item xs={12}>
+            {/* ⚙️ File Upload Input - same style as CreateClaimDialog */}
+<Grid item xs={12}>
   <Button variant="outlined" component="label" fullWidth>
-    Add Attachments
+    Add Attachments (images/pdf)
     <input
       type="file"
       multiple
+      accept="image/*,.pdf,.doc,.docx,.xls,.xlsx"
       hidden
-      onChange={(e) => setFiles([...files, ...Array.from(e.target.files)])}
+      onChange={(e) => {
+        const newFiles = Array.from(e.target.files || []);
+        const withPreview = newFiles.map((file) => ({
+          file,
+          preview: file.type.startsWith("image/") ? URL.createObjectURL(file) : null,
+        }));
+        setFiles((prev) => [...prev, ...withPreview]);
+        e.target.value = null; // reset input
+      }}
     />
   </Button>
 
   {files.length > 0 && (
     <Box sx={{ mt: 1 }}>
       <Typography variant="subtitle2">New Files:</Typography>
-      <Stack spacing={0.5} sx={{ mt: 0.5 }}>
-        {files.map((file, index) => (
-          <Box
-            key={index}
-            sx={{
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "space-between",
-              border: "1px solid #ddd",
-              borderRadius: 1,
-              px: 1,
-              py: 0.5,
-            }}
-          >
-            <Typography
-              variant="body2"
+      <Stack spacing={1} sx={{ mt: 0.5 }}>
+        {files.map((f, index) => {
+          const fileName = f.file.name;
+          const isImage = f.file.type.startsWith("image/");
+          const isPdf = f.file.type === "application/pdf";
+
+          return (
+            <Box
+              key={index}
               sx={{
-                wordBreak: "break-all",
-                maxWidth: "80%",
-                overflow: "hidden",
-                textOverflow: "ellipsis",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                border: "1px solid #ddd",
+                borderRadius: 1,
+                px: 1,
+                py: 0.5,
               }}
             >
-              {file.name}
-            </Typography>
-            <Button
-              size="small"
-              color="error"
-              onClick={() => setFiles(files.filter((_, i) => i !== index))}
-            >
-              ❌
-            </Button>
-          </Box>
-        ))}
+              <Stack direction="row" spacing={1} alignItems="center">
+                {isImage ? (
+                  <Tooltip title="Click to view" arrow>
+                    <img
+                      src={f.preview}
+                      alt={fileName}
+                      style={{
+                        width: 60,
+                        height: 60,
+                        objectFit: "cover",
+                        borderRadius: 6,
+                        border: "1px solid #ccc",
+                        cursor: "pointer",
+                      }}
+                      onClick={() => window.open(f.preview, "_blank")}
+                    />
+                  </Tooltip>
+                ) : isPdf ? (
+                  <Tooltip title="Click to view PDF" arrow>
+                    <DescriptionIcon
+                      color="action"
+                      sx={{ fontSize: 40, cursor: "pointer" }}
+                      onClick={() => window.open(URL.createObjectURL(f.file), "_blank")}
+                    />
+                  </Tooltip>
+                ) : (
+                  <DescriptionIcon color="action" />
+                )}
+
+                <Typography
+                  variant="body2"
+                  sx={{
+                    wordBreak: "break-all",
+                    maxWidth: 200,
+                    overflow: "hidden",
+                    textOverflow: "ellipsis",
+                  }}
+                >
+                  {fileName}
+                </Typography>
+              </Stack>
+
+              <Button
+                size="small"
+                color="error"
+                onClick={() => {
+                  if (f.preview) URL.revokeObjectURL(f.preview);
+                  setFiles((prev) => prev.filter((_, i) => i !== index));
+                }}
+              >
+                ❌
+              </Button>
+            </Box>
+          );
+        })}
       </Stack>
     </Box>
   )}
 
-  {claim.attachmentUrls?.length > 0 && (
+  {Array.isArray(claim.attachmentUrls) && claim.attachmentUrls.filter((url) => url && url !== "string").length > 0 && (
     <Box sx={{ mt: 2 }}>
       <Typography variant="subtitle2" sx={{ mb: 0.5 }}>
         Existing Attachments:
       </Typography>
       <Stack spacing={0.5}>
-        {claim.attachmentUrls.map((url, i) => (
-          <a
-            key={i}
-            href={url}
-            target="_blank"
-            rel="noopener noreferrer"
-            style={{
-              fontSize: "0.85rem",
-              color: "#1976d2",
-              textDecoration: "none",
-            }}
-          >
-            {url.split("/").pop()}
-          </a>
-        ))}
+        {claim.attachmentUrls
+          ?.filter((url) => typeof url === "string" && url.trim() && url !== "string")
+          .map((url, i) => {
+            const fileName = decodeURIComponent(url.split("/").pop());
+            const isImage = /\.(png|jpg|jpeg|gif|webp)$/i.test(fileName);
+            const isPdf = /\.pdf$/i.test(fileName);
+            return (
+              <Box key={i} sx={{ display: "flex", alignItems: "center", gap: 1 }}>
+                {isImage ? (
+                  <Tooltip title="Click to view" arrow>
+                    <img
+                      src={url}
+                      alt={fileName}
+                      style={{
+                        maxWidth: "120px",
+                        maxHeight: "120px",
+                        borderRadius: "8px",
+                        border: "1px solid #ddd",
+                        cursor: "pointer",
+                      }}
+                      onClick={() => window.open(url, "_blank")}
+                    />
+                  </Tooltip>
+                ) : isPdf ? (
+                  <Tooltip title="Click to view PDF" arrow>
+                    <DescriptionIcon
+                      color="action"
+                      sx={{ fontSize: 40, cursor: "pointer" }}
+                      onClick={() => window.open(url, "_blank")}
+                    />
+                  </Tooltip>
+                ) : (
+                  <a
+                    href={url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    style={{
+                      fontSize: "0.85rem",
+                      color: "#1976d2",
+                      textDecoration: "none",
+                    }}
+                  >
+                    📎 {fileName}
+                  </a>
+                )}
+              </Box>
+            );
+          })}
       </Stack>
     </Box>
   )}
 </Grid>
+
           </Grid>
         )}
       </DialogContent>
