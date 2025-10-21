@@ -1,126 +1,210 @@
-import React from "react";
+import React, { useEffect, useMemo, useState } from "react";
+import axios from "axios";
 import {
-    Box,
-    Button,
-    Card,
-    CardActions,
-    CardContent,
-    CardHeader,
-    Chip,
-    Container,
-    Divider,
-    Grid,
-    IconButton,
-    InputAdornment,
-    Paper,
-    Stack,
-    Table,
-    TableBody,
-    TableCell,
-    TableHead,
-    TableRow,
-    TextField,
-    Tooltip,
-    Typography,
+    Box, Button, Chip, Container, Divider, Grid, InputAdornment, Paper, Stack,
+    Table, TableBody, TableCell, TableHead, TableRow, TextField, Typography,
+    Dialog, DialogTitle, DialogContent, DialogActions, Snackbar, Alert,
+    FormControlLabel, Switch
 } from "@mui/material";
-import {
-    Add,
-    BatteryFull,
-    Bolt,
-    FilterList,
-    Inventory,
-    MoreVert,
-    Search,
-} from "@mui/icons-material";
+import { Add, FilterList, Search } from "@mui/icons-material";
 
-// ------------------------------------------------------
-// Helper: status color mapping
-// ------------------------------------------------------
-const statusToColor = (status) => {
-    switch (status) {
-        case "Hoạt động":
-            return "success";
-        case "Đang xử lý":
-            return "warning";
-        case "Ngừng sản xuất":
-            return "default";
-        default:
-            return "info";
-    }
-};
+/* ================== API ================== */
+const API_BASE = "http://localhost:8080";
+const GET_ALL_MODELS = `${API_BASE}/api/ev-models/get-all`;
+const CREATE_MODEL = `${API_BASE}/api/ev-models/create`;
+const UPDATE_MODEL = (modelCode) =>
+    `${API_BASE}/api/ev-models/update/${encodeURIComponent(modelCode)}`;
+const DELETE_MODEL = (modelCode) =>
+    `${API_BASE}/api/ev-models/delete/${encodeURIComponent(modelCode)}`;
+const RECOVER_MODEL = (modelCode) =>
+    `${API_BASE}/api/ev-models/recover/${encodeURIComponent(modelCode)}`;
 
-export default function ProductManagement() {
-    const products = [
-        {
-            id: "P001",
-            name: "Pin Lithium 75kWh",
-            category: "Pin",
-            serialNumbers: ["BT001234", "BT001235", "BT001236"],
-            warranty: "8 năm / 160,000 km",
-            status: "Hoạt động",
-            icon: <BatteryFull fontSize="small" />,
-        },
-        {
-            id: "P002",
-            name: "Động cơ điện 350kW",
-            category: "Động cơ",
-            serialNumbers: ["MT002134", "MT002135"],
-            warranty: "5 năm / 100,000 km",
-            status: "Hoạt động",
-            icon: <Bolt fontSize="small" />,
-        },
-        {
-            id: "P003",
-            name: "BMS Gen 3",
-            category: "BMS",
-            serialNumbers: ["BMS003234", "BMS003235", "BMS003236", "BMS003237"],
-            warranty: "3 năm / 60,000 km",
-            status: "Ngừng sản xuất",
-            icon: <Inventory fontSize="small" />,
-        },
-    ];
+/* ================== Helpers ================== */
+const toStatus = (deleted) =>
+    deleted ? { label: "Đã xoá", color: "default" } : { label: "Hoạt động", color: "success" };
 
-    // Quick stats computed from products
-    const stats = {
-        total: products.length,
-        active: products.filter((p) => p.status === "Hoạt động").length,
-        categories: new Set(products.map((p) => p.category)).size,
-        serials: products.reduce((acc, p) => acc + p.serialNumbers.length, 0),
+export default function EvModelsManagement() {
+    const [models, setModels] = useState([]);
+    const [loading, setLoading] = useState(false);
+    const [q, setQ] = useState("");
+    const [error, setError] = useState("");
+    const [open, setOpen] = useState(false);
+    const [mode, setMode] = useState("create"); // 'create' | 'edit'
+    const [form, setForm] = useState({
+        modelCode: "", model: "", battery_kWh: "", motor_kW: "",
+        range_km: "", top_speed_kmh: "", abs: true,
+    });
+    const [busy, setBusy] = useState(false);
+    const [toast, setToast] = useState({ open: false, type: "success", msg: "" });
+
+    const token = localStorage.getItem("token") || "";
+
+    const fetchData = async () => {
+        try {
+            setLoading(true);
+            const res = await axios.get(GET_ALL_MODELS, {
+                headers: { Authorization: `Bearer ${token}` }
+            });
+            setModels(Array.isArray(res.data) ? res.data : []);
+            setError("");
+        } catch (e) {
+            setError(e?.response?.data?.message || e.message || "Lỗi tải dữ liệu EV models");
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    useEffect(() => { fetchData(); }, []);
+
+    const filtered = useMemo(() => {
+        const key = q.trim().toLowerCase();
+        if (!key) return models;
+        return models.filter(m =>
+            [m.modelCode, m.model].some(v => String(v || "").toLowerCase().includes(key))
+        );
+    }, [models, q]);
+
+    const stats = useMemo(() => ({
+        total: models.length,
+        active: models.filter(m => !m.delete).length,
+        deleted: models.filter(m => m.delete).length,
+    }), [models]);
+
+    const openCreate = () => {
+        setMode("create");
+        setForm({
+            modelCode: "", model: "", battery_kWh: "", motor_kW: "",
+            range_km: "", top_speed_kmh: "", abs: true,
+        });
+        setOpen(true);
+    };
+
+    const openEdit = (m) => {
+        setMode("edit");
+        setForm({
+            modelCode: m.modelCode || "",
+            model: m.model || "",
+            battery_kWh: m.battery_kWh ?? "",
+            motor_kW: m.motor_kW ?? "",
+            range_km: m.range_km ?? "",
+            top_speed_kmh: m.top_speed_kmh ?? "",
+            abs: !!m.abs,
+        });
+        setOpen(true);
+    };
+
+    const closeDialog = () => setOpen(false);
+
+    const onChange = (key) => (e) => {
+        const value = key === "abs" ? e.target.checked : e.target.value;
+        setForm((s) => ({ ...s, [key]: value }));
+    };
+
+    const validate = () => {
+        if (!form.modelCode.trim()) return "Vui lòng nhập MÃ MODEL";
+        if (!form.model.trim()) return "Vui lòng nhập TÊN MODEL";
+        const numbers = ["battery_kWh", "motor_kW", "range_km", "top_speed_kmh"];
+        for (const k of numbers) {
+            const v = Number(form[k]);
+            if (Number.isNaN(v) || v < 0) return `Trường ${k} phải là số không âm`;
+        }
+        return "";
+    };
+
+    const submit = async () => {
+        const msg = validate();
+        if (msg) {
+            setToast({ open: true, type: "error", msg });
+            return;
+        }
+        try {
+            setBusy(true);
+            if (mode === "create") {
+                await axios.post(CREATE_MODEL, {
+                    modelCode: form.modelCode.trim(),
+                    model: form.model.trim(),
+                    battery_kWh: Number(form.battery_kWh),
+                    motor_kW: Number(form.motor_kW),
+                    range_km: Number(form.range_km),
+                    top_speed_kmh: Number(form.top_speed_kmh),
+                    abs: !!form.abs,
+                }, { headers: { Authorization: `Bearer ${token}` } });
+                setToast({ open: true, type: "success", msg: "Tạo model thành công" });
+            } else {
+                // Update: gửi kèm modelCode trong body
+                await axios.put(UPDATE_MODEL(form.modelCode.trim()), {
+                    modelCode: form.modelCode.trim(),
+                    model: form.model.trim(),
+                    battery_kWh: Number(form.battery_kWh),
+                    motor_kW: Number(form.motor_kW),
+                    range_km: Number(form.range_km),
+                    top_speed_kmh: Number(form.top_speed_kmh),
+                    abs: !!form.abs,
+                }, { headers: { Authorization: `Bearer ${token}` } });
+                setToast({ open: true, type: "success", msg: "Cập nhật model thành công" });
+            }
+            closeDialog();
+            await fetchData();
+        } catch (e) {
+            setToast({ open: true, type: "error", msg: e?.response?.data?.message || e.message });
+        } finally {
+            setBusy(false);
+        }
+    };
+
+    // ======= Delete (soft delete) =======
+    const handleDelete = async (m) => {
+        const ok = window.confirm(`Xoá model "${m.model}" (${m.modelCode})?`);
+        if (!ok) return;
+        try {
+            setBusy(true);
+            await axios.delete(DELETE_MODEL(m.modelCode), {
+                headers: { Authorization: `Bearer ${token}` }
+            });
+            setToast({ open: true, type: "success", msg: "Đã xoá model" });
+            await fetchData();
+        } catch (e) {
+            setToast({ open: true, type: "error", msg: e?.response?.data?.message || e.message });
+        } finally {
+            setBusy(false);
+        }
+    };
+
+    // ======= Recover =======
+    const handleRecover = async (m) => {
+        try {
+            setBusy(true);
+            await axios.post(RECOVER_MODEL(m.modelCode), null, {
+                headers: { Authorization: `Bearer ${token}` }
+            });
+            setToast({ open: true, type: "success", msg: "Đã khôi phục model" });
+            await fetchData();
+        } catch (e) {
+            setToast({ open: true, type: "error", msg: e?.response?.data?.message || e.message });
+        } finally {
+            setBusy(false);
+        }
     };
 
     return (
         <Container sx={{ py: 4 }}>
-            {/* Top Toolbar */}
-            <Paper
-                elevation={0}
-                sx={{
-                    p: 2.5,
-                    mb: 3,
-                    borderRadius: 3,
-                    bgcolor: (t) =>
-                        t.palette.mode === "light"
-                            ? "rgba(25, 118, 210, 0.06)"
-                            : "rgba(144, 202, 249, 0.08)",
-                    border: (t) => `1px solid ${t.palette.divider}`,
-                    backgroundImage:
-                        "linear-gradient(135deg, rgba(25,118,210,0.10) 0%, rgba(25,118,210,0.00) 40%)",
-                }}
-            >
+            <Paper elevation={0} sx={{ p: 2.5, mb: 3, borderRadius: 3 }}>
                 <Grid container spacing={2} alignItems="center">
                     <Grid item xs={12} md={6}>
                         <Typography variant="h5" fontWeight={700} gutterBottom>
-                            Quản lý sản phẩm
+                            Quản lý EV Models
                         </Typography>
                         <Typography variant="body2" color="text.secondary">
-                            Theo dõi linh kiện, bảo hành và ánh xạ serial ↔ VIN
+                            Lấy dữ liệu từ <code>/api/ev-models/get-all</code>
                         </Typography>
                     </Grid>
                     <Grid item xs={12} md={6}>
                         <Stack direction={{ xs: "column", sm: "row" }} gap={1.5} justifyContent={{ md: "flex-end" }}>
                             <TextField
-                                placeholder="Tìm kiếm sản phẩm, serial, danh mục..."
+                                placeholder="Tìm theo mã hoặc tên model…"
                                 size="small"
-                                fullWidth
+                                value={q}
+                                onChange={(e) => setQ(e.target.value)}
                                 InputProps={{
                                     startAdornment: (
                                         <InputAdornment position="start">
@@ -132,200 +216,124 @@ export default function ProductManagement() {
                             <Button variant="outlined" startIcon={<FilterList />} sx={{ borderRadius: 2 }}>
                                 Lọc
                             </Button>
-                            <Button variant="contained" startIcon={<Add />} sx={{ borderRadius: 2 }}>
-                                Thêm sản phẩm
+                            <Button variant="contained" startIcon={<Add />} sx={{ borderRadius: 2 }} onClick={openCreate}>
+                                Thêm model
                             </Button>
                         </Stack>
                     </Grid>
                 </Grid>
 
-                {/* Quick Stats */}
                 <Stack direction={{ xs: "column", sm: "row" }} gap={1} mt={2}>
                     <Chip label={`Tổng: ${stats.total}`} color="primary" variant="outlined" />
                     <Chip label={`Hoạt động: ${stats.active}`} color="success" variant="outlined" />
-                    <Chip label={`Danh mục: ${stats.categories}`} variant="outlined" />
-                    <Chip label={`Serial: ${stats.serials}`} variant="outlined" />
+                    <Chip label={`Đã xoá: ${stats.deleted}`} variant="outlined" />
+                    {loading && <Chip label="Đang tải…" color="info" variant="outlined" />}
+                    {error && <Chip label={error} color="error" />}
                 </Stack>
             </Paper>
 
-            {/* Product Cards */}
-            <Grid container spacing={2.5}>
-                {products.map((product) => (
-                    <Grid item xs={12} sm={6} md={4} key={product.id}>
-                        <Card
-                            variant="outlined"
-                            sx={{
-                                height: "100%",
-                                borderRadius: 3,
-                                transition: "transform .15s ease, box-shadow .15s ease",
-                                '&:hover': {
-                                    transform: 'translateY(-2px)',
-                                    boxShadow: 6,
-                                },
-                            }}
-                        >
-                            <CardHeader
-                                title={
-                                    <Stack direction="row" alignItems="center" gap={1}>
-                                        <Box
-                                            sx={{
-                                                p: 1,
-                                                borderRadius: 2,
-                                                bgcolor: (t) =>
-                                                    t.palette.mode === 'light' ? t.palette.grey[100] : t.palette.grey[900],
-                                                border: (t) => `1px solid ${t.palette.divider}`,
-                                                display: 'flex',
-                                                alignItems: 'center',
-                                                justifyContent: 'center',
-                                            }}
-                                        >
-                                            {product.icon}
-                                        </Box>
-                                        <Typography variant="subtitle1" fontWeight={700}>
-                                            {product.name}
-                                        </Typography>
-                                    </Stack>
-                                }
-                                subheader={
-                                    <Typography variant="caption" color="text.secondary">
-                                        {product.id}
-                                    </Typography>
-                                }
-                                action={
-                                    <Stack direction="row" alignItems="center" spacing={1}>
-                                        <Chip size="small" label={product.status} color={statusToColor(product.status)} variant="outlined" />
-                                        <IconButton size="small" aria-label="more">
-                                            <MoreVert fontSize="small" />
-                                        </IconButton>
-                                    </Stack>
-                                }
-                                sx={{ pb: 0.5 }}
-                            />
-
-                            <CardContent sx={{ pt: 1.5 }}>
-                                <Stack spacing={1.75}>
-                                    <Box>
-                                        <Typography variant="caption" color="text.secondary">
-                                            Danh mục
-                                        </Typography>
-                                        <Box mt={0.5}>
-                                            <Chip size="small" label={product.category} />
-                                        </Box>
-                                    </Box>
-
-                                    <Divider flexItem sx={{ opacity: 0.6 }} />
-
-                                    <Box>
-                                        <Typography variant="caption" color="text.secondary">
-                                            Bảo hành
-                                        </Typography>
-                                        <Typography variant="body2">{product.warranty}</Typography>
-                                    </Box>
-
-                                    <Divider flexItem sx={{ opacity: 0.6 }} />
-
-                                    <Box>
-                                        <Typography variant="caption" color="text.secondary">
-                                            Số serial ({product.serialNumbers.length})
-                                        </Typography>
-                                        <Stack direction="row" useFlexGap flexWrap="wrap" gap={1} mt={1}>
-                                            {product.serialNumbers.slice(0, 3).map((serial) => (
-                                                <Tooltip title="Nhấp để sao chép" key={serial}>
-                                                    <Chip
-                                                        size="small"
-                                                        label={serial}
-                                                        onClick={() => navigator.clipboard?.writeText(serial)}
-                                                        sx={{ cursor: 'pointer' }}
-                                                    />
-                                                </Tooltip>
-                                            ))}
-                                            {product.serialNumbers.length > 3 && (
-                                                <Chip size="small" color="info" label={`+${product.serialNumbers.length - 3}`} />
-                                            )}
-                                        </Stack>
-                                    </Box>
-                                </Stack>
-                            </CardContent>
-
-                            <CardActions sx={{ p: 2, pt: 0, gap: 1 }}>
-                                <Button fullWidth variant="outlined">Xem chi tiết</Button>
-                                <Button fullWidth variant="contained">Chỉnh sửa</Button>
-                            </CardActions>
-                        </Card>
-                    </Grid>
-                ))}
-            </Grid>
-
-            {/* VIN Mapping */}
-            <Paper
-                elevation={0}
-                sx={{
-                    mt: 4,
-                    borderRadius: 3,
-                    overflow: "hidden",
-                    border: (t) => `1px solid ${t.palette.divider}`,
-                }}
-            >
-                <Box
-                    sx={{
-                        p: 2,
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "space-between",
-                        bgcolor: (t) => (t.palette.mode === "light" ? t.palette.grey[50] : t.palette.grey[900]),
-                    }}
-                >
-                    <Box>
-                        <Typography variant="h6" fontWeight={700}>
-                            Gắn số serial với VIN
-                        </Typography>
-                        <Typography variant="body2" color="text.secondary">
-                            Quản lý việc gắn kết các phụ tùng với từng xe cụ thể
-                        </Typography>
-                    </Box>
-                    <Stack direction="row" gap={1}>
-                        <Button size="small" variant="outlined">Xuất CSV</Button>
-                        <Button size="small" variant="contained">Gắn mới</Button>
-                    </Stack>
+            {/* BẢNG EV MODELS */}
+            <Paper elevation={0} sx={{ borderRadius: 3, overflow: "hidden" }}>
+                <Box sx={{ p: 2, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                    <Typography variant="h6" fontWeight={700}>Bảng EV Models</Typography>
                 </Box>
                 <Divider />
                 <Box sx={{ width: "100%", overflowX: "auto" }}>
                     <Table size="small" stickyHeader>
                         <TableHead>
                             <TableRow>
-                                <TableCell sx={{ fontWeight: 700 }}>VIN</TableCell>
-                                <TableCell sx={{ fontWeight: 700 }}>Model</TableCell>
-                                <TableCell sx={{ fontWeight: 700 }}>Pin</TableCell>
-                                <TableCell sx={{ fontWeight: 700 }}>Động cơ</TableCell>
-                                <TableCell sx={{ fontWeight: 700 }}>BMS</TableCell>
-                                <TableCell sx={{ fontWeight: 700 }}>Trạng thái</TableCell>
+                                <TableCell>Mã model</TableCell>
+                                <TableCell>Tên model</TableCell>
+                                <TableCell>Pin (kWh)</TableCell>
+                                <TableCell>Motor (kW)</TableCell>
+                                <TableCell>Range (km)</TableCell>
+                                <TableCell>Tốc độ tối đa</TableCell>
+                                <TableCell>ABS</TableCell>
+                                <TableCell>Trạng thái</TableCell>
+                                <TableCell>Ngày tạo</TableCell>
+                                <TableCell></TableCell>
                             </TableRow>
                         </TableHead>
                         <TableBody>
-                            <TableRow hover>
-                                <TableCell sx={{ fontFamily: "monospace" }}>VIN001234567890</TableCell>
-                                <TableCell>Model X</TableCell>
-                                <TableCell>BT001234</TableCell>
-                                <TableCell>MT002134</TableCell>
-                                <TableCell>BMS003234</TableCell>
-                                <TableCell>
-                                    <Chip label="Hoàn thành" color="success" size="small" />
-                                </TableCell>
-                            </TableRow>
-                            <TableRow hover>
-                                <TableCell sx={{ fontFamily: "monospace" }}>VIN001234567891</TableCell>
-                                <TableCell>Model Y</TableCell>
-                                <TableCell>BT001235</TableCell>
-                                <TableCell>MT002135</TableCell>
-                                <TableCell>BMS003235</TableCell>
-                                <TableCell>
-                                    <Chip label="Đang xử lý" color="warning" size="small" />
-                                </TableCell>
-                            </TableRow>
+                            {filtered.map((m) => {
+                                const st = toStatus(m.delete);
+                                return (
+                                    <TableRow key={m.modelCode} hover>
+                                        <TableCell sx={{ fontFamily: "monospace" }}>{m.modelCode}</TableCell>
+                                        <TableCell>{m.model}</TableCell>
+                                        <TableCell>{m.battery_kWh}</TableCell>
+                                        <TableCell>{m.motor_kW}</TableCell>
+                                        <TableCell>{m.range_km}</TableCell>
+                                        <TableCell>{m.top_speed_kmh}</TableCell>
+                                        <TableCell>
+                                            <Chip size="small" label={m.abs ? "Có" : "Không"} color={m.abs ? "success" : "default"} />
+                                        </TableCell>
+                                        <TableCell>
+                                            <Chip size="small" label={st.label} color={st.color} variant="outlined" />
+                                        </TableCell>
+                                        <TableCell>{m.createdAt ? new Date(m.createdAt).toLocaleString() : "-"}</TableCell>
+                                        <TableCell align="right">
+                                            <Stack direction="row" spacing={1} justifyContent="flex-end">
+                                                {!m.delete && (
+                                                    <>
+                                                        <Button size="small" variant="outlined" onClick={() => openEdit(m)}>Sửa</Button>
+                                                        <Button size="small" variant="outlined" color="error" onClick={() => handleDelete(m)}>
+                                                            Xoá
+                                                        </Button>
+                                                    </>
+                                                )}
+                                                {m.delete && (
+                                                    <Button size="small" variant="outlined" color="success" onClick={() => handleRecover(m)}>
+                                                        Khôi phục
+                                                    </Button>
+                                                )}
+                                            </Stack>
+                                        </TableCell>
+                                    </TableRow>
+                                );
+                            })}
                         </TableBody>
                     </Table>
                 </Box>
             </Paper>
+
+            {/* POPUP FORM */}
+            <Dialog open={open} onClose={busy ? undefined : closeDialog} fullWidth maxWidth="sm">
+                <DialogTitle fontWeight={700}>{mode === "create" ? "Thêm EV Model" : "Chỉnh sửa EV Model"}</DialogTitle>
+                <DialogContent dividers>
+                    <Stack spacing={2}>
+                        <TextField
+                            label="Mã model (modelCode)"
+                            value={form.modelCode}
+                            onChange={onChange("modelCode")}
+                            InputProps={{ readOnly: mode === "edit" }}
+                            required
+                        />
+                        <TextField label="Tên model" value={form.model} onChange={onChange("model")} required />
+                        <Stack direction={{ xs: "column", sm: "row" }} gap={2}>
+                            <TextField label="Pin (kWh)" type="number" value={form.battery_kWh} onChange={onChange("battery_kWh")} />
+                            <TextField label="Motor (kW)" type="number" value={form.motor_kW} onChange={onChange("motor_kW")} />
+                        </Stack>
+                        <Stack direction={{ xs: "column", sm: "row" }} gap={2}>
+                            <TextField label="Range (km)" type="number" value={form.range_km} onChange={onChange("range_km")} />
+                            <TextField label="Tốc độ tối đa (km/h)" type="number" value={form.top_speed_kmh} onChange={onChange("top_speed_kmh")} />
+                        </Stack>
+                        <FormControlLabel control={<Switch checked={form.abs} onChange={onChange("abs")} />} label="ABS" />
+                    </Stack>
+                </DialogContent>
+                <DialogActions>
+                    <Button onClick={closeDialog} disabled={busy}>Hủy</Button>
+                    <Button onClick={submit} disabled={busy} variant="contained">
+                        {mode === "create" ? "Tạo model" : "Lưu thay đổi"}
+                    </Button>
+                </DialogActions>
+            </Dialog>
+
+            <Snackbar open={toast.open} autoHideDuration={2600} onClose={() => setToast(s => ({ ...s, open: false }))}>
+                <Alert onClose={() => setToast(s => ({ ...s, open: false }))} severity={toast.type} variant="filled" sx={{ width: "100%" }}>
+                    {toast.msg}
+                </Alert>
+            </Snackbar>
         </Container>
     );
 }
