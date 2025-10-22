@@ -68,7 +68,7 @@ export default function App() {
 
         {/* ===== SC TECHNICIAN ===== */}
         <Route
-          path="/tech"
+          path="/tech/*"
           element={
             <PrivateRoute roles={["SC_TECHNICIAN"]}>
               <SCTechnicianDashboard />
