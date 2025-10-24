@@ -7,6 +7,7 @@ import ProductManagement from "./ProductManagement";
 import WarrantyRequests from "./WarrantyRequests";
 import WarrantyPolicy from "./WarrantyPolicy";
 import ServiceCenters from "./ServiceCenters";
+import authService from "../../services/authService";
 
 import {
     AppBar, Toolbar, Typography, Container, Box, Avatar, Tabs, Tab,
@@ -86,6 +87,29 @@ export default function Overview() {
         [mode]
     );
 
+    const [user, setUser] = React.useState({
+        fullName: "Admin",
+        role: "Administrator",
+    });
+
+    React.useEffect(() => {
+        (async () => {
+            try {
+                const currentUser = await authService.getCurrentUser();
+                if (currentUser) {
+                    setUser({
+                        fullName: currentUser.fullName || "Admin",
+                        role:
+                            (currentUser.role && (currentUser.role.name || currentUser.role)) ||
+                            "Administrator",
+                    });
+                }
+            } catch (err) {
+                console.warn("Không thể tải thông tin người dùng:", err);
+            }
+        })();
+    }, []);
+
     return (
         <ThemeProvider theme={theme}>
             <CssBaseline />
@@ -144,17 +168,56 @@ export default function Overview() {
                                     <MenuItem onClick={() => setAnchorMore(null)}>Xuất báo cáo PDF</MenuItem>
                                 </Menu>
 
+                                {/* Avatar người dùng (có dropdown) */}
                                 <Avatar
-                                    sx={{ bgcolor: "primary.main", fontWeight: "bold", cursor: "pointer" }}
+                                    sx={{
+                                        bgcolor: "primary.main",
+                                        fontWeight: "bold",
+                                        cursor: "pointer",
+                                        width: 42,
+                                        height: 42,
+                                    }}
                                     onClick={(e) => setAnchorUser(e.currentTarget)}
                                 >
-                                    A
+                                    {user.fullName ? user.fullName.charAt(0).toUpperCase() : "A"}
                                 </Avatar>
-                                <Menu anchorEl={anchorUser} open={Boolean(anchorUser)} onClose={() => setAnchorUser(null)}>
-                                    <MenuItem onClick={() => setAnchorUser(null)}>Tài khoản</MenuItem>
-                                    <MenuItem onClick={() => setAnchorUser(null)}>Tuỳ chỉnh giao diện</MenuItem>
+
+                                <Menu
+                                    anchorEl={anchorUser}
+                                    open={Boolean(anchorUser)}
+                                    onClose={() => setAnchorUser(null)}
+                                    PaperProps={{
+                                        sx: {
+                                            mt: 1,
+                                            borderRadius: 2,
+                                            minWidth: 220,
+                                            boxShadow: "0 6px 20px rgba(0,0,0,0.15)",
+                                        },
+                                    }}
+                                >
+                                    <Box sx={{ px: 2, py: 1.5 }}>
+                                        <Typography variant="subtitle1" fontWeight={700} noWrap>
+                                            {user.fullName}
+                                        </Typography>
+                                        <Typography variant="body2" color="text.secondary" noWrap>
+                                            {user.role}
+                                        </Typography>
+                                    </Box>
                                     <Divider />
-                                    <MenuItem onClick={() => setAnchorUser(null)}>Đăng xuất</MenuItem>
+                                    <MenuItem onClick={() => (window.location.href = "/profile")}>
+                                        Hồ sơ cá nhân
+                                    </MenuItem>
+                                    <MenuItem onClick={() => (window.location.href = "/")}>Về trang chủ</MenuItem>
+                                    <Divider />
+                                    <MenuItem
+                                        onClick={() => {
+                                            authService.logout();
+                                            setAnchorUser(null);
+                                        }}
+                                        sx={{ color: "error.main" }}
+                                    >
+                                        Đăng xuất
+                                    </MenuItem>
                                 </Menu>
                             </Box>
                         </Toolbar>
