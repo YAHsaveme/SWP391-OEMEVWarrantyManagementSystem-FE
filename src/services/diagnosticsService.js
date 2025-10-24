@@ -22,6 +22,13 @@ const diagnosticsService = {
   // GET /api/diagnostics/{claimId}/get-by-claim
   getByClaim: (claimId) => axiosInstance.get(`${BASE}/${claimId}/get-by-claim`),
 
+  // Lấy bản theo phase từ get-by-claim
+  getByClaimPhase: async (claimId, phase) => {
+    const resp = await axiosInstance.get(`${BASE}/${claimId}/get-by-claim`);
+    const list = resp.data || [];
+    return list.find((d) => d.phase === phase);
+  },
+
   // GET /api/diagnostics/{claimId}/next-phase
   getNextPhase: (claimId) => axiosInstance.get(`${BASE}/${claimId}/next-phase`),
 
