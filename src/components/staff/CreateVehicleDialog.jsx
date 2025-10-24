@@ -1,20 +1,43 @@
 import React, { useMemo, useState } from "react";
 import {
-    Dialog,
-    DialogTitle,
-    DialogContent,
-    DialogActions,
-    TextField,
-    Button,
-    Grid,
-    Stack,
-    Typography,
-    Snackbar,
-    Alert,
+    Dialog, DialogTitle, DialogContent, DialogActions,
+    TextField, Button, Grid, Stack, Typography,
+    Snackbar, Alert,
 } from "@mui/material";
 import axios from "axios";
 
-export default function CreateVehicleDialog({ open, onClose }) {
+/* ====== TOKEN HELPERS (đồng bộ với trang list) ====== */
+function readRawToken() {
+    return (
+        localStorage.getItem("access_token") ||
+        localStorage.getItem("token") ||
+        ""
+    );
+}
+function sanitizeToken(t) {
+    if (!t) return "";
+    t = String(t).trim();
+    if (t.startsWith('"') && t.endsWith('"')) t = t.slice(1, -1); // bỏ ngoặc kép
+    if (t.toLowerCase().startsWith("bearer ")) t = t.slice(7).trim(); // bỏ "Bearer " thừa
+    return t;
+}
+function getToken() {
+    return sanitizeToken(readRawToken());
+}
+
+/* ---------- helper ---------- */
+function toLocalDatetimeInput(date) {
+    const pad = (n) => String(n).padStart(2, "0");
+    const y = date.getFullYear();
+    const m = pad(date.getMonth() + 1);
+    const d = pad(date.getDate());
+    const hh = pad(date.getHours());
+    const mm = pad(date.getMinutes());
+    // format dành cho <input type="datetime-local">
+    return `${y}-${m}-${d}T${hh}:${mm}`;
+}
+
+export default function CreateVehicleDialog({ open, onClose, onCreated }) {
     // default datetime-local = now
     const nowLocal = useMemo(() => toLocalDatetimeInput(new Date()), []);
     const [formData, setFormData] = useState({
@@ -39,6 +62,7 @@ export default function CreateVehicleDialog({ open, onClose }) {
         if (!f.modelCode) return "Vui lòng nhập Model Code.";
         if (!f.inServiceDate) return "Vui lòng chọn In Service Date.";
         if (!f.productionDate) return "Vui lòng chọn Production Date.";
+        // Production phải TRƯỚC hoặc BẰNG In Service
         if (new Date(f.productionDate) > new Date(f.inServiceDate))
             return "Production Date không được sau In Service Date.";
         if (!f.intakeContactName) return "Vui lòng nhập tên người tiếp nhận.";
@@ -55,7 +79,7 @@ export default function CreateVehicleDialog({ open, onClose }) {
             return;
         }
 
-        // chuẩn payload đúng schema
+        // chuẩn payload đúng schema BE
         const payload = {
             vin: formData.vin.trim(),
             modelCode: formData.modelCode.trim(),
@@ -68,21 +92,25 @@ export default function CreateVehicleDialog({ open, onClose }) {
 
         try {
             setSubmitting(true);
-            const token = localStorage.getItem("token");
+            const token = getToken(); // dùng token đã sanitize
 
-            const res = await axios.post("http://localhost:8080/api/vehicles/create", payload, {
-                headers: {
-                    Authorization: token ? `Bearer ${token}` : undefined,
-                    "Content-Type": "application/json",
-                    Accept: "application/json",
-                },
-                validateStatus: () => true,
-            });
+            const res = await axios.post(
+                "http://localhost:8080/api/vehicles/create",
+                payload,
+                {
+                    headers: {
+                        Authorization: token ? `Bearer ${token}` : undefined,
+                        "Content-Type": "application/json",
+                        Accept: "application/json",
+                    },
+                    validateStatus: () => true,
+                }
+            );
 
             if (res.status >= 400) {
                 const msg = typeof res.data === "string" ? res.data : res.data?.message || "Tạo vehicle thất bại.";
-                // hay gặp: token hết hạn
-                if (msg.toLowerCase().includes("invalid") || msg.toLowerCase().includes("expired")) {
+                if (String(msg).toLowerCase().includes("invalid") || String(msg).toLowerCase().includes("expired")) {
+                    localStorage.removeItem("access_token");
                     localStorage.removeItem("token");
                     setToast({ open: true, message: "Phiên đăng nhập hết hạn. Vui lòng đăng nhập lại.", severity: "error" });
                     return;
@@ -91,8 +119,13 @@ export default function CreateVehicleDialog({ open, onClose }) {
                 return;
             }
 
-            setToast({ open: true, message: "Vehicle created successfully.", severity: "success" });
-            // reset nhanh để nhập tiếp
+            // Thành công
+            setToast({ open: true, message: "✅ Vehicle created successfully.", severity: "success" });
+
+            // >>> QUAN TRỌNG: báo parent để refetch list ngay
+            onCreated?.();
+
+            // reset form (để nhập tiếp lần sau)
             setFormData({
                 vin: "",
                 modelCode: "",
@@ -102,6 +135,8 @@ export default function CreateVehicleDialog({ open, onClose }) {
                 intakeContactName: "",
                 intakeContactPhone: "",
             });
+
+            // đóng dialog
             onClose?.();
         } catch (error) {
             setToast({ open: true, message: "Failed to create vehicle.", severity: "error" });
@@ -231,16 +266,4 @@ export default function CreateVehicleDialog({ open, onClose }) {
             </Snackbar>
         </>
     );
-}
-
-/* ---------- helper ---------- */
-function toLocalDatetimeInput(date) {
-    const pad = (n) => String(n).padStart(2, "0");
-    const y = date.getFullYear();
-    const m = pad(date.getMonth() + 1);
-    const d = pad(date.getDate());
-    const hh = pad(date.getHours());
-    const mm = pad(date.getMinutes());
-    // format dành cho <input type="datetime-local">
-    return `${y}-${m}-${d}T${hh}:${mm}`;
 }
