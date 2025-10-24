@@ -33,11 +33,27 @@ import DescriptionIcon from "@mui/icons-material/Description";
 import PendingActionsIcon from "@mui/icons-material/PendingActions";
 import CheckCircleIcon from "@mui/icons-material/CheckCircle";
 import DoneAllIcon from "@mui/icons-material/DoneAll";
+import Collapse from "@mui/material/Collapse";
 import axiosInstance from "../../services/axiosInstance";
 import claimService from "../../services/claimService";
 import centerService from "../../services/centerService";
 import estimatesService from "../../services/estimatesService";
 import { uploadToCloudinary } from "../../utils/cloudinary";
+
+// Vehicle service — dùng để lấy thông tin khách hàng theo VIN
+const vehiclesService = {
+  getByVin: async (vin) => {
+    const token =
+      localStorage.getItem("access_token") || localStorage.getItem("token");
+    const res = await axios.get(
+      `http://localhost:8080/api/vehicles/detail/${encodeURIComponent(vin)}`,
+      {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      }
+    );
+    return res.data;
+  },
+};
 
 const statusColor = {
   DIAGNOSING: "warning",
@@ -100,13 +116,13 @@ export default function WarrantyClaimsPage() {
   const [selectedFiles, setSelectedFiles] = useState([]);
 
   useEffect(() => {
-  const handleClaimUpdated = (e) => {
-    const updated = e.detail;
-    setClaims((prev) => prev.map((c) => (c.id === updated.id ? updated : c)));
-  };
-  window.addEventListener("claim-updated", handleClaimUpdated);
-  return () => window.removeEventListener("claim-updated", handleClaimUpdated);
-}, []);
+    const handleClaimUpdated = (e) => {
+      const updated = e.detail;
+      setClaims((prev) => prev.map((c) => (c.id === updated.id ? updated : c)));
+    };
+    window.addEventListener("claim-updated", handleClaimUpdated);
+    return () => window.removeEventListener("claim-updated", handleClaimUpdated);
+  }, []);
 
   // Tải danh sách VIN (giữ nguyên)
   useEffect(() => {
@@ -426,14 +442,14 @@ export default function WarrantyClaimsPage() {
             const created = await claimService.create(newClaim);
             setClaims((prev) => [created, ...prev]);
             setSnack({ open: true, message: "Claim created successfully", severity: "success" });
-            } catch (err) {
-                console.error("Create claim failed:", err);
-                const message =
-                    err.response?.data || "Tạo claim thất bại, vui lòng thử lại sau!";
-                setSnack({ open: true, message, severity: "error" });
-            } finally {
-                setLoading(false);
-            }
+          } catch (err) {
+            console.error("Create claim failed:", err);
+            const message =
+              err.response?.data || "Tạo claim thất bại, vui lòng thử lại sau!";
+            setSnack({ open: true, message, severity: "error" });
+          } finally {
+            setLoading(false);
+          }
         }}
       />
 
@@ -458,7 +474,7 @@ export default function WarrantyClaimsPage() {
           } catch (err) {
             console.error("Update status failed:", err);
             const message =
-                err.response?.data || "Cập nhật trạng thái claim thất bại!";
+              err.response?.data || "Cập nhật trạng thái claim thất bại!";
             setSnack({ open: true, message, severity: "error" });
           } finally {
             setLoading(false);
@@ -469,45 +485,45 @@ export default function WarrantyClaimsPage() {
             setLoading(true);
 
             // ⚙️ Làm sạch payload hoàn toàn, loại bỏ field thừa
-          const cleanPayload = {
-            summary: (payload.summary || "").substring(0, 255),
-            attachmentUrls: Array.isArray(payload.attachmentUrls)
-              ? payload.attachmentUrls.filter((u) => typeof u === "string" && u.trim() && u !== "string")
-              : [],
-            odometerKm: Number(payload.odometerKm) || 0,
-            errorDate: payload.errorDate ? new Date(payload.errorDate).toISOString() : new Date().toISOString(),
-            coverageType: payload.coverageType || "IN_WARRANTY",
-          };
+            const cleanPayload = {
+              summary: (payload.summary || "").substring(0, 255),
+              attachmentUrls: Array.isArray(payload.attachmentUrls)
+                ? payload.attachmentUrls.filter((u) => typeof u === "string" && u.trim() && u !== "string")
+                : [],
+              odometerKm: Number(payload.odometerKm) || 0,
+              errorDate: payload.errorDate ? new Date(payload.errorDate).toISOString() : new Date().toISOString(),
+              coverageType: payload.coverageType || "IN_WARRANTY",
+            };
 
-          console.log("🟢 Sending to update API:", cleanPayload);
+            console.log("🟢 Sending to update API:", cleanPayload);
 
-          const updated = await claimService.update(id, cleanPayload);
-          setClaims((prev) => prev.map((c) => (c.id === id ? updated : c)));
+            const updated = await claimService.update(id, cleanPayload);
+            setClaims((prev) => prev.map((c) => (c.id === id ? updated : c)));
 
-          setSnack({
-            open: true,
-            message: "Claim updated successfully!",
-            severity: "success",
-          });
+            setSnack({
+              open: true,
+              message: "Claim updated successfully!",
+              severity: "success",
+            });
 
-          return updated;
+            return updated;
           } catch (err) {
-          console.error("Update claim failed:", err);
-          const raw = err?.response?.data?.toString() || err?.message || "";
-          let message = "Update failed. Please check your data.";
+            console.error("Update claim failed:", err);
+            const raw = err?.response?.data?.toString() || err?.message || "";
+            let message = "Update failed. Please check your data.";
 
-          if (raw.includes("Data truncation")) {
-            message = "⚠️ One of your fields (summary/coverageType) has invalid length.";
-          } else if (raw.includes("Bad Request")) {
-            message = "⚠️ Invalid request format. Please check your input.";
+            if (raw.includes("Data truncation")) {
+              message = "⚠️ One of your fields (summary/coverageType) has invalid length.";
+            } else if (raw.includes("Bad Request")) {
+              message = "⚠️ Invalid request format. Please check your input.";
+            }
+
+            setSnack({ open: true, message, severity: "error" });
+            throw err;
+          } finally {
+            setLoading(false);
           }
-
-          setSnack({ open: true, message, severity: "error" });
-          throw err;
-        } finally {
-          setLoading(false);
-        }
-      }}
+        }}
         setSnack={setSnack}
       />
 
@@ -561,41 +577,41 @@ function CreateClaimDialog({ open, onClose, onCreate }) {
   const [files, setFiles] = useState([]);
 
   const handleSubmit = async (e) => {
-  e.preventDefault();
-  if (!vin || !summary) return;
+    e.preventDefault();
+    if (!vin || !summary) return;
 
-  try {
-    // Upload file lên Cloudinary trước
-    const uploadedUrls = files.length > 0
-  ? await uploadToCloudinary(files.map(f => f.file))
-  : [];
+    try {
+      // Upload file lên Cloudinary trước
+      const uploadedUrls = files.length > 0
+        ? await uploadToCloudinary(files.map(f => f.file))
+        : [];
 
-    // Gửi payload JSON lên backend
-    const payload = {
-      vin,
-      claimType,
-      coverageType,
-      errorDate: errorDate ? new Date(errorDate).toISOString() : new Date().toISOString(),
-      odometerKm: Number(odometerKm) || 0,
-      summary,
-      intakeContactName,
-      attachmentUrls: uploadedUrls,
-    };
+      // Gửi payload JSON lên backend
+      const payload = {
+        vin,
+        claimType,
+        coverageType,
+        errorDate: errorDate ? new Date(errorDate).toISOString() : new Date().toISOString(),
+        odometerKm: Number(odometerKm) || 0,
+        summary,
+        intakeContactName,
+        attachmentUrls: uploadedUrls,
+      };
 
-    await onCreate?.(payload);
-    onClose?.();
+      await onCreate?.(payload);
+      onClose?.();
 
-    // Reset form
-    setVin("");
-    setSummary("");
-    setOdometerKm("");
-    setErrorDate("");
-    setClaimType("NORMAL");
-    setFiles([]);
-  } catch (err) {
-    console.error("Create claim failed:", err);
-  }
-};
+      // Reset form
+      setVin("");
+      setSummary("");
+      setOdometerKm("");
+      setErrorDate("");
+      setClaimType("NORMAL");
+      setFiles([]);
+    } catch (err) {
+      console.error("Create claim failed:", err);
+    }
+  };
 
   // Cleanup preview URLs để tránh memory leak
   useEffect(() => {
@@ -665,108 +681,108 @@ function CreateClaimDialog({ open, onClose, onCreate }) {
 
             {/* ⚙️ File Upload Input */}
             <Grid item xs={12}>
-  <Button variant="outlined" component="label" fullWidth>
-    Upload Attachments (images/pdf)
-    <input
-      type="file"
-      multiple
-      accept="image/*,.pdf,.doc,.docx,.xls,.xlsx"
-      hidden
-      onChange={(e) => {
-        const newFiles = Array.from(e.target.files || []);
-        const withPreview = newFiles.map((file) => ({
-        file,
-        preview: file.type.startsWith("image/") ? URL.createObjectURL(file) : null,
-        }));
-        setFiles((prev) => [...prev, ...withPreview]);
+              <Button variant="outlined" component="label" fullWidth>
+                Upload Attachments (images/pdf)
+                <input
+                  type="file"
+                  multiple
+                  accept="image/*,.pdf,.doc,.docx,.xls,.xlsx"
+                  hidden
+                  onChange={(e) => {
+                    const newFiles = Array.from(e.target.files || []);
+                    const withPreview = newFiles.map((file) => ({
+                      file,
+                      preview: file.type.startsWith("image/") ? URL.createObjectURL(file) : null,
+                    }));
+                    setFiles((prev) => [...prev, ...withPreview]);
 
-        // Reset input để chọn lại file cũ hoặc upload mới sau khi xóa
-        e.target.value = null;
-      }}
-    />
-  </Button>
+                    // Reset input để chọn lại file cũ hoặc upload mới sau khi xóa
+                    e.target.value = null;
+                  }}
+                />
+              </Button>
 
-  {files.length > 0 && (
-  <Box sx={{ mt: 1 }}>
-    <Typography variant="subtitle2">Selected Files:</Typography>
-    <Stack spacing={1} sx={{ mt: 0.5 }}>
-      {files.map((f, index) => {
-        const fileName = f.file.name;
-        const isImage = f.file.type.startsWith("image/");
-        const isPdf = f.file.type === "application/pdf";
+              {files.length > 0 && (
+                <Box sx={{ mt: 1 }}>
+                  <Typography variant="subtitle2">Selected Files:</Typography>
+                  <Stack spacing={1} sx={{ mt: 0.5 }}>
+                    {files.map((f, index) => {
+                      const fileName = f.file.name;
+                      const isImage = f.file.type.startsWith("image/");
+                      const isPdf = f.file.type === "application/pdf";
 
-        return (
-          <Box
-            key={index}
-            sx={{
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "space-between",
-              border: "1px solid #ddd",
-              borderRadius: 1,
-              px: 1,
-              py: 0.5,
-            }}
-          >
-            <Stack direction="row" spacing={1} alignItems="center">
-              {isImage ? (
-                <Tooltip title="Click to view" arrow>
-                  <img
-                    src={f.preview}
-                    alt={fileName}
-                    style={{
-                      width: 60,
-                      height: 60,
-                      objectFit: "cover",
-                      borderRadius: 6,
-                      border: "1px solid #ccc",
-                      cursor: "pointer",
-                    }}
-                    onClick={() => window.open(f.preview, "_blank")}
-                  />
-                </Tooltip>
-              ) : isPdf ? (
-                <Tooltip title="Click to view PDF" arrow>
-                  <DescriptionIcon
-                    color="action"
-                    sx={{ fontSize: 40, cursor: "pointer" }}
-                    onClick={() => window.open(URL.createObjectURL(f.file), "_blank")}
-                  />
-                </Tooltip>
-              ) : (
-                <DescriptionIcon color="action" />
+                      return (
+                        <Box
+                          key={index}
+                          sx={{
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "space-between",
+                            border: "1px solid #ddd",
+                            borderRadius: 1,
+                            px: 1,
+                            py: 0.5,
+                          }}
+                        >
+                          <Stack direction="row" spacing={1} alignItems="center">
+                            {isImage ? (
+                              <Tooltip title="Click to view" arrow>
+                                <img
+                                  src={f.preview}
+                                  alt={fileName}
+                                  style={{
+                                    width: 60,
+                                    height: 60,
+                                    objectFit: "cover",
+                                    borderRadius: 6,
+                                    border: "1px solid #ccc",
+                                    cursor: "pointer",
+                                  }}
+                                  onClick={() => window.open(f.preview, "_blank")}
+                                />
+                              </Tooltip>
+                            ) : isPdf ? (
+                              <Tooltip title="Click to view PDF" arrow>
+                                <DescriptionIcon
+                                  color="action"
+                                  sx={{ fontSize: 40, cursor: "pointer" }}
+                                  onClick={() => window.open(URL.createObjectURL(f.file), "_blank")}
+                                />
+                              </Tooltip>
+                            ) : (
+                              <DescriptionIcon color="action" />
+                            )}
+
+                            <Typography
+                              variant="body2"
+                              sx={{
+                                wordBreak: "break-all",
+                                maxWidth: 200,
+                                overflow: "hidden",
+                                textOverflow: "ellipsis",
+                              }}
+                            >
+                              {fileName}
+                            </Typography>
+                          </Stack>
+
+                          <Button
+                            size="small"
+                            color="error"
+                            onClick={() => {
+                              if (f.preview) URL.revokeObjectURL(f.preview);
+                              setFiles((prev) => prev.filter((_, i) => i !== index));
+                            }}
+                          >
+                            ❌
+                          </Button>
+                        </Box>
+                      );
+                    })}
+                  </Stack>
+                </Box>
               )}
-
-              <Typography
-                variant="body2"
-                sx={{
-                  wordBreak: "break-all",
-                  maxWidth: 200,
-                  overflow: "hidden",
-                  textOverflow: "ellipsis",
-                }}
-              >
-                {fileName}
-              </Typography>
-            </Stack>
-
-            <Button
-              size="small"
-              color="error"
-              onClick={() => {
-                if (f.preview) URL.revokeObjectURL(f.preview);
-                setFiles((prev) => prev.filter((_, i) => i !== index));
-              }}
-            >
-              ❌
-            </Button>
-          </Box>
-        );
-      })}
-    </Stack>
-  </Box>
-)}
-</Grid>
+            </Grid>
           </Grid>
         </DialogContent>
         <DialogActions>
@@ -1084,79 +1100,79 @@ function UpdateClaimDialog({ open, onClose, claim, onUpdateStatus, onUpdateClaim
   }, [files]);
 
   const handleSaveAndUpdateBoth = async () => {
-  if (!claim?.id) return;
-  setSavingAll(true);
+    if (!claim?.id) return;
+    setSavingAll(true);
 
-  try {
-    // 1️⃣ Upload file mới (nếu có)
-    const uploadedUrls =
-      files.length > 0 ? await uploadToCloudinary(files.map((f) => f.file)) : [];
+    try {
+      // 1️⃣ Upload file mới (nếu có)
+      const uploadedUrls =
+        files.length > 0 ? await uploadToCloudinary(files.map((f) => f.file)) : [];
 
-    // 2️⃣ Chuẩn bị payload đúng 100% với yêu cầu backend
-    const updatePayload = {
-      summary: (editSummary || claim.summary || "").substring(0, 255),
-      attachmentUrls: [
-        ...(claim.attachmentUrls || []).filter(
-          (url) => typeof url === "string" && url.trim() && url !== "string"
-        ),
-        ...uploadedUrls,
-      ],
-      odometerKm: Number(editOdometer || claim.odometerKm || 0),
-      errorDate: editErrorDate
-        ? new Date(editErrorDate).toISOString()
-        : claim.errorDate || new Date().toISOString(),
-      coverageType: editCoverageType || claim.coverageType || "IN_WARRANTY",
-    };
+      // 2️⃣ Chuẩn bị payload đúng 100% với yêu cầu backend
+      const updatePayload = {
+        summary: (editSummary || claim.summary || "").substring(0, 255),
+        attachmentUrls: [
+          ...(claim.attachmentUrls || []).filter(
+            (url) => typeof url === "string" && url.trim() && url !== "string"
+          ),
+          ...uploadedUrls,
+        ],
+        odometerKm: Number(editOdometer || claim.odometerKm || 0),
+        errorDate: editErrorDate
+          ? new Date(editErrorDate).toISOString()
+          : claim.errorDate || new Date().toISOString(),
+        coverageType: editCoverageType || claim.coverageType || "IN_WARRANTY",
+      };
 
-    // ⚠️ Không được gửi object status, chỉ gửi string
-    const statusPayload = {
-      status: status || claim.status || "DIAGNOSING",
-    };
+      // ⚠️ Không được gửi object status, chỉ gửi string
+      const statusPayload = {
+        status: status || claim.status || "DIAGNOSING",
+      };
 
-    console.log("🟢 Sending updatePayload:", updatePayload);
-    console.log("🟣 Sending statusPayload:", statusPayload);
+      console.log("🟢 Sending updatePayload:", updatePayload);
+      console.log("🟣 Sending statusPayload:", statusPayload);
 
-    // 3️⃣ Gọi update API
-    const updatedClaim = await onUpdateClaim(claim.id, updatePayload);
+      // 3️⃣ Gọi update API
+      const updatedClaim = await onUpdateClaim(claim.id, updatePayload);
 
-    // 4️⃣ Gọi update-status API
-    const updatedStatus = await onUpdateStatus(claim.id, statusPayload.status);
+      // 4️⃣ Gọi update-status API
+      const updatedStatus = await onUpdateStatus(claim.id, statusPayload.status);
 
-    // 5️⃣ Gộp dữ liệu để cập nhật lại UI
-    const merged = {
-      ...updatedClaim,
-      status: updatedStatus?.status || statusPayload.status || claim.status,
-    };
+      // 5️⃣ Gộp dữ liệu để cập nhật lại UI
+      const merged = {
+        ...updatedClaim,
+        status: updatedStatus?.status || statusPayload.status || claim.status,
+      };
 
-    // 6️⃣ Phát sự kiện cập nhật claim toàn app
-    window.dispatchEvent(new CustomEvent("claim-updated", { detail: merged }));
+      // 6️⃣ Phát sự kiện cập nhật claim toàn app
+      window.dispatchEvent(new CustomEvent("claim-updated", { detail: merged }));
 
-    // 7️⃣ Hiển thị snackbar
-    setSnack({
-      open: true,
-      message: "✅ Claim updated successfully!",
-      severity: "success",
-    });
+      // 7️⃣ Hiển thị snackbar
+      setSnack({
+        open: true,
+        message: "✅ Claim updated successfully!",
+        severity: "success",
+      });
 
-    onClose?.();
-  } catch (err) {
-    console.error("❌ Save & update both failed:", err);
-    const raw = err?.response?.data?.toString() || err?.message || "";
-    let message = "Save failed. Please check your data.";
+      onClose?.();
+    } catch (err) {
+      console.error("❌ Save & update both failed:", err);
+      const raw = err?.response?.data?.toString() || err?.message || "";
+      let message = "Save failed. Please check your data.";
 
-    if (raw.includes("Data truncation")) {
-      message = "⚠️ Some fields exceed allowed length or are invalid.";
-    } else if (raw.includes("deserialize value of type")) {
-      message = "⚠️ Status must be a plain string, not an object.";
-    } else if (raw.includes("Bad Request")) {
-      message = "⚠️ Invalid request format. Please check input.";
+      if (raw.includes("Data truncation")) {
+        message = "⚠️ Some fields exceed allowed length or are invalid.";
+      } else if (raw.includes("deserialize value of type")) {
+        message = "⚠️ Status must be a plain string, not an object.";
+      } else if (raw.includes("Bad Request")) {
+        message = "⚠️ Invalid request format. Please check input.";
+      }
+
+      setSnack({ open: true, message, severity: "error" });
+    } finally {
+      setSavingAll(false);
     }
-
-    setSnack({ open: true, message, severity: "error" });
-  } finally {
-    setSavingAll(false);
-  }
-};
+  };
 
   return (
     <Dialog open={open} onClose={onClose} fullWidth maxWidth="md">
@@ -1439,6 +1455,10 @@ function EstimatesDialog({ open, onClose, claim, setSnack }) {
   };
   const [form, setForm] = React.useState(emptyForm);
 
+  // local UI state for expanded card per estimate id
+  const [expandedMap, setExpandedMap] = React.useState({}); // { [estId]: true/false }
+  const [customer, setCustomer] = React.useState({ name: "—", phone: "—" });
+
   React.useEffect(() => {
     if (!open || !claim?.id) return;
     let mounted = true;
@@ -1457,12 +1477,41 @@ function EstimatesDialog({ open, onClose, claim, setSnack }) {
     return () => (mounted = false);
   }, [open, claim?.id]);
 
+  // Fetch thông tin khách hàng theo VIN nếu claim chưa có intakeContactName
+  React.useEffect(() => {
+    if (!claim?.vin) return;
+
+    // Nếu claim có sẵn tên và SĐT thì dùng luôn
+    if (claim?.intakeContactName && claim?.intakeContactPhone) {
+      setCustomer({
+        name: claim.intakeContactName,
+        phone: claim.intakeContactPhone,
+      });
+      return;
+    }
+
+    // Ngược lại -> gọi API /vehicles/detail/{vin}
+    (async () => {
+      try {
+        const data = await vehiclesService.getByVin(claim.vin);
+        setCustomer({
+          name: data.intakeContactName || "—",
+          phone: data.intakeContactPhone || "—",
+        });
+      } catch (err) {
+        console.warn("❌ Lỗi lấy thông tin khách hàng theo VIN:", err);
+        setCustomer({ name: "—", phone: "—" });
+      }
+    })();
+  }, [claim?.vin]);
+
   React.useEffect(() => {
     // reset form when opening form
     if (!open) {
       setCreating(false);
       setEditing(null);
       setForm(emptyForm);
+      setExpandedMap({});
     }
   }, [open]);
 
@@ -1475,7 +1524,6 @@ function EstimatesDialog({ open, onClose, claim, setSnack }) {
       } catch (e) {
         items = editing.itemsJson || [];
       }
-      // map to form structure; we allow user to enter unitPrice manually (UI local)
       const mapped = (items || []).map((it) => ({
         partId: it.partId || it.part_id || "",
         partName: it.partName || it.part_name || it.name || "",
@@ -1514,19 +1562,69 @@ function EstimatesDialog({ open, onClose, claim, setSnack }) {
     setForm((f) => ({ ...f, items: f.items.filter((_, i) => i !== idx) }));
   };
 
-  // create payload builder: backend expects itemsJson array of { partId, quantity }
-  const buildPayload = () => {
-    const itemsJson = (form.items || []).map((it) => ({
+  // build payload for create/update (API expects itemsJson with partId + quantity)
+  const buildPayload = (overrideForm = null) => {
+    const use = overrideForm || form;
+    const itemsJson = (use.items || []).map((it) => ({
       partId: it.partId || null,
       quantity: Number(it.quantity || 0),
     }));
     return {
-      claim_id: claim?.id || claim?.claimId || null, // API uses claim_id at create per docs
+      claim_id: claim?.id || claim?.claimId || null,
       itemsJson,
-      laborSlots: Number(form.laborSlots || 0),
-      laborRateVND: Number(form.laborRateVND || 0),
-      note: form.note || "",
+      laborSlots: Number(use.laborSlots || 0),
+      laborRateVND: Number(use.laborRateVND || 0),
+      note: use.note || "",
     };
+  };
+
+  // helper: get latest estimate (most recent createdAt)
+  const getLatestEstimate = React.useCallback(() => {
+    if (!list || list.length === 0) return null;
+    const sorted = [...list].sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+    return sorted[0];
+  }, [list]);
+
+  // When creating new estimate: if there is an existing latest estimate, prefill form from it (versioning)
+  const handleNewEstimateClick = async () => {
+    setCreating(true);
+    setEditing(null);
+
+    // find latest
+    const latest = getLatestEstimate();
+    if (!latest) {
+      setForm(emptyForm);
+      return;
+    }
+
+    // fetch full latest from API to be safe
+    try {
+      setLoadingLocal(true);
+      const full = await estimatesService.getById(latest.id);
+      let items = [];
+      try {
+        items = typeof full.itemsJson === "string" ? JSON.parse(full.itemsJson) : full.itemsJson;
+      } catch (e) {
+        items = full.itemsJson || [];
+      }
+      const mapped = (items || []).map((it) => ({
+        partId: it.partId || it.part_id || "",
+        partName: it.partName || it.part_name || it.name || "",
+        unitPriceVND: it.unitPriceVND ?? it.unit_price_vnd ?? 0,
+        quantity: it.quantity ?? 1,
+      }));
+      setForm({
+        items: mapped,
+        laborSlots: full.laborSlots ?? 0,
+        laborRateVND: full.laborRateVND ?? 0,
+        note: full.note ?? "",
+      });
+    } catch (err) {
+      console.warn("Không thể tải latest estimate, mở form trống:", err);
+      setForm(emptyForm);
+    } finally {
+      setLoadingLocal(false);
+    }
   };
 
   const handleCreate = async () => {
@@ -1534,7 +1632,6 @@ function EstimatesDialog({ open, onClose, claim, setSnack }) {
       setSnack?.({ open: true, message: "Cần ít nhất 1 phụ tùng (item) trong estimate", severity: "warning" });
       return;
     }
-    
     try {
       setLoadingLocal(true);
       const payload = buildPayload();
@@ -1542,7 +1639,6 @@ function EstimatesDialog({ open, onClose, claim, setSnack }) {
       setList((prev) => [created, ...prev]);
       setSnack?.({ open: true, message: "Tạo estimate thành công", severity: "success" });
       setCreating(false);
-      // emit event if needed
       window.dispatchEvent(new CustomEvent("claim-updated", { detail: { ...claim, lastEstimate: created } }));
     } catch (err) {
       console.error("Create estimate error:", err);
@@ -1578,7 +1674,6 @@ function EstimatesDialog({ open, onClose, claim, setSnack }) {
   const openForEdit = async (est) => {
     try {
       setLoadingLocal(true);
-      // fetch full data if needed
       const full = await estimatesService.getById(est.id);
       setEditing(full || est);
       setCreating(false);
@@ -1590,12 +1685,30 @@ function EstimatesDialog({ open, onClose, claim, setSnack }) {
     }
   };
 
+  // helper: toggle expand for an estimate
+  const toggleExpand = (id) => {
+    setExpandedMap((m) => ({ ...m, [id]: !m[id] }));
+  };
+
+  // compute local "version number" for display: newest = N, increase by creation time
+  const computeVersionNumber = (est) => {
+    if (!list || !est) return 1;
+    const sorted = [...list].sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt)); // oldest -> newest
+    const idx = sorted.findIndex((x) => x.id === est.id);
+    if (idx === -1) return 1;
+    return idx + 1; // oldest = 1 ... newest = N
+  };
+
+  // customer display name & phone: prefer claim.intakeContactName / claim.intakeContactPhone
+  const customerName = claim?.intakeContactName || "—";
+  const customerPhone = claim?.intakeContactPhone || "—";
+
   return (
     <Dialog open={open} onClose={onClose} fullWidth maxWidth="lg">
       <DialogTitle>
         Estimates — {claim?.vin || (claim?.vehicle?.vin ?? "Claim")}
-        <Box sx={{ float: "right", display: "flex", gap: 1 }}>
-          <Button size="small" onClick={() => { setCreating(true); setEditing(null); }}>New Estimate</Button>
+        <Box sx={{ float: "right", display: "flex", gap: 1, alignItems: "center" }}>
+          <Button size="small" onClick={handleNewEstimateClick}>New Estimate</Button>
         </Box>
       </DialogTitle>
 
@@ -1604,7 +1717,7 @@ function EstimatesDialog({ open, onClose, claim, setSnack }) {
         {(creating || editing) && (
           <Card sx={{ mb: 2 }}>
             <CardContent>
-              <Typography variant="subtitle2" gutterBottom>{editing ? `Editing estimate #${editing.id}` : "New estimate"}</Typography>
+              <Typography variant="subtitle2" gutterBottom>{editing ? `Editing estimate (version ${computeVersionNumber(editing)})` : `New estimate (based on latest)`}</Typography>
 
               <Grid container spacing={2}>
                 <Grid item xs={12}>
@@ -1713,7 +1826,7 @@ function EstimatesDialog({ open, onClose, claim, setSnack }) {
           </Card>
         )}
 
-        {/* List of estimates */}
+        {/* List of estimates with customer name & expand for details */}
         {loadingLocal ? (
           <Box sx={{ py: 4, textAlign: "center" }}><CircularProgress /></Box>
         ) : (
@@ -1722,32 +1835,79 @@ function EstimatesDialog({ open, onClose, claim, setSnack }) {
               <Typography color="text.secondary">Chưa có estimate cho claim này.</Typography>
             ) : (
               <Stack spacing={1}>
-                {list.map((e) => (
-                  <Card key={e.id} variant="outlined">
-                    <CardContent>
-                      <Grid container spacing={1} alignItems="center">
-                        <Grid item xs={12} sm={6}>
-                          <Typography variant="subtitle2">Estimate #{e.id}</Typography>
-                          <Typography variant="caption" color="text.secondary">{new Date(e.createdAt).toLocaleString()}</Typography>
-                        </Grid>
+                {(() => {
+                  // sort by createdAt descending so newest first
+                  const sorted = [...list].sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+                  return sorted.map((e) => {
+                    const version = computeVersionNumber(e);
+                    const expanded = !!expandedMap[e.id];
+                    // Try to get items to show summary quickly (may be undefined)
+                    let itemsPreview = [];
+                    try {
+                      const parsed = typeof e.itemsJson === "string" ? JSON.parse(e.itemsJson) : e.itemsJson;
+                      itemsPreview = Array.isArray(parsed) ? parsed : [];
+                    } catch (err) {
+                      itemsPreview = e.itemsJson || [];
+                    }
 
-                        <Grid item xs={12} sm={4}>
-                          <Typography variant="body2">Parts: { (e.partsSubtotalVND ?? 0).toLocaleString("vi-VN") } VND</Typography>
-                          <Typography variant="body2">Labor: { (e.laborSubtotalVND ?? 0).toLocaleString("vi-VN") } VND</Typography>
-                          <Typography variant="body2">Total: { (e.grandTotalVND ?? 0).toLocaleString("vi-VN") } VND</Typography>
-                        </Grid>
+                    return (
+                      <Card key={e.id} variant="outlined">
+                        <CardContent>
+                          <Grid container spacing={1} alignItems="center">
+                            <Grid item xs={12} sm={6}>
+                              {/* Hide id: show customer name + phone and version */}
+                              <Typography variant="subtitle2">
+                                Khách hàng: {customer.name || "—"} • {customer.phone || "—"}{" "}
+                                <small style={{ opacity: 0.7 }}>({`v${version}`})</small>
+                              </Typography>
+                              <Typography variant="caption" color="text.secondary">{new Date(e.createdAt).toLocaleString()}</Typography>
+                            </Grid>
 
-                        <Grid item xs={12} sm={2} sx={{ textAlign: "right" }}>
-                          <Button size="small" onClick={() => openForEdit(e)}>Edit</Button>
-                          <Button size="small" onClick={() => {
-                            // quick preview note
-                            setSnack?.({ open: true, message: e.note || "No note", severity: "info" });
-                          }}>Note</Button>
-                        </Grid>
-                      </Grid>
-                    </CardContent>
-                  </Card>
-                ))}
+                            <Grid item xs={12} sm={4}>
+                              <Typography variant="body2">Parts: {(e.partsSubtotalVND ?? 0).toLocaleString("vi-VN")} VND</Typography>
+                              <Typography variant="body2">Labor: {(e.laborSubtotalVND ?? 0).toLocaleString("vi-VN")} VND</Typography>
+                              <Typography variant="body2">Total: {(e.grandTotalVND ?? 0).toLocaleString("vi-VN")} VND</Typography>
+                            </Grid>
+
+                            <Grid item xs={12} sm={2} sx={{ textAlign: "right", display: "flex", justifyContent: "flex-end", gap: 1 }}>
+                              <Button size="small" onClick={() => openForEdit(e)}>Edit</Button>
+                              <Button size="small" onClick={() => {
+                                setSnack?.({ open: true, message: e.note || "No note", severity: "info" });
+                              }}>Note</Button>
+                              <Button size="small" onClick={() => toggleExpand(e.id)}>{expanded ? "Hide" : "Details"}</Button>
+                            </Grid>
+                          </Grid>
+
+                          {/* Collapse details */}
+                          <Collapse in={expanded} timeout="auto" unmountOnExit>
+                            <Box sx={{ mt: 1, pl: 1 }}>
+                              <Typography variant="subtitle2">Items</Typography>
+                              {itemsPreview.length === 0 ? (
+                                <Typography color="text.secondary">No items</Typography>
+                              ) : (
+                                <Stack spacing={0.5} sx={{ mt: 0.5 }}>
+                                  {itemsPreview.map((it, idx) => (
+                                    <Box key={idx} sx={{ display: "flex", justifyContent: "space-between", gap: 1 }}>
+                                      <Typography variant="body2" sx={{ flex: 1 }}>{it.partId || it.part_id || it.name || "—"}</Typography>
+                                      <Typography variant="body2">{(it.quantity ?? 0)} × {(it.unitPriceVND ?? it.unit_price_vnd ?? 0).toLocaleString("vi-VN")} VND</Typography>
+                                    </Box>
+                                  ))}
+                                </Stack>
+                              )}
+
+                              <Box sx={{ mt: 1 }}>
+                                <Typography variant="body2"><strong>Note:</strong> {e.note || "—"}</Typography>
+                                <Typography variant="body2">Parts subtotal: {(e.partsSubtotalVND ?? 0).toLocaleString("vi-VN")} VND</Typography>
+                                <Typography variant="body2">Labor subtotal: {(e.laborSubtotalVND ?? 0).toLocaleString("vi-VN")} VND</Typography>
+                                <Typography variant="body2"><strong>Total:</strong> {(e.grandTotalVND ?? 0).toLocaleString("vi-VN")} VND</Typography>
+                              </Box>
+                            </Box>
+                          </Collapse>
+                        </CardContent>
+                      </Card>
+                    );
+                  });
+                })()}
               </Stack>
             )}
           </>
@@ -1761,4 +1921,3 @@ function EstimatesDialog({ open, onClose, claim, setSnack }) {
   );
 }
 // ------------------ end EstimatesDialog ------------------
-
