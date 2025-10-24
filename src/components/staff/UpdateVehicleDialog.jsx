@@ -1,39 +1,50 @@
 import React, { useEffect, useState } from "react";
 import {
-    Dialog,
-    DialogTitle,
-    DialogContent,
-    DialogActions,
-    TextField,
-    Button,
-    Grid,
-    Typography,
-    Snackbar,
-    Alert,
+    Dialog, DialogTitle, DialogContent, DialogActions,
+    TextField, Button, Grid, Typography, Snackbar, Alert,
 } from "@mui/material";
+import axios from "axios";
 
-export default function UpdateVehicleDialog({ open, onClose, vehicle }) {
-    // ===== Helper functions =====
-    const toLocalInput = (iso) => {
-        if (!iso) return "";
-        try {
-            const d = new Date(iso);
-            const p = (n) => String(n).padStart(2, "0");
-            return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(
-                d.getDate()
-            )}T${p(d.getHours())}:${p(d.getMinutes())}`;
-        } catch {
-            return "";
-        }
-    };
+/* ====== CONFIG ====== */
+const API_BASE = "http://localhost:8080";
 
-    const toIso = (localStr) => {
-        if (!localStr) return null;
-        const d = new Date(localStr);
-        return isNaN(d.getTime()) ? null : d.toISOString();
-    };
+/* ====== TOKEN HELPERS (đồng bộ với trang list) ====== */
+function readRawToken() {
+    return (
+        localStorage.getItem("access_token") ||
+        localStorage.getItem("token") ||
+        ""
+    );
+}
+function sanitizeToken(t) {
+    if (!t) return "";
+    t = String(t).trim();
+    if (t.startsWith('"') && t.endsWith('"')) t = t.slice(1, -1); // bỏ ngoặc kép
+    if (t.toLowerCase().startsWith("bearer ")) t = t.slice(7).trim(); // bỏ "Bearer " thừa
+    return t;
+}
+function getToken() {
+    return sanitizeToken(readRawToken());
+}
 
-    // ===== State =====
+/* ====== DATE HELPERS ====== */
+const toLocalInput = (iso) => {
+    if (!iso) return "";
+    try {
+        const d = new Date(iso);
+        const p = (n) => String(n).padStart(2, "0");
+        return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`;
+    } catch {
+        return "";
+    }
+};
+const toIso = (localStr) => {
+    if (!localStr) return null;
+    const d = new Date(localStr);
+    return isNaN(d.getTime()) ? null : d.toISOString();
+};
+
+export default function UpdateVehicleDialog({ open, onClose, vehicle, onUpdated }) {
     const [formData, setFormData] = useState({
         modelCode: "",
         model: "",
@@ -43,13 +54,9 @@ export default function UpdateVehicleDialog({ open, onClose, vehicle }) {
         intakeContactPhone: "",
     });
     const [submitting, setSubmitting] = useState(false);
-    const [toast, setToast] = useState({
-        open: false,
-        message: "",
-        severity: "success",
-    });
+    const [toast, setToast] = useState({ open: false, message: "", severity: "success" });
 
-    // ===== Fill form when vehicle changes =====
+    /* Prefill khi open/vehicle đổi */
     useEffect(() => {
         if (vehicle) {
             setFormData({
@@ -60,23 +67,19 @@ export default function UpdateVehicleDialog({ open, onClose, vehicle }) {
                 intakeContactName: vehicle.intakeContactName || "",
                 intakeContactPhone: vehicle.intakeContactPhone || "",
             });
+            setToast((t) => ({ ...t, open: false }));
         }
-    }, [vehicle]);
+    }, [vehicle, open]);
 
     if (!vehicle) return null;
 
-    // ===== Handlers =====
     const handleChange = (field) => (e) =>
         setFormData((prev) => ({ ...prev, [field]: e.target.value }));
 
     const validate = () => {
         const {
-            modelCode,
-            model,
-            inServiceDate,
-            productionDate,
-            intakeContactName,
-            intakeContactPhone,
+            modelCode, model, inServiceDate, productionDate,
+            intakeContactName, intakeContactPhone,
         } = formData;
 
         if (!modelCode.trim()) return "Vui lòng nhập Model Code.";
@@ -92,7 +95,7 @@ export default function UpdateVehicleDialog({ open, onClose, vehicle }) {
             return "Production date không thể sau In-service date.";
 
         if (!intakeContactName.trim()) return "Vui lòng nhập tên người tiếp nhận.";
-        const phoneOk = /^[0-9+\-()\s]{6,20}$/.test(intakeContactPhone.trim());
+        const phoneOk = /^[0-9+\-()\s]{6,20}$/.test((intakeContactPhone || "").trim());
         if (!phoneOk) return "Số điện thoại không hợp lệ.";
 
         return null;
@@ -105,13 +108,8 @@ export default function UpdateVehicleDialog({ open, onClose, vehicle }) {
             setToast({ open: true, message: err, severity: "error" });
             return;
         }
-
         if (!vehicle?.vin?.trim()) {
-            setToast({
-                open: true,
-                message: "VIN của xe đang trống!",
-                severity: "error",
-            });
+            setToast({ open: true, message: "VIN của xe đang trống!", severity: "error" });
             return;
         }
 
@@ -119,7 +117,7 @@ export default function UpdateVehicleDialog({ open, onClose, vehicle }) {
             setSubmitting(true);
 
             const payload = {
-                // ⚠️ BE yêu cầu VIN trong body
+                // tuỳ BE có cần VIN trong body hay không; để an toàn vẫn gửi
                 vin: vehicle.vin,
                 modelCode: formData.modelCode.trim(),
                 model: formData.model.trim(),
@@ -129,57 +127,52 @@ export default function UpdateVehicleDialog({ open, onClose, vehicle }) {
                 intakeContactPhone: formData.intakeContactPhone.trim(),
             };
 
-            // Lấy token (nếu có)
-            const token = localStorage.getItem("token");
-
-            const headers = { "Content-Type": "application/json" };
-            if (token && token.trim()) headers.Authorization = `Bearer ${token}`;
-
-            const res = await fetch(
-                `/api/vehicles/update/${encodeURIComponent(vehicle.vin)}`,
+            const token = getToken();
+            const res = await axios.put(
+                `${API_BASE}/api/vehicles/update/${encodeURIComponent(vehicle.vin)}`,
+                payload,
                 {
-                    method: "PUT",
-                    headers,
-                    body: JSON.stringify(payload),
+                    headers: {
+                        Authorization: token ? `Bearer ${token}` : undefined,
+                        "Content-Type": "application/json",
+                        Accept: "application/json",
+                    },
+                    validateStatus: () => true,
                 }
             );
 
-            if (!res.ok) {
-                const msg = await res.text().catch(() => "");
-                throw new Error(msg || `HTTP ${res.status}`);
+            if (res.status >= 400) {
+                const msg = typeof res.data === "string" ? res.data : res.data?.message || `HTTP ${res.status}`;
+                if (String(msg).toLowerCase().includes("invalid") || String(msg).toLowerCase().includes("expired")) {
+                    localStorage.removeItem("access_token");
+                    localStorage.removeItem("token");
+                    setToast({ open: true, message: "Phiên đăng nhập hết hạn. Vui lòng đăng nhập lại.", severity: "error" });
+                    return;
+                }
+                throw new Error(msg);
             }
 
-            setToast({
-                open: true,
-                message: "Cập nhật vehicle thành công.",
-                severity: "success",
-            });
-            onClose?.();
+            setToast({ open: true, message: "✅ Cập nhật vehicle thành công.", severity: "success" });
+
+            // >>> QUAN TRỌNG: báo parent để refetch list NGAY
+            onUpdated?.();  // parent sẽ đóng dialog + fetchVehicles()
+
         } catch (e2) {
-            setToast({
-                open: true,
-                message: `Cập nhật thất bại: ${e2.message}`,
-                severity: "error",
-            });
+            setToast({ open: true, message: `Cập nhật thất bại: ${e2.message}`, severity: "error" });
         } finally {
             setSubmitting(false);
         }
     };
 
-    // ===== Render =====
     return (
         <>
-            <Dialog open={open} onClose={onClose} fullWidth maxWidth="sm">
+            <Dialog open={open} onClose={() => !submitting && onClose?.()} fullWidth maxWidth="sm">
                 <form onSubmit={handleSubmit} noValidate>
                     <DialogTitle>Update Vehicle</DialogTitle>
                     <DialogContent dividers>
                         <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
                             VIN:&nbsp;
-                            <Typography
-                                component="span"
-                                fontFamily="monospace"
-                                fontWeight={700}
-                            >
+                            <Typography component="span" fontFamily="monospace" fontWeight={700}>
                                 {vehicle.vin}
                             </Typography>
                         </Typography>
@@ -250,9 +243,7 @@ export default function UpdateVehicleDialog({ open, onClose, vehicle }) {
                     </DialogContent>
 
                     <DialogActions>
-                        <Button onClick={onClose} variant="outlined">
-                            Cancel
-                        </Button>
+                        <Button onClick={onClose} variant="outlined" disabled={submitting}>Cancel</Button>
                         <Button type="submit" variant="contained" disabled={submitting}>
                             {submitting ? "Saving..." : "Update Vehicle"}
                         </Button>

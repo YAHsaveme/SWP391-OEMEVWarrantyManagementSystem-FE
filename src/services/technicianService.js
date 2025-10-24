@@ -11,8 +11,8 @@ import axiosInstance from "./axiosInstance";
  * - POST /api/technicians/{technicianId}/schedules/create-sunday → Tạo ca Chủ Nhật
  */
 
-const API_BASE_LIST = "/auth/staff/technicians";
-const API_BASE_TECH = "/technicians";
+const API_BASE_LIST = "auth/staff/technicians";
+const API_BASE_TECH = "technicians";
 
 const technicianService = {
   /**

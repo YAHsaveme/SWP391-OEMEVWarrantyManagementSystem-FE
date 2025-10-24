@@ -1,4 +1,4 @@
-import React, { useMemo, useState, useEffect } from "react";
+import React, { useMemo, useState, useEffect, useCallback } from "react";
 import axios from "axios";
 import {
     Container, Box, Card, CardContent, TextField, InputAdornment, Button, IconButton,
@@ -117,43 +117,60 @@ export default function VehiclesPage() {
     const [targetVehicle, setTargetVehicle] = useState(null);
     const [snack, setSnack] = useState({ open: false, message: "", severity: "info" });
 
-    /* ===== Load vehicles ===== */
-    useEffect(() => {
+    /* ===== TÁCH fetchVehicles để tái sử dụng (refetch sau create/update/activate) ===== */
+    const fetchVehicles = useCallback(async () => {
         const token = getToken();
         if (!token) {
             setError("❌ Chưa có token. Vui lòng đăng nhập lại.");
             clearTokensAndGotoLogin("Chưa có token. Vui lòng đăng nhập lại.");
             return;
         }
+        try {
+            const res = await api.get("/api/vehicles/get-all", { validateStatus: () => true });
+            console.log("📦 Status:", res.status);
+            console.log("📦 Data:", res.data);
 
-        api
-            .get("/api/vehicles/get-all", { validateStatus: () => true })
-            .then((res) => {
-                console.log("📦 Status:", res.status);
-                console.log("📦 Data:", res.data);
-
-                if (res.status >= 400) {
-                    const rawMsg =
-                        typeof res.data === "string"
-                            ? res.data
-                            : String(res.data?.message || "");
-                    const msg = rawMsg.toLowerCase();
-                    if (msg.includes("invalid") || msg.includes("expired")) {
-                        clearTokensAndGotoLogin("Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại.");
-                        return;
-                    }
-                    setError(`Server trả lỗi ${res.status}: ${res.data?.message || "Bad Request"}`);
+            if (res.status >= 400) {
+                const rawMsg =
+                    typeof res.data === "string"
+                        ? res.data
+                        : String(res.data?.message || "");
+                const msg = rawMsg.toLowerCase();
+                if (msg.includes("invalid") || msg.includes("expired")) {
+                    clearTokensAndGotoLogin("Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại.");
                     return;
                 }
+                setError(`Server trả lỗi ${res.status}: ${res.data?.message || "Bad Request"}`);
+                return;
+            }
 
-                const list = Array.isArray(res.data) ? res.data : res.data?.data || [];
-                setVehicals(list);
-            })
-            .catch((err) => {
-                console.error("❌ Axios Error:", err);
-                setError(err.message);
-            });
+            const list = Array.isArray(res.data) ? res.data : res.data?.data || [];
+            setVehicals(list);
+            setError(null);
+        } catch (err) {
+            console.error("❌ Axios Error:", err);
+            setError(err.message);
+        }
     }, []);
+
+    /* ===== Load lần đầu ===== */
+    useEffect(() => {
+        fetchVehicles();
+    }, [fetchVehicles]);
+
+    /* ===== Callback sau khi create/update để refetch ===== */
+    const handleCreated = () => {
+        setCreateOpen(false);
+        setPage(1);
+        fetchVehicles();
+        setSnack({ open: true, message: "✅ Đã tạo xe mới", severity: "success" });
+    };
+
+    const handleUpdated = () => {
+        setUpdateOpen(false);
+        fetchVehicles();
+        setSnack({ open: true, message: "✅ Đã cập nhật xe", severity: "success" });
+    };
 
     /* ===== Filtering & pagination ===== */
     const filtered = useMemo(() => {
@@ -236,6 +253,8 @@ export default function VehiclesPage() {
                     message: `✅ Đã kích hoạt bảo hành cho VIN ${targetVehicle.vin}`,
                     severity: "success",
                 });
+                // REFRESH danh sách để thấy trạng thái mới
+                await fetchVehicles();
             }
         } catch (e) {
             console.error(e);
@@ -370,8 +389,18 @@ export default function VehiclesPage() {
                 />
             </Card>
 
-            <CreateVehicleDialog open={createOpen} onClose={() => setCreateOpen(false)} />
-            <UpdateVehicleDialog open={updateOpen} onClose={() => setUpdateOpen(false)} vehicle={selectedVehicle} />
+            {/* Truyền onCreated / onUpdated để refetch */}
+            <CreateVehicleDialog
+                open={createOpen}
+                onClose={() => setCreateOpen(false)}
+                onCreated={handleCreated}
+            />
+            <UpdateVehicleDialog
+                open={updateOpen}
+                onClose={() => setUpdateOpen(false)}
+                vehicle={selectedVehicle}
+                onUpdated={handleUpdated}
+            />
 
             {/* Confirm activate */}
             <Dialog open={confirmOpen} onClose={() => !activating && setConfirmOpen(false)}>
