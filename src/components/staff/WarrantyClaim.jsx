@@ -13,6 +13,7 @@ import {
   TextField,
   InputAdornment,
   Button,
+  IconButton,
   Tooltip,
   Chip,
   Dialog,
@@ -34,8 +35,10 @@ import PendingActionsIcon from "@mui/icons-material/PendingActions";
 import CheckCircleIcon from "@mui/icons-material/CheckCircle";
 import DoneAllIcon from "@mui/icons-material/DoneAll";
 import Collapse from "@mui/material/Collapse";
+import { Add, DeleteOutline, ExpandMore } from "@mui/icons-material";
+import Autocomplete from "@mui/material/Autocomplete";
 import axiosInstance from "../../services/axiosInstance";
-import claimService from "../../services/claimService";
+import claimService, { CLAIM_STATUS } from "../../services/claimService";
 import centerService from "../../services/centerService";
 import estimatesService from "../../services/estimatesService";
 import { uploadToCloudinary } from "../../utils/cloudinary";
@@ -187,10 +190,14 @@ export default function WarrantyClaimsPage() {
 
   const totals = useMemo(() => {
     const count = claims.length;
-    const pending = claims.filter((c) => c.status === "PENDING" || c.status === "DIAGNOSING").length;
-    const approved = claims.filter((c) => c.status === "APPROVED").length;
-    const completed = claims.filter((c) => c.status === "COMPLETED").length;
-    return { count, pending, approved, completed };
+    const diagnosing = claims.filter((c) => c.status === CLAIM_STATUS.DIAGNOSING).length;
+    const estimating = claims.filter((c) => c.status === CLAIM_STATUS.ESTIMATING).length;
+    const underReview = claims.filter((c) => c.status === CLAIM_STATUS.UNDER_REVIEW).length;
+    const approved = claims.filter((c) => c.status === CLAIM_STATUS.APPROVED).length;
+    const completed = claims.filter((c) => c.status === CLAIM_STATUS.COMPLETED).length;
+    const rejected = claims.filter((c) => c.status === CLAIM_STATUS.REJECTED).length;
+
+    return { count, diagnosing, estimating, underReview, approved, completed, rejected };
   }, [claims]);
 
   const filtered = useMemo(() => {
@@ -306,12 +313,12 @@ export default function WarrantyClaimsPage() {
               onChange={(e) => setStatusFilter(e.target.value)}
             >
               <MenuItem value="all">All Status</MenuItem>
-              <MenuItem value="DIAGNOSING">Diagnosing</MenuItem>
-              <MenuItem value="ESTIMATING">Estimating</MenuItem>
-              <MenuItem value="UNDER_REVIEW">Under Review</MenuItem>
-              <MenuItem value="APPROVED">Approved</MenuItem>
-              <MenuItem value="COMPLETED">Completed</MenuItem>
-              <MenuItem value="REJECTED">Rejected</MenuItem>
+              <MenuItem value={CLAIM_STATUS.DIAGNOSING}>Diagnosing</MenuItem>
+              <MenuItem value={CLAIM_STATUS.ESTIMATING}>Estimating</MenuItem>
+              <MenuItem value={CLAIM_STATUS.UNDER_REVIEW}>Under Review</MenuItem>
+              <MenuItem value={CLAIM_STATUS.APPROVED}>Approved</MenuItem>
+              <MenuItem value={CLAIM_STATUS.COMPLETED}>Completed</MenuItem>
+              <MenuItem value={CLAIM_STATUS.REJECTED}>Rejected</MenuItem>
             </Select>
           </FormControl>
         </Grid>
@@ -441,6 +448,7 @@ export default function WarrantyClaimsPage() {
             setLoading(true);
             const created = await claimService.create(newClaim);
             setClaims((prev) => [created, ...prev]);
+            window.dispatchEvent(new CustomEvent("claims-changed"));
             setSnack({ open: true, message: "Claim created successfully", severity: "success" });
           } catch (err) {
             console.error("Create claim failed:", err);
@@ -451,6 +459,7 @@ export default function WarrantyClaimsPage() {
             setLoading(false);
           }
         }}
+        setSnack={setSnack}
       />
 
       {/* --- VIEW-ONLY DIALOG --- */}
@@ -469,6 +478,7 @@ export default function WarrantyClaimsPage() {
           try {
             setLoading(true);
             const updated = await claimService.updateStatus(id, updatedStatus);
+            window.dispatchEvent(new CustomEvent("claim-sync"));
             setClaims((prev) => prev.map((c) => (c.id === id ? updated : c)));
             setSnack({ open: true, message: "Claim status updated", severity: "success" });
           } catch (err) {
@@ -564,7 +574,7 @@ function Row({ label, value }) {
 }
 
 /* ---------- Create Claim Dialog (unchanged) ---------- */
-function CreateClaimDialog({ open, onClose, onCreate }) {
+function CreateClaimDialog({ open, onClose, onCreate, setSnack }) {
   const [vin, setVin] = useState("");
   const [summary, setSummary] = useState("");
   const [odometerKm, setOdometerKm] = useState("");
@@ -578,7 +588,15 @@ function CreateClaimDialog({ open, onClose, onCreate }) {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (!vin || !summary) return;
+    // UI validation — show snackbar if invalid
+    if (!vin?.trim()) {
+      setSnack?.({ open: true, message: "VIN là bắt buộc.", severity: "error" });
+      return;
+    }
+    if (!summary?.trim()) {
+      setSnack?.({ open: true, message: "Summary là bắt buộc.", severity: "error" });
+      return;
+    }
 
     try {
       // Upload file lên Cloudinary trước
@@ -588,13 +606,13 @@ function CreateClaimDialog({ open, onClose, onCreate }) {
 
       // Gửi payload JSON lên backend
       const payload = {
-        vin,
+        vin: vin.trim(),
         claimType,
         coverageType,
         errorDate: errorDate ? new Date(errorDate).toISOString() : new Date().toISOString(),
         odometerKm: Number(odometerKm) || 0,
-        summary,
-        intakeContactName,
+        summary: summary.trim(),
+        intakeContactName: intakeContactName?.trim() || undefined,
         attachmentUrls: uploadedUrls,
       };
 
@@ -610,6 +628,7 @@ function CreateClaimDialog({ open, onClose, onCreate }) {
       setFiles([]);
     } catch (err) {
       console.error("Create claim failed:", err);
+      setSnack?.({ open: true, message: "Tạo claim thất bại", severity: "error" });
     }
   };
 
@@ -1200,12 +1219,12 @@ function UpdateClaimDialog({ open, onClose, claim, onUpdateStatus, onUpdateClaim
                 fullWidth
                 select
               >
-                <MenuItem value="DIAGNOSING">Diagnosing</MenuItem>
-                <MenuItem value="ESTIMATING">Estimating</MenuItem>
-                <MenuItem value="UNDER_REVIEW">Under Review</MenuItem>
-                <MenuItem value="APPROVED">Approved</MenuItem>
-                <MenuItem value="COMPLETED">Completed</MenuItem>
-                <MenuItem value="REJECTED">Rejected</MenuItem>
+                <MenuItem value={CLAIM_STATUS.DIAGNOSING}>Diagnosing</MenuItem>
+                <MenuItem value={CLAIM_STATUS.ESTIMATING}>Estimating</MenuItem>
+                <MenuItem value={CLAIM_STATUS.UNDER_REVIEW}>Under Review</MenuItem>
+                <MenuItem value={CLAIM_STATUS.APPROVED}>Approved</MenuItem>
+                <MenuItem value={CLAIM_STATUS.COMPLETED}>Completed</MenuItem>
+                <MenuItem value={CLAIM_STATUS.REJECTED}>Rejected</MenuItem>
               </TextField>
             </Grid>
 
@@ -1441,24 +1460,25 @@ function UpdateClaimDialog({ open, onClose, claim, onUpdateStatus, onUpdateClaim
 
 // ------------------ EstimatesDialog component ------------------
 function EstimatesDialog({ open, onClose, claim, setSnack }) {
-  const [list, setList] = React.useState([]);
+  const [list, setList] = React.useState([]); // existing estimates for claim
   const [loadingLocal, setLoadingLocal] = React.useState(false);
-  const [editing, setEditing] = React.useState(null); // object when editing an estimate
+  const [editing, setEditing] = React.useState(null);
   const [creating, setCreating] = React.useState(false);
 
-  // local form: items as { partId, partName, unitPriceVND, quantity }
+  // parts list (active) for autocomplete: [{ id, partNo, partName, unitPrice }]
+  const [parts, setParts] = React.useState([]);
+  const [partsLoading, setPartsLoading] = React.useState(false);
+
   const emptyForm = {
-    items: [],
+    items: [], // each: { partId, partName, unitPriceVND, quantity }
     laborSlots: 0,
-    laborRateVND: 0,
+    laborRateVND: 100000,
     note: "",
   };
   const [form, setForm] = React.useState(emptyForm);
+  const [expandedMap, setExpandedMap] = React.useState({});
 
-  // local UI state for expanded card per estimate id
-  const [expandedMap, setExpandedMap] = React.useState({}); // { [estId]: true/false }
-  const [customer, setCustomer] = React.useState({ name: "—", phone: "—" });
-
+  // load estimates for claim
   React.useEffect(() => {
     if (!open || !claim?.id) return;
     let mounted = true;
@@ -1475,100 +1495,83 @@ function EstimatesDialog({ open, onClose, claim, setSnack }) {
       }
     })();
     return () => (mounted = false);
-  }, [open, claim?.id]);
+  }, [open, claim?.id, setSnack]);
 
-  // Fetch thông tin khách hàng theo VIN nếu claim chưa có intakeContactName
+  // load active parts for autocomplete (no IDs shown in UI)
   React.useEffect(() => {
-    if (!claim?.vin) return;
-
-    // Nếu claim có sẵn tên và SĐT thì dùng luôn
-    if (claim?.intakeContactName && claim?.intakeContactPhone) {
-      setCustomer({
-        name: claim.intakeContactName,
-        phone: claim.intakeContactPhone,
-      });
-      return;
-    }
-
-    // Ngược lại -> gọi API /vehicles/detail/{vin}
+    if (!open) return;
+    let mounted = true;
     (async () => {
       try {
-        const data = await vehiclesService.getByVin(claim.vin);
-        setCustomer({
-          name: data.intakeContactName || "—",
-          phone: data.intakeContactPhone || "—",
-        });
+        setPartsLoading(true);
+        // axiosInstance is configured for API base; call "parts/get-active"
+        const res = await axiosInstance.get(`parts/get-active`);
+        const raw = Array.isArray(res?.data) ? res.data : res?.data?.data ?? [];
+        if (!mounted) return;
+        // normalize minimal fields
+        const normalized = raw.map((p) => ({
+          id: p.id,
+          partNo: p.partNo || "",
+          partName: p.partName || p.name || "(no name)",
+          unitPriceVND: p.unitPrice ?? p.unitPriceVND ?? 0,
+        }));
+        setParts(normalized);
       } catch (err) {
-        console.warn("❌ Lỗi lấy thông tin khách hàng theo VIN:", err);
-        setCustomer({ name: "—", phone: "—" });
+        console.error("Load parts failed:", err);
+        setParts([]);
+        setSnack?.({ open: true, message: "Không tải được danh sách phụ tùng", severity: "warning" });
+      } finally {
+        if (mounted) setPartsLoading(false);
       }
     })();
-  }, [claim?.vin]);
+    return () => (mounted = false);
+  }, [open, setSnack]);
 
+  // sync editing -> form
   React.useEffect(() => {
-    // reset form when opening form
-    if (!open) {
-      setCreating(false);
-      setEditing(null);
+    if (!editing) {
       setForm(emptyForm);
-      setExpandedMap({});
+      return;
     }
-  }, [open]);
-
-  React.useEffect(() => {
-    if (editing) {
-      // try parse itemsJson: API returns itemsJson as string or array depending backend
-      let items = [];
-      try {
-        items = typeof editing.itemsJson === "string" ? JSON.parse(editing.itemsJson) : editing.itemsJson;
-      } catch (e) {
-        items = editing.itemsJson || [];
-      }
-      const mapped = (items || []).map((it) => ({
+    // editing may contain items / itemsJson; map into form.items with partName
+    let items = [];
+    try {
+      const rawItems = editing.itemsJson ? (typeof editing.itemsJson === "string" ? JSON.parse(editing.itemsJson) : editing.itemsJson) : editing.items || [];
+      items = (rawItems || []).map((it) => ({
         partId: it.partId || it.part_id || "",
         partName: it.partName || it.part_name || it.name || "",
         unitPriceVND: it.unitPriceVND ?? it.unit_price_vnd ?? 0,
-        quantity: it.quantity ?? 1,
+        quantity: it.quantity ?? it.qty ?? 1,
       }));
-      setForm({
-        items: mapped,
-        laborSlots: editing.laborSlots ?? 0,
-        laborRateVND: editing.laborRateVND ?? 0,
-        note: editing.note ?? "",
-      });
+    } catch (e) {
+      items = [];
     }
+    setForm({
+      items,
+      laborSlots: editing.laborSlots ?? 0,
+      laborRateVND: 100000,
+      note: editing.note ?? "",
+    });
   }, [editing]);
 
-  // helpers: compute totals (based on local unitPrice fields)
-  const partsSubtotal = React.useMemo(() => {
-    return form.items.reduce((s, it) => s + (Number(it.unitPriceVND || 0) * Number(it.quantity || 0)), 0);
-  }, [form.items]);
-
-  const laborSubtotal = (Number(form.laborSlots || 0) * Number(form.laborRateVND || 0));
+  // helper - totals
+  const partsSubtotal = React.useMemo(() => form.items.reduce((s, it) => s + (Number(it.unitPriceVND || 0) * Number(it.quantity || 0)), 0), [form.items]);
+  const laborSubtotal = Number(form.laborSlots || 0) * Number(form.laborRateVND || 0);
   const grandTotal = partsSubtotal + laborSubtotal;
 
-  // item management
-  const addEmptyItem = () => {
-    setForm((f) => ({ ...f, items: [...f.items, { partId: "", partName: "", unitPriceVND: 0, quantity: 1 }] }));
-  };
-  const updateItem = (idx, key, value) => {
-    setForm((f) => {
-      const items = [...f.items];
-      items[idx] = { ...items[idx], [key]: value };
-      return { ...f, items };
-    });
-  };
-  const removeItem = (idx) => {
-    setForm((f) => ({ ...f, items: f.items.filter((_, i) => i !== idx) }));
-  };
+  // item operations
+  const addItem = () => setForm((f) => ({ ...f, items: [...f.items, { partId: "", partName: "", unitPriceVND: 0, quantity: 1 }] }));
+  const removeItem = (idx) => setForm((f) => ({ ...f, items: f.items.filter((_, i) => i !== idx) }));
+  const updateItem = (idx, patch) => setForm((f) => {
+    const items = [...f.items];
+    items[idx] = { ...items[idx], ...patch };
+    return { ...f, items };
+  });
 
-  // build payload for create/update (API expects itemsJson with partId + quantity)
-  const buildPayload = (overrideForm = null) => {
+  // Build payload for create/update: backend expects itemsJson: [{partId, quantity}]
+  const buildPayloadForApi = (overrideForm = null) => {
     const use = overrideForm || form;
-    const itemsJson = (use.items || []).map((it) => ({
-      partId: it.partId || null,
-      quantity: Number(it.quantity || 0),
-    }));
+    const itemsJson = (use.items || []).map((it) => ({ partId: it.partId || null, quantity: Number(it.quantity || 0) }));
     return {
       claim_id: claim?.id || claim?.claimId || null,
       itemsJson,
@@ -1578,71 +1581,52 @@ function EstimatesDialog({ open, onClose, claim, setSnack }) {
     };
   };
 
-  // helper: get latest estimate (most recent createdAt)
-  const getLatestEstimate = React.useCallback(() => {
-    if (!list || list.length === 0) return null;
-    const sorted = [...list].sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
-    return sorted[0];
-  }, [list]);
-
-  // When creating new estimate: if there is an existing latest estimate, prefill form from it (versioning)
-  const handleNewEstimateClick = async () => {
-    setCreating(true);
-    setEditing(null);
-
-    // find latest
-    const latest = getLatestEstimate();
-    if (!latest) {
-      setForm(emptyForm);
-      return;
+  // validation: ensure each item has partId
+  const validateFormBeforeSend = () => {
+    if (!form.items.length) {
+      setSnack?.({ open: true, message: "Cần ít nhất 1 phụ tùng (item) trong estimate", severity: "warning" });
+      return false;
     }
-
-    // fetch full latest from API to be safe
-    try {
-      setLoadingLocal(true);
-      const full = await estimatesService.getById(latest.id);
-      let items = [];
-      try {
-        items = typeof full.itemsJson === "string" ? JSON.parse(full.itemsJson) : full.itemsJson;
-      } catch (e) {
-        items = full.itemsJson || [];
+    for (const it of form.items) {
+      if (!it.partId) {
+        setSnack?.({ open: true, message: `Một item chưa chọn phụ tùng hợp lệ: "${it.partName || ''}"`, severity: "warning" });
+        return false;
       }
-      const mapped = (items || []).map((it) => ({
-        partId: it.partId || it.part_id || "",
-        partName: it.partName || it.part_name || it.name || "",
-        unitPriceVND: it.unitPriceVND ?? it.unit_price_vnd ?? 0,
-        quantity: it.quantity ?? 1,
-      }));
-      setForm({
-        items: mapped,
-        laborSlots: full.laborSlots ?? 0,
-        laborRateVND: full.laborRateVND ?? 0,
-        note: full.note ?? "",
-      });
-    } catch (err) {
-      console.warn("Không thể tải latest estimate, mở form trống:", err);
-      setForm(emptyForm);
-    } finally {
-      setLoadingLocal(false);
+      if (!it.quantity || Number(it.quantity) <= 0) {
+        setSnack?.({ open: true, message: `Số lượng phải lớn hơn 0 cho "${it.partName}"`, severity: "warning" });
+        return false;
+      }
     }
+    return true;
   };
 
   const handleCreate = async () => {
-    if (!form.items.length) {
-      setSnack?.({ open: true, message: "Cần ít nhất 1 phụ tùng (item) trong estimate", severity: "warning" });
-      return;
-    }
+    if (!validateFormBeforeSend()) return;
     try {
       setLoadingLocal(true);
-      const payload = buildPayload();
+      const payload = buildPayloadForApi();
       const created = await estimatesService.create(payload);
       setList((prev) => [created, ...prev]);
       setSnack?.({ open: true, message: "Tạo estimate thành công", severity: "success" });
       setCreating(false);
+      // notify other parts of app if needed
       window.dispatchEvent(new CustomEvent("claim-updated", { detail: { ...claim, lastEstimate: created } }));
     } catch (err) {
       console.error("Create estimate error:", err);
-      setSnack?.({ open: true, message: "Tạo estimate thất bại", severity: "error" });
+      const msg = err?.response?.data;
+      let friendlyMessage = "Tạo estimate thất bại";
+
+      if (msg?.includes("phải có trạng thái ESTIMATING")) {
+        friendlyMessage = "⚠️ Chưa có Diagnostics hoặc claim chưa chuyển sang giai đoạn lập báo giá (ESTIMATING).";
+      } else if (msg?.includes("Không tìm thấy claim")) {
+        friendlyMessage = "Claim không tồn tại hoặc đã bị xoá.";
+      }
+
+      setSnack?.({
+        open: true,
+        message: friendlyMessage,
+        severity: "warning",
+      });
     } finally {
       setLoadingLocal(false);
     }
@@ -1650,14 +1634,11 @@ function EstimatesDialog({ open, onClose, claim, setSnack }) {
 
   const handleUpdate = async () => {
     if (!editing?.id) return;
+    if (!validateFormBeforeSend()) return;
     try {
       setLoadingLocal(true);
-      const payload = {
-        itemsJson: (form.items || []).map((it) => ({ partId: it.partId || null, quantity: Number(it.quantity || 0) })),
-        laborSlots: Number(form.laborSlots || 0),
-        laborRateVND: Number(form.laborRateVND || 0),
-        note: form.note || "",
-      };
+      const payload = buildPayloadForApi();
+      // For update API the spec expects itemsJson, laborSlots, laborRateVND, note
       const updated = await estimatesService.update(editing.id, payload);
       setList((prev) => prev.map((p) => (p.id === updated.id ? updated : p)));
       setSnack?.({ open: true, message: "Cập nhật estimate thành công", severity: "success" });
@@ -1685,239 +1666,198 @@ function EstimatesDialog({ open, onClose, claim, setSnack }) {
     }
   };
 
-  // helper: toggle expand for an estimate
-  const toggleExpand = (id) => {
-    setExpandedMap((m) => ({ ...m, [id]: !m[id] }));
-  };
+  const toggleExpand = (id) => setExpandedMap((m) => ({ ...m, [id]: !m[id] }));
 
-  // compute local "version number" for display: newest = N, increase by creation time
-  const computeVersionNumber = (est) => {
-    if (!list || !est) return 1;
-    const sorted = [...list].sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt)); // oldest -> newest
-    const idx = sorted.findIndex((x) => x.id === est.id);
-    if (idx === -1) return 1;
-    return idx + 1; // oldest = 1 ... newest = N
-  };
-
-  // customer display name & phone: prefer claim.intakeContactName / claim.intakeContactPhone
-  const customerName = claim?.intakeContactName || "—";
-  const customerPhone = claim?.intakeContactPhone || "—";
-
+  // render
   return (
     <Dialog open={open} onClose={onClose} fullWidth maxWidth="lg">
-      <DialogTitle>
-        Estimates — {claim?.vin || (claim?.vehicle?.vin ?? "Claim")}
-        <Box sx={{ float: "right", display: "flex", gap: 1, alignItems: "center" }}>
-          <Button size="small" onClick={handleNewEstimateClick}>New Estimate</Button>
-        </Box>
-      </DialogTitle>
-
+      <DialogTitle>Estimates for claim</DialogTitle>
       <DialogContent dividers>
-        {/* Create / Edit Form */}
-        {(creating || editing) && (
-          <Card sx={{ mb: 2 }}>
-            <CardContent>
-              <Typography variant="subtitle2" gutterBottom>{editing ? `Editing estimate (version ${computeVersionNumber(editing)})` : `New estimate (based on latest)`}</Typography>
+        {/* existing estimates list */}
+        <Typography variant="subtitle1" sx={{ mb: 1 }}>Existing Estimates</Typography>
+        {loadingLocal ? <CircularProgress /> : (
+          <Stack spacing={1} sx={{ mb: 2 }}>
+            {list.length === 0 && <Typography color="text.secondary">No estimates yet</Typography>}
+            {list.map((e) => {
+              // itemsPreview: show partName, quantity, unitPrice
+              const itemsPreview = (e.items || e.itemsJson || []).map((it) => {
+                // items returned from API might have partName or partNo; normalize
+                return {
+                  partName: it.partName || it.part_name || it.name || (parts.find(p => p.id === it.partId)?.partName) || "—",
+                  quantity: it.quantity ?? 0,
+                  unitPriceVND: it.unitPriceVND ?? it.unit_price_vnd ?? 0,
+                };
+              });
+              return (
+                <Card key={e.id} variant="outlined">
+                  <CardContent>
+                    <Stack direction="row" justifyContent="space-between" alignItems="center">
+                      <Typography fontWeight={700}>Estimate — v{ /* compute version if needed */ ""}</Typography>
+                      <Stack direction="row" spacing={1}>
+                        <Button size="small" onClick={() => openForEdit(e)}>Edit</Button>
+                        <Button size="small" onClick={() => toggleExpand(e.id)}>Details</Button>
+                      </Stack>
+                    </Stack>
 
-              <Grid container spacing={2}>
-                <Grid item xs={12}>
-                  <Typography variant="body2">Parts</Typography>
+                    <Collapse in={Boolean(expandedMap[e.id])} timeout="auto" unmountOnExit>
+                      <Box sx={{ mt: 1 }}>
+                        <Typography variant="subtitle2">Items</Typography>
+                        {itemsPreview.length === 0 ? <Typography color="text.secondary">No items</Typography> : (
+                          <Stack spacing={0.5} sx={{ mt: 0.5 }}>
+                            {itemsPreview.map((it, idx) => (
+                              <Stack key={idx} direction="row" justifyContent="space-between">
+                                <Typography variant="body2" sx={{ flex: 1 }}>{it.partName}</Typography>
+                                <Typography variant="body2">{(it.quantity ?? 0)} × {(it.unitPriceVND ?? 0).toLocaleString("vi-VN")} VND</Typography>
+                              </Stack>
+                            ))}
+                          </Stack>
+                        )}
+
+                        <Box sx={{ mt: 1 }}>
+                          <Typography variant="body2">Note: {e.note || "—"}</Typography>
+                          <Typography variant="body2">Parts subtotal: {(e.partsSubtotalVND ?? 0).toLocaleString("vi-VN")} VND</Typography>
+                          <Typography variant="body2">Labor subtotal: {(e.laborSubtotalVND ?? 0).toLocaleString("vi-VN")} VND</Typography>
+                          <Typography variant="body2"><strong>Total:</strong> {(e.grandTotalVND ?? 0).toLocaleString("vi-VN")} VND</Typography>
+                        </Box>
+                      </Box>
+                    </Collapse>
+                  </CardContent>
+                </Card>
+              );
+            })}
+          </Stack>
+        )}
+
+        <Divider sx={{ my: 2 }} />
+
+        {/* Create/Edit form */}
+        <Stack spacing={2}>
+          <Stack direction="row" spacing={1} alignItems="center">
+            <Button variant="contained" onClick={() => { setCreating(true); setEditing(null); setForm(emptyForm); }}>New Estimate</Button>
+            <Button variant="outlined" onClick={() => handleNewFromLatest(list, setForm, setSnack)}>Copy Latest</Button>
+            <Typography color="text.secondary">Tip: Chọn Part</Typography>
+          </Stack>
+
+          {/* items table */}
+          <Stack spacing={1}>
+            {form.items.map((it, idx) => (
+              <Grid container spacing={1} key={idx} alignItems="center">
+                <Grid item xs={6} md={5}>
+                  <Autocomplete
+                    size="small"
+                    options={parts}
+                    getOptionLabel={(option) => option.partName || ""}
+                    loading={partsLoading}
+                    value={parts.find(p => p.id === it.partId) || (it.partName ? { id: it.partId, partName: it.partName, unitPriceVND: it.unitPriceVND } : null)}
+                    onChange={(_, selected) => {
+                      if (!selected) {
+                        updateItem(idx, { partId: "", partName: "", unitPriceVND: 0 });
+                        return;
+                      }
+                      updateItem(idx, { partId: selected.id, partName: selected.partName, unitPriceVND: selected.unitPriceVND ?? 0 });
+                    }}
+                    renderInput={(params) => <TextField {...params} label="Part (by name)" />}
+                    noOptionsText="No parts"
+                    freeSolo={false} // force selecting from list
+                  />
                 </Grid>
 
-                {(form.items || []).map((it, idx) => (
-                  <React.Fragment key={idx}>
-                    <Grid item xs={5}>
-                      <TextField
-                        label="Part ID / SKU"
-                        value={it.partId}
-                        onChange={(e) => updateItem(idx, "partId", e.target.value)}
-                        fullWidth
-                        size="small"
-                      />
-                    </Grid>
-                    <Grid item xs={3}>
-                      <TextField
-                        label="Name"
-                        value={it.partName}
-                        onChange={(e) => updateItem(idx, "partName", e.target.value)}
-                        fullWidth
-                        size="small"
-                      />
-                    </Grid>
-                    <Grid item xs={2}>
-                      <TextField
-                        label="Unit price (VND)"
-                        value={it.unitPriceVND}
-                        onChange={(e) => updateItem(idx, "unitPriceVND", e.target.value)}
-                        fullWidth
-                        size="small"
-                        type="number"
-                      />
-                    </Grid>
-                    <Grid item xs={1}>
-                      <TextField
-                        label="Qty"
-                        value={it.quantity}
-                        onChange={(e) => updateItem(idx, "quantity", e.target.value)}
-                        fullWidth
-                        size="small"
-                        type="number"
-                      />
-                    </Grid>
-                    <Grid item xs={1} sx={{ display: "flex", alignItems: "center" }}>
-                      <Button onClick={() => removeItem(idx)} size="small">Remove</Button>
-                    </Grid>
-                  </React.Fragment>
-                ))}
-
-                <Grid item xs={12}>
-                  <Button onClick={addEmptyItem} size="small">+ Add part</Button>
-                </Grid>
-
-                <Grid item xs={6} md={3}>
+                <Grid item xs={3} md={2}>
                   <TextField
-                    label="Labor slots"
-                    value={form.laborSlots}
-                    onChange={(e) => setForm((f) => ({ ...f, laborSlots: e.target.value }))}
-                    fullWidth
+                    size="small"
+                    label="Quantity"
                     type="number"
-                    size="small"
+                    value={it.quantity}
+                    onChange={(e) => updateItem(idx, { quantity: Number(e.target.value || 0) })}
                   />
                 </Grid>
-                <Grid item xs={6} md={3}>
+
+                <Grid item xs={3} md={3}>
                   <TextField
-                    label="Labor rate (VND)"
-                    value={form.laborRateVND}
-                    onChange={(e) => setForm((f) => ({ ...f, laborRateVND: e.target.value }))}
-                    fullWidth
-                    type="number"
                     size="small"
+                    label="Unit Price (VND)"
+                    value={it.unitPriceVND ?? 0}
+                    InputProps={{ readOnly: true }}
                   />
                 </Grid>
 
-                <Grid item xs={12}>
-                  <TextField
-                    label="Note"
-                    value={form.note}
-                    onChange={(e) => setForm((f) => ({ ...f, note: e.target.value }))}
-                    fullWidth
-                    multiline
-                    minRows={2}
-                    size="small"
-                  />
-                </Grid>
-
-                <Grid item xs={12}>
-                  <Typography variant="body2">Parts subtotal: {partsSubtotal.toLocaleString("vi-VN")} VND</Typography>
-                  <Typography variant="body2">Labor subtotal: {laborSubtotal.toLocaleString("vi-VN")} VND</Typography>
-                  <Typography variant="h6">Grand total: {grandTotal.toLocaleString("vi-VN")} VND</Typography>
-                </Grid>
-
-                <Grid item xs={12} sx={{ display: "flex", gap: 1 }}>
-                  <Button variant="outlined" onClick={() => { setCreating(false); setEditing(null); setForm(emptyForm); }}>Cancel</Button>
-                  {editing ? (
-                    <Button variant="contained" onClick={handleUpdate} disabled={loadingLocal}>{loadingLocal ? <CircularProgress size={18} /> : "Save"}</Button>
-                  ) : (
-                    <Button variant="contained" onClick={handleCreate} disabled={loadingLocal}>{loadingLocal ? <CircularProgress size={18} /> : "Create"}</Button>
-                  )}
+                <Grid item xs={12} md={2}>
+                  <Stack direction="row" spacing={1}>
+                    <IconButton size="small" onClick={() => removeItem(idx)}><DeleteOutline /></IconButton>
+                  </Stack>
                 </Grid>
               </Grid>
-            </CardContent>
-          </Card>
-        )}
+            ))}
 
-        {/* List of estimates with customer name & expand for details */}
-        {loadingLocal ? (
-          <Box sx={{ py: 4, textAlign: "center" }}><CircularProgress /></Box>
-        ) : (
-          <>
-            {list.length === 0 ? (
-              <Typography color="text.secondary">Chưa có estimate cho claim này.</Typography>
-            ) : (
-              <Stack spacing={1}>
-                {(() => {
-                  // sort by createdAt descending so newest first
-                  const sorted = [...list].sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
-                  return sorted.map((e) => {
-                    const version = computeVersionNumber(e);
-                    const expanded = !!expandedMap[e.id];
-                    // Try to get items to show summary quickly (may be undefined)
-                    let itemsPreview = [];
-                    try {
-                      const parsed = typeof e.itemsJson === "string" ? JSON.parse(e.itemsJson) : e.itemsJson;
-                      itemsPreview = Array.isArray(parsed) ? parsed : [];
-                    } catch (err) {
-                      itemsPreview = e.itemsJson || [];
-                    }
+            <Button size="small" variant="outlined" startIcon={<Add />} onClick={addItem}>Add item</Button>
+          </Stack>
 
-                    return (
-                      <Card key={e.id} variant="outlined">
-                        <CardContent>
-                          <Grid container spacing={1} alignItems="center">
-                            <Grid item xs={12} sm={6}>
-                              {/* Hide id: show customer name + phone and version */}
-                              <Typography variant="subtitle2">
-                                Khách hàng: {customer.name || "—"} • {customer.phone || "—"}{" "}
-                                <small style={{ opacity: 0.7 }}>({`v${version}`})</small>
-                              </Typography>
-                              <Typography variant="caption" color="text.secondary">{new Date(e.createdAt).toLocaleString()}</Typography>
-                            </Grid>
+          {/* labor & note */}
+          <Grid container spacing={1}>
+            <Grid item xs={6}>
+              <TextField label="Labor slots" size="small" type="number" value={form.laborSlots} onChange={(e) => setForm((f) => ({ ...f, laborSlots: Number(e.target.value || 0) }))} />
+            </Grid>
+            <Grid item xs={6}>
+              <TextField label="Labor rate (VND)" size="small" type="number" value={form.laborRateVND}
+                InputProps={{ readOnly: true }} onChange={(e) => setForm((f) => ({ ...f, laborRateVND: Number(e.target.value || 0) }))} />
+            </Grid>
 
-                            <Grid item xs={12} sm={4}>
-                              <Typography variant="body2">Parts: {(e.partsSubtotalVND ?? 0).toLocaleString("vi-VN")} VND</Typography>
-                              <Typography variant="body2">Labor: {(e.laborSubtotalVND ?? 0).toLocaleString("vi-VN")} VND</Typography>
-                              <Typography variant="body2">Total: {(e.grandTotalVND ?? 0).toLocaleString("vi-VN")} VND</Typography>
-                            </Grid>
+            <Grid item xs={12}>
+              <TextField label="Note" fullWidth multiline minRows={2} value={form.note} onChange={(e) => setForm((f) => ({ ...f, note: e.target.value }))} />
+            </Grid>
+          </Grid>
 
-                            <Grid item xs={12} sm={2} sx={{ textAlign: "right", display: "flex", justifyContent: "flex-end", gap: 1 }}>
-                              <Button size="small" onClick={() => openForEdit(e)}>Edit</Button>
-                              <Button size="small" onClick={() => {
-                                setSnack?.({ open: true, message: e.note || "No note", severity: "info" });
-                              }}>Note</Button>
-                              <Button size="small" onClick={() => toggleExpand(e.id)}>{expanded ? "Hide" : "Details"}</Button>
-                            </Grid>
-                          </Grid>
+          {/* totals + actions */}
+          <Stack direction="row" justifyContent="space-between" alignItems="center">
+            <Typography>
+              Parts subtotal: {partsSubtotal.toLocaleString("vi-VN")} VND — Labor: {laborSubtotal.toLocaleString("vi-VN")} VND — <strong>Total: {grandTotal.toLocaleString("vi-VN")} VND</strong>
+            </Typography>
 
-                          {/* Collapse details */}
-                          <Collapse in={expanded} timeout="auto" unmountOnExit>
-                            <Box sx={{ mt: 1, pl: 1 }}>
-                              <Typography variant="subtitle2">Items</Typography>
-                              {itemsPreview.length === 0 ? (
-                                <Typography color="text.secondary">No items</Typography>
-                              ) : (
-                                <Stack spacing={0.5} sx={{ mt: 0.5 }}>
-                                  {itemsPreview.map((it, idx) => (
-                                    <Box key={idx} sx={{ display: "flex", justifyContent: "space-between", gap: 1 }}>
-                                      <Typography variant="body2" sx={{ flex: 1 }}>{it.partId || it.part_id || it.name || "—"}</Typography>
-                                      <Typography variant="body2">{(it.quantity ?? 0)} × {(it.unitPriceVND ?? it.unit_price_vnd ?? 0).toLocaleString("vi-VN")} VND</Typography>
-                                    </Box>
-                                  ))}
-                                </Stack>
-                              )}
-
-                              <Box sx={{ mt: 1 }}>
-                                <Typography variant="body2"><strong>Note:</strong> {e.note || "—"}</Typography>
-                                <Typography variant="body2">Parts subtotal: {(e.partsSubtotalVND ?? 0).toLocaleString("vi-VN")} VND</Typography>
-                                <Typography variant="body2">Labor subtotal: {(e.laborSubtotalVND ?? 0).toLocaleString("vi-VN")} VND</Typography>
-                                <Typography variant="body2"><strong>Total:</strong> {(e.grandTotalVND ?? 0).toLocaleString("vi-VN")} VND</Typography>
-                              </Box>
-                            </Box>
-                          </Collapse>
-                        </CardContent>
-                      </Card>
-                    );
-                  });
-                })()}
-              </Stack>
-            )}
-          </>
-        )}
+            <Stack direction="row" spacing={1}>
+              {editing ? (
+                <Button variant="contained" onClick={handleUpdate}>Update Estimate</Button>
+              ) : (
+                <Button variant="contained" onClick={handleCreate}>Create Estimate</Button>
+              )}
+              <Button variant="outlined" onClick={() => { setCreating(false); setEditing(null); setForm(emptyForm); }}>Reset</Button>
+            </Stack>
+          </Stack>
+        </Stack>
       </DialogContent>
 
       <DialogActions>
-        <Button onClick={onClose} variant="outlined">Close</Button>
+        <Button onClick={onClose}>Close</Button>
       </DialogActions>
     </Dialog>
   );
+}
+
+// Helper to prefill from latest estimate (keeps behavior)
+async function handleNewFromLatest(list, setForm, setSnack) {
+  if (!list || list.length === 0) {
+    setForm((f) => ({ ...f, items: [], laborSlots: 0, laborRateVND: 0, note: "" }));
+    return;
+  }
+  try {
+    const latest = [...list].sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))[0];
+    if (!latest?.id) { setForm((f) => ({ ...f })); return; }
+    const full = await estimatesService.getById(latest.id);
+    let items = [];
+    try {
+      const rawItems = typeof full.itemsJson === "string" ? JSON.parse(full.itemsJson) : full.itemsJson || full.items || [];
+      items = (rawItems || []).map(it => ({
+        partId: it.partId || it.part_id || "",
+        partName: it.partName || it.part_name || it.name || "",
+        unitPriceVND: it.unitPriceVND ?? it.unit_price_vnd ?? 0,
+        quantity: it.quantity ?? 1
+      }));
+    } catch (e) {
+      items = [];
+    }
+    setForm({ items, laborSlots: full.laborSlots ?? 0, laborRateVND: 100000, note: full.note ?? "" });
+  } catch (err) {
+    console.warn("Không thể tải latest estimate:", err);
+    setSnack?.({ open: true, message: "Không tải được estimate mẫu", severity: "warning" });
+  }
 }
 // ------------------ end EstimatesDialog ------------------

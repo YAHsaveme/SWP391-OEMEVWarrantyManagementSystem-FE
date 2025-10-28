@@ -1,45 +1,64 @@
-// src/services/diagnosticsService.js
 import axiosInstance from "./axiosInstance";
-
-/**
- * Diagnostics service - thin wrappers around backend endpoints you provided.
- * Endpoints assumed relative to axiosInstance.baseURL which you configured as ".../api/"
- */
 
 const BASE = "diagnostics";
 
 const diagnosticsService = {
-  // GET /api/diagnostics/get-all
-  getAll: () => axiosInstance.get(`${BASE}/get-all`),
-
-  // GET /api/diagnostics/my-diagnostics?page=0&size=10
-  getMyDiagnostics: (page = 0, size = 10) =>
-    axiosInstance.get(`${BASE}/my-diagnostics`, { params: { page, size } }),
-
-  // GET /api/diagnostics/{id}/get-by-id
-  getById: (id) => axiosInstance.get(`${BASE}/${id}/get-by-id`),
-
-  // GET /api/diagnostics/{claimId}/get-by-claim
-  getByClaim: (claimId) => axiosInstance.get(`${BASE}/${claimId}/get-by-claim`),
-
-  // Lấy bản theo phase từ get-by-claim
-  getByClaimPhase: async (claimId, phase) => {
-    const resp = await axiosInstance.get(`${BASE}/${claimId}/get-by-claim`);
-    const list = resp.data || [];
-    return list.find((d) => d.phase === phase);
+  /** 🔹 Lấy tất cả diagnostics (array) */
+  getAll: async () => {
+    const res = await axiosInstance.get(`${BASE}/get-all`);
+    return res.data;
   },
 
-  // GET /api/diagnostics/{claimId}/next-phase
-  getNextPhase: (claimId) => axiosInstance.get(`${BASE}/${claimId}/next-phase`),
+  /** 🔹 Lấy danh sách diagnostics của người dùng hiện tại (phân trang) */
+  getMyDiagnostics: async (page = 0, size = 10) => {
+    const res = await axiosInstance.get(`${BASE}/my-diagnostics`, {
+      params: { page, size },
+    });
+    return res.data; // chứa totalPages, content, ...
+  },
 
-  // GET /api/diagnostics/{claimId}/can-complete
-  canComplete: (claimId) => axiosInstance.get(`${BASE}/${claimId}/can-complete`),
+  /** 🔹 Lấy 1 bản theo id */
+  getById: async (id) => {
+    const res = await axiosInstance.get(`${BASE}/${id}/get-by-id`);
+    return res.data;
+  },
 
-  // POST /api/diagnostics/create
-  create: (payload) => axiosInstance.post(`${BASE}/create`, payload),
+  /** 🔹 Lấy tất cả diagnostics theo claimId */
+  getByClaim: async (claimId) => {
+    const res = await axiosInstance.get(`${BASE}/${claimId}/get-by-claim`);
+    return res.data; // array
+  },
 
-  // PUT /api/diagnostics/{id}/update
-  update: (id, payload) => axiosInstance.put(`${BASE}/${id}/update`, payload),
+  /** 🔹 Tạo mới diagnostics */
+  create: async (payload) => {
+    // đảm bảo không undefined
+    const cleanPayload = {
+      claimId: payload.claimId,
+      sohPct: Number(payload.sohPct || 0),
+      socPct: Number(payload.socPct || 0),
+      packVoltage: Number(payload.packVoltage || 0),
+      cellDeltaMv: Number(payload.cellDeltaMv || 0),
+      cycles: Number(payload.cycles || 0),
+      notes: payload.notes?.trim() || "",
+    };
+    const res = await axiosInstance.post(`${BASE}/create`, cleanPayload);
+    return res.data;
+  },
+
+  /** 🔹 Cập nhật diagnostics */
+  update: async (id, payload) => {
+    const cleanPayload = {
+      claimId: payload.claimId,
+      sohPct: Number(payload.sohPct || 0),
+      socPct: Number(payload.socPct || 0),
+      packVoltage: Number(payload.packVoltage || 0),
+      cellDeltaMv: Number(payload.cellDeltaMv || 0),
+      cycles: Number(payload.cycles || 0),
+      notes: payload.notes?.trim() || "",
+    };
+    const res = await axiosInstance.put(`${BASE}/${id}/update`, cleanPayload);
+    return res.data;
+  },
 };
 
 export default diagnosticsService;

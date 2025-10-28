@@ -34,7 +34,11 @@ import {
   ArrowForward as NextPhaseIcon,
   Check as CheckIcon,
 } from "@mui/icons-material";
+import Autocomplete from "@mui/material/Autocomplete";
 import diagnosticsService from "../../services/diagnosticsService";
+import claimService from "../../services/claimService";
+import axiosInstance from "../../services/axiosInstance";
+import axios from "axios";
 
 /**
  * Diagnostics.jsx
@@ -55,6 +59,12 @@ import diagnosticsService from "../../services/diagnosticsService";
  */
 
 export default function Diagnostics() {
+  const DIAGNOSTIC_PHASE = {
+    PRE_REPAIR: "PRE_REPAIR",
+    POST_REPAIR: "POST_REPAIR",
+  };
+  const [claimsOptions, setClaimsOptions] = useState([]); // [{ id, vin, ... }]
+  const [loadingClaims, setLoadingClaims] = useState(false);
   // list state
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -82,6 +92,51 @@ export default function Diagnostics() {
 
   // notifications
   const [snackbar, setSnackbar] = useState({ open: false, message: "", severity: "success" });
+
+  const loadClaims = async () => {
+    try {
+      setLoadingClaims(true);
+
+      // 🔹 Gọi song song hai API
+      const [claimsRes, vehiclesRes] = await Promise.all([
+        axiosInstance.get("claims/get-all"),
+        axiosInstance.get("vehicles/get-all"),
+      ]);
+
+      const claims = Array.isArray(claimsRes.data)
+        ? claimsRes.data
+        : claimsRes.data?.data || [];
+
+      const vehicles = Array.isArray(vehiclesRes.data)
+        ? vehiclesRes.data
+        : vehiclesRes.data?.data || [];
+
+      // 🔹 Ghép claim với vehicle cùng VIN
+      const merged = claims.map((claim) => {
+        const match = vehicles.find((v) => v.vin === claim.vin);
+        return {
+          id: claim.id,
+          vin: claim.vin,
+          status: claim.status,
+          claimType: claim.claimType,
+          // từ vehicle
+          intakeContactName: match?.intakeContactName || "Không rõ",
+          intakeContactPhone: match?.intakeContactPhone || "—",
+        };
+      });
+
+      setClaimsOptions(merged);
+    } catch (err) {
+      console.error("❌ loadClaims error:", err);
+      setSnackbar({
+        open: true,
+        message: "Không thể tải dữ liệu Claims/Vehicles",
+        severity: "error",
+      });
+    } finally {
+      setLoadingClaims(false);
+    }
+  };
 
   // Search by claimId
   const [searchClaimId, setSearchClaimId] = useState("");
@@ -113,7 +168,7 @@ export default function Diagnostics() {
   // load page of "my diagnostics" by default
   useEffect(() => {
     loadPage(page);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    loadClaims();
   }, [page, viewAll]);
 
   async function loadPage(pageNumber = 1) {
@@ -170,6 +225,7 @@ export default function Diagnostics() {
       cellDeltaMv: "",
       cycles: "",
       notes: "",
+      phase: DIAGNOSTIC_PHASE.PRE_REPAIR,
     });
     setFormOpen(true);
   }
@@ -237,24 +293,59 @@ export default function Diagnostics() {
   // submit create
   async function handleSubmitCreate() {
     setLoading(true);
+
+    // VALIDATION
+    if (!formValues.claimId) {
+      setSnackbar({ open: true, message: "Vui lòng chọn VIN (một claim) trước khi tạo diagnostic", severity: "error" });
+      setLoading(false);
+      return;
+    }
+    // optional stricter validation: SOH, SOC, Pack Voltage
+    if (formValues.sohPct === "" || formValues.socPct === "" || formValues.packVoltage === "") {
+      setSnackbar({ open: true, message: "Vui lòng nhập đầy đủ: SOH, SOC và Pack Voltage", severity: "warning" });
+      setLoading(false);
+      return;
+    }
+
     try {
       const payload = {
         claimId: formValues.claimId,
-        sohPct: parseFloat(formValues.sohPct) || 0,
-        socPct: parseFloat(formValues.socPct) || 0,
-        packVoltage: parseFloat(formValues.packVoltage) || 0,
-        cellDeltaMv: parseFloat(formValues.cellDeltaMv) || 0,
-        cycles: parseInt(formValues.cycles || 0, 10),
-        notes: formValues.notes || "",
+        sohPct: formValues.sohPct !== "" ? parseFloat(formValues.sohPct) : 0,
+        socPct: formValues.socPct !== "" ? parseFloat(formValues.socPct) : 0,
+        packVoltage: formValues.packVoltage !== "" ? parseFloat(formValues.packVoltage) : 0,
+        cellDeltaMv: formValues.cellDeltaMv !== "" ? parseFloat(formValues.cellDeltaMv) : 0,
+        cycles: formValues.cycles !== "" ? parseInt(formValues.cycles, 10) : 0,
+        notes: formValues.notes?.trim() || "",
+        phase: DIAGNOSTIC_PHASE.PRE_REPAIR, // mặc định
       };
       const resp = await diagnosticsService.create(payload);
       setSnackbar({ open: true, message: "Tạo diagnostic thành công", severity: "success" });
+
+      // Reset form & close
+      setFormValues({
+        claimId: "",
+        customerName: "",
+        customerPhone: "",
+        sohPct: "",
+        socPct: "",
+        packVoltage: "",
+        cellDeltaMv: "",
+        cycles: "",
+        notes: "",
+      });
       setFormOpen(false);
-      // reload current page
+
+      // reload list
       loadPage(page);
     } catch (err) {
       console.error("create error", err);
-      setSnackbar({ open: true, message: "Tạo diagnostic thất bại", severity: "error" });
+      const serverMessage = err?.response?.data || err?.message || "Tạo diagnostic thất bại";
+      // friendly mapping for common backend messages
+      let friendly = serverMessage;
+      if (typeof serverMessage === "string" && serverMessage.includes("Claim phải có trạng thái")) {
+        friendly = "⚠️ Claim chưa ở giai đoạn yêu cầu để tạo Diagnostic (cần DIAGNOSING/ESTIMATING...).";
+      }
+      setSnackbar({ open: true, message: friendly, severity: "error" });
     } finally {
       setLoading(false);
     }
@@ -715,11 +806,83 @@ export default function Diagnostics() {
 
         <DialogContent dividers>
           <Grid container spacing={2} sx={{ mt: 0.5 }}>
-            <Grid item xs={12}>
+            <Grid item xs={12} md={12}>
+              <Autocomplete
+                options={claimsOptions || []}
+                loading={loadingClaims}
+                getOptionLabel={(opt) => {
+                  if (!opt) return "";
+                  const vin = opt.vin || "(Không có VIN)";
+                  const name = opt.intakeContactName || "Không rõ";
+                  const phone = opt.intakeContactPhone || "—";
+                  return `${vin} — ${name} (${phone})`;
+                }}
+                isOptionEqualToValue={(option, value) =>
+                  String(option?.id) === String(value?.id)
+                }
+                value={
+                  claimsOptions.find(
+                    (c) => String(c.id) === String(formValues.claimId)
+                  ) || null
+                }
+                onChange={(_, selected) => {
+                  if (selected) {
+                    setFormValues((f) => ({
+                      ...f,
+                      claimId: selected.id,
+                      customerName: selected.intakeContactName,
+                      customerPhone: selected.intakeContactPhone,
+                    }));
+                  } else {
+                    setFormValues((f) => ({
+                      ...f,
+                      claimId: "",
+                      customerName: "",
+                      customerPhone: "",
+                    }));
+                  }
+                }}
+                renderInput={(params) => (
+                  <TextField
+                    {...params}
+                    label="Chọn Claim (VIN / Khách hàng)"
+                    fullWidth
+                    helperText="Chọn Claim hợp lệ để tạo Diagnostic"
+                    InputProps={{
+                      ...params.InputProps,
+                      endAdornment: (
+                        <>
+                          {loadingClaims ? (
+                            <CircularProgress color="inherit" size={20} />
+                          ) : null}
+                          {params.InputProps.endAdornment}
+                        </>
+                      ),
+                    }}
+                  />
+                )}
+                noOptionsText={
+                  loadingClaims ? "Đang tải dữ liệu..." : "Không có Claim phù hợp"
+                }
+                clearOnEscape
+                disableClearable={false}
+              />
+            </Grid>
+
+            <Grid item xs={12} md={6}>
               <TextField
-                label="VIN"
+                label="Tên Khách Hàng"
+                value={formValues.customerName || ""}
                 fullWidth
-                value={formValues.claimVin || ""}
+                InputProps={{ readOnly: true }}
+              />
+            </Grid>
+
+            <Grid item xs={12} md={6}>
+              <TextField
+                label="Số Điện Thoại"
+                value={formValues.customerPhone || ""}
+                fullWidth
                 InputProps={{ readOnly: true }}
               />
             </Grid>

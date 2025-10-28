@@ -161,16 +161,16 @@ export default function UserManagement({ search, setSearch, theme }) {
   const [centers, setCenters] = useState([]);
 
   useEffect(() => {
-  const fetchCenters = async () => {
-    try {
-      const res = await axiosInstance.get("/centers/get-all");
-      setCenters(res.data || []);
-    } catch (err) {
-      console.error("Lỗi tải trung tâm:", err);
-    }
-  };
-  fetchCenters();
-}, []);
+    const fetchCenters = async () => {
+      try {
+        const res = await axiosInstance.get("/centers/get-all");
+        setCenters(res.data || []);
+      } catch (err) {
+        console.error("Lỗi tải trung tâm:", err);
+      }
+    };
+    fetchCenters();
+  }, []);
 
   // initial load and pageSize changes
   useEffect(() => {
@@ -365,10 +365,10 @@ export default function UserManagement({ search, setSearch, theme }) {
   };
 
   const getCenterName = (centerId) => {
-  if (!centerId) return "-";
-  const center = centers.find((c) => c.id === centerId || c.centerId === centerId);
-  return center ? center.centerName || center.name : `#${centerId}`;
-};
+    if (!centerId) return "-";
+    const center = centers.find((c) => c.id === centerId || c.centerId === centerId);
+    return center ? center.centerName || center.name : `#${centerId}`;
+  };
 
   return (
     <Box>
@@ -447,7 +447,7 @@ export default function UserManagement({ search, setSearch, theme }) {
             <Box component="table" sx={{ width: "100%", borderCollapse: "separate", borderSpacing: 0 }}>
               <Box component="thead" sx={{ bgcolor: alpha(theme.palette.primary.main, 0.05) }}>
                 <Box component="tr">
-                  {["ID", "Họ tên", "Email", "SĐT", "Vai trò", "Center", "Ngày tạo", "Hành động"].map((h) => (
+                  {["STT", "Họ tên", "Email", "SĐT", "Vai trò", "Center", "Ngày tạo", "Hành động"].map((h) => (
                     <Box key={h} component="th" sx={{
                       textAlign: "center",
                       verticalAlign: "middle",
