@@ -1,62 +1,161 @@
 import api from "./axiosInstance";
 
-// ================== WARRANTY POLICY SERVICE ==================
 const BASE = "warranty-policies";
 
+// 🧹 Utility: Xóa các field rỗng/null/undefined
+const cleanObject = (obj) =>
+  Object.fromEntries(
+    Object.entries(obj || {}).filter(
+      ([, v]) => v !== "" && v !== null && v !== undefined
+    )
+  );
+
+// 🔄 Utility: Convert date + number đúng định dạng backend
+const normalizePayload = (payload) => {
+  if (!payload) return payload;
+  const p = { ...payload };
+
+  // Convert Date -> ISO string
+  if (p.effectiveFrom instanceof Date)
+    p.effectiveFrom = p.effectiveFrom.toISOString();
+  if (p.effectiveTo instanceof Date)
+    p.effectiveTo = p.effectiveTo.toISOString();
+
+  // Convert number fields
+  const numericKeys = [
+    "termMonths",
+    "mileageKm",
+    "batterySohThreshold",
+    "laborCoveragePct",
+    "partsCoveragePct",
+    "perClaimCapVND",
+  ];
+  numericKeys.forEach((key) => {
+    if (p[key] !== undefined && p[key] !== null)
+      p[key] = Number(p[key]);
+  });
+
+  // Handle nested goodwill
+  if (p.goodwill) {
+    p.goodwill = { ...p.goodwill };
+    ["graceMonths", "graceKm", "tiersPct"].forEach((key) => {
+      if (p.goodwill[key] !== undefined && p.goodwill[key] !== null)
+        p.goodwill[key] = Number(p.goodwill[key]);
+    });
+  }
+
+  return p;
+};
+
+// 🧩 Utility: Chuẩn hoá final payload gửi lên backend
+const preparePayload = (payload) => cleanObject(normalizePayload(payload));
+
+// 🧱 SERVICE
 const warrantyPolicyService = {
-  // 📌 Lấy tất cả policies
+  // 📘 Lấy tất cả policies
   getAll: async () => {
-    const res = await api.get(`${BASE}/get-all`);
-    return res.data;
+    try {
+      const res = await api.get(`${BASE}/get-all`);
+      return res.data;
+    } catch (err) {
+      console.error("❌ getAll error:", err);
+      throw err;
+    }
   },
 
-  // 📌 Tìm kiếm (filter theo keyword, status, modelCode, phân trang)
-  search: async (params) => {
-    // 🧠 Làm sạch các field rỗng/null để tránh lỗi Enum
-    const cleanParams = Object.fromEntries(
-      Object.entries(params).filter(
-        ([, v]) => v !== "" && v !== null && v !== undefined
-      )
-    );
-
-    const res = await api.post(`${BASE}/search`, cleanParams);
-    return res.data;
+  // 🔍 Tìm kiếm policies (keyword, status, modelCode, page, size)
+  search: async (params = {}) => {
+    try {
+      const cleanParams = cleanObject(params);
+      const res = await api.post(`${BASE}/search`, cleanParams);
+      return res.data;
+    } catch (err) {
+      console.error("❌ search error:", err);
+      throw err;
+    }
   },
 
-  // 📌 Lấy theo modelCode
+  // 🆔 Lấy tất cả policies theo modelCode
   getByModelCode: async (modelCode) => {
-    const res = await api.get(`${BASE}/${modelCode}/get`);
-    return res.data;
+    if (!modelCode) throw new Error("modelCode is required");
+    try {
+      const res = await api.get(`${BASE}/${encodeURIComponent(modelCode)}/get`);
+      return res.data;
+    } catch (err) {
+      console.error("❌ getByModelCode error:", err);
+      throw err;
+    }
   },
 
-  // 📌 Tạo mới
+  // 🆕 Tạo mới warranty policy
   create: async (payload) => {
-    const res = await api.post(`${BASE}/create`, payload);
-    return res.data;
+    try {
+      const res = await api.post(`${BASE}/create`, preparePayload(payload));
+      return res.data;
+    } catch (err) {
+      console.error("❌ create policy error:", err);
+      throw err;
+    }
   },
 
-  // 📌 Cập nhật thông tin
+  // ✏️ Cập nhật thông tin policy (update-info)
   updateInfo: async (policyId, payload) => {
-    const res = await api.put(`${BASE}/${policyId}/update-info`, payload);
-    return res.data;
+    if (!policyId) throw new Error("policyId is required");
+    try {
+      const res = await api.put(
+        `${BASE}/${policyId}/update-info`,
+        preparePayload(payload)
+      );
+      return res.data;
+    } catch (err) {
+      console.error("❌ updateInfo error:", err);
+      throw err;
+    }
   },
 
-  // 📌 Cập nhật trạng thái
+  // 🔄 Cập nhật trạng thái (status-update)
   updateStatus: async (policyId, payload) => {
-    const res = await api.put(`${BASE}/${policyId}/status-update`, payload);
-    return res.data;
+    if (!policyId) throw new Error("policyId is required");
+    try {
+      const res = await api.put(
+        `${BASE}/${policyId}/status-update`,
+        preparePayload(payload)
+      );
+      return res.data;
+    } catch (err) {
+      console.error("❌ updateStatus error:", err);
+      throw err;
+    }
   },
 
-  // 📌 Khôi phục (restore)
-  restore: async (policyId, payload) => {
-    const res = await api.post(`${BASE}/${policyId}/restore`, payload);
-    return res.data;
+  // ♻️ Khôi phục policy (restore)
+  restore: async (policyId, payload = {}) => {
+    if (!policyId) throw new Error("policyId is required");
+    try {
+      const res = await api.post(
+        `${BASE}/${policyId}/restore`,
+        preparePayload(payload)
+      );
+      return res.data;
+    } catch (err) {
+      console.error("❌ restore error:", err);
+      throw err;
+    }
   },
 
-  // 📌 Vô hiệu hóa (disable)
+  // 🚫 Vô hiệu hóa policy (disable)
   disable: async (policyId, payload) => {
-    const res = await api.post(`${BASE}/${policyId}/disable`, payload);
-    return res.data;
+    if (!policyId) throw new Error("policyId is required");
+    try {
+      const res = await api.post(
+        `${BASE}/${policyId}/disable`,
+        preparePayload(payload)
+      );
+      return res.data;
+    } catch (err) {
+      console.error("❌ disable error:", err);
+      throw err;
+    }
   },
 };
 

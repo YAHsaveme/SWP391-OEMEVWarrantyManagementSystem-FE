@@ -4,7 +4,7 @@ import { Link as RouterLink, useLocation, Outlet } from "react-router-dom";
 import {
     AppBar, Toolbar, IconButton, Drawer, Box, List, ListItemButton, ListItemIcon,
     ListItemText, CssBaseline, Divider, Avatar, useMediaQuery, ThemeProvider,
-    createTheme, alpha, Paper, Typography
+    createTheme, alpha, Paper, Typography, Menu, MenuItem
 } from "@mui/material";
 import MenuIcon from "@mui/icons-material/Menu";
 import DashboardIcon from "@mui/icons-material/Dashboard";
@@ -13,6 +13,7 @@ import AssignmentIcon from "@mui/icons-material/Assignment";
 import CampaignIcon from "@mui/icons-material/Campaign";
 import GroupsIcon from "@mui/icons-material/Groups";
 import StoreMallDirectoryIcon from "@mui/icons-material/StoreMallDirectory";
+import authService from "../../services/authService";
 
 const drawerWidth = 260;
 
@@ -32,6 +33,46 @@ const NAV_ITEMS = [
 ];
 
 function SidebarContent({ currentPath, onNavigate }) {
+    const [anchorEl, setAnchorEl] = React.useState(null);
+    const [user, setUser] = React.useState({
+        fullName: "SC Staff",
+        role: "Service Center",
+    });
+
+    // Lấy thông tin user từ API
+    React.useEffect(() => {
+        (async () => {
+            try {
+                const currentUser = await authService.getCurrentUser();
+                if (currentUser) {
+                    setUser({
+                        fullName: currentUser.fullName || "SC Staff",
+                        role:
+                            (currentUser.role && (currentUser.role.name || currentUser.role)) ||
+                            "Service Center",
+                    });
+                }
+            } catch (err) {
+                console.warn("Không thể tải thông tin người dùng:", err);
+            }
+        })();
+    }, []);
+
+    const handleProfile = () => {
+        setAnchorEl(null);
+        window.location.href = "/profile";
+    };
+
+    const handleHome = () => {
+        setAnchorEl(null);
+        window.location.href = "/";
+    };
+
+    const handleLogout = () => {
+        setAnchorEl(null);
+        authService.logout();
+    };
+
     return (
         <Box sx={{ height: "100%", display: "flex", flexDirection: "column" }}>
             {/* Brand */}
@@ -46,7 +87,7 @@ function SidebarContent({ currentPath, onNavigate }) {
                         </svg>
                     </Box>
                     <Box>
-                        <Typography fontWeight={700}>EV Service</Typography>
+                        <Typography fontWeight={700}>EV Warranty Management</Typography>
                         <Typography variant="caption" color="text.secondary">Staff Portal</Typography>
                     </Box>
                 </Box>
@@ -86,23 +127,67 @@ function SidebarContent({ currentPath, onNavigate }) {
                 </List>
             </Box>
 
-            {/* User */}
+            {/* User Section với Dropdown */}
             <Divider />
             <Box sx={{ p: 2 }}>
-                <Paper variant="outlined" sx={{ p: 1.5, borderRadius: 3, display: "flex", alignItems: "center", gap: 1.5 }}>
+                <Paper
+                    variant="outlined"
+                    sx={{
+                        p: 1.5,
+                        borderRadius: 3,
+                        display: "flex",
+                        alignItems: "center",
+                        gap: 1.5,
+                        cursor: "pointer",
+                        "&:hover": { boxShadow: 3 },
+                    }}
+                    onClick={(e) => setAnchorEl(e.currentTarget)}
+                >
                     <Avatar
                         sx={{
-                            width: 40, height: 40, fontWeight: 700,
-                            background: (t) => `linear-gradient(135deg, ${t.palette.primary.main}, ${alpha(t.palette.primary.main, 0.4)})`,
+                            width: 40,
+                            height: 40,
+                            fontWeight: 700,
+                            background: (t) =>
+                                `linear-gradient(135deg, ${t.palette.primary.main}, ${alpha(
+                                    t.palette.primary.main,
+                                    0.4
+                                )})`,
                         }}
                     >
-                        SC
+                        {user.fullName?.charAt(0).toUpperCase() || "S"}
                     </Avatar>
                     <Box sx={{ minWidth: 0 }}>
-                        <Typography variant="body2" fontWeight={700} noWrap>SC Staff</Typography>
-                        <Typography variant="caption" color="text.secondary" noWrap>Service Center</Typography>
+                        <Typography variant="body2" fontWeight={700} noWrap>
+                            {user.fullName || "SC Staff"}
+                        </Typography>
+                        <Typography variant="caption" color="text.secondary" noWrap>
+                            {user.role || "Service Center"}
+                        </Typography>
                     </Box>
                 </Paper>
+
+                {/* Dropdown menu */}
+                <Menu
+                    anchorEl={anchorEl}
+                    open={Boolean(anchorEl)}
+                    onClose={() => setAnchorEl(null)}
+                    PaperProps={{
+                        sx: {
+                            mt: 1,
+                            borderRadius: 2,
+                            minWidth: 200,
+                            boxShadow: "0 6px 20px rgba(0,0,0,0.15)",
+                        },
+                    }}
+                >
+                    <MenuItem onClick={handleProfile}>Hồ sơ</MenuItem>
+                    <MenuItem onClick={handleHome}>Về trang chủ</MenuItem>
+                    <Divider />
+                    <MenuItem onClick={handleLogout} sx={{ color: "error.main" }}>
+                        Đăng xuất
+                    </MenuItem>
+                </Menu>
             </Box>
         </Box>
     );
@@ -162,7 +247,8 @@ export default function StaffLayout() {
                     sx={{
                         display: { xs: "none", lg: "block" },
                         "& .MuiDrawer-paper": {
-                            width: drawerWidth, boxSizing: "border-box",
+                            width: drawerWidth,
+                            boxSizing: "border-box",
                             borderRight: (t) => `1px solid ${t.palette.divider}`,
                         },
                     }}
@@ -171,13 +257,17 @@ export default function StaffLayout() {
                 </Drawer>
             </Box>
 
-            {/* Main content – dùng Outlet để render route con */}
+            {/* Main content */}
             <Box
                 component="main"
                 sx={{
-                    flexGrow: 1, p: { xs: 2.5, sm: 3, md: 4 },
+                    flexGrow: 1,
+                    p: { xs: 2.5, sm: 3, md: 4 },
                     width: { lg: `calc(100% - ${drawerWidth}px)` },
-                    ml: { lg: `${drawerWidth}px` }, mt: 8, maxWidth: "1400px", mx: "auto",
+                    ml: { lg: `${drawerWidth}px` },
+                    mt: 8,
+                    maxWidth: "1400px",
+                    mx: "auto",
                 }}
             >
                 <Outlet />
