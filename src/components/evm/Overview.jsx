@@ -9,6 +9,7 @@ import WarrantyPolicy from "./WarrantyPolicy";
 import ServiceCenters from "./ServiceCenters";
 import authService from "../../services/authService";
 import InventoryMovement from "./InventoryMovement";
+import InventoryPart from "./InventoryPart";
 
 import {
     AppBar, Toolbar, Typography, Container, Box, Avatar, Tabs, Tab,
@@ -269,7 +270,8 @@ export default function Overview() {
                             }}
                         >
                             <Tab iconPosition="start" icon={<AlertTriangle />} label="Quản lý phụ tùng" />
-                            <Tab iconPosition="start" icon={<PackageIcon />} label="Quản lý Sản phẩm" />
+                            <Tab iconPosition="start" icon={<PackageIcon />} label="Quản lý mẫu xe" />
+                            <Tab iconPosition="start" icon={<BarChartIcon />} label="Kho phụ tùng" />
                             <Tab iconPosition="start" icon={<FileText />} label="Yêu cầu Bảo hành" />
                             <Tab iconPosition="start" icon={<CompareArrowsIcon />} label="Luân chuyển kho" />
                             <Tab iconPosition="start" icon={<CarIcon />} label="Trung tâm Dịch vụ" />
@@ -280,11 +282,13 @@ export default function Overview() {
                         <Box sx={{ p: 2.5, bgcolor: "background.paper", borderRadius: 2 }}>
                             {tab === 0 && <PartManagement />}
                             {tab === 1 && <ProductManagement />}
-                            {tab === 2 && <WarrantyRequests />}
-                            {tab === 3 && <InventoryMovement />}
-                            {tab === 4 && <ServiceCenters />}
-                            {tab === 5 && <Analytics />}
-                            {tab === 6 && <WarrantyPolicy />}
+                            {tab === 2 && <InventoryPart />}
+                            {tab === 3 && <WarrantyRequests />}
+                            {tab === 4 && <InventoryMovement />}
+                            {tab === 5 && <ServiceCenters />}
+                            {tab === 6 && <Analytics />}
+                            {tab === 7 && <WarrantyPolicy />}
+
                         </Box>
                     </Paper>
 
