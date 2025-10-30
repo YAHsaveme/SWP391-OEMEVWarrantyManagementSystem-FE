@@ -3,33 +3,45 @@ import PropTypes from "prop-types";
 import { Link as RouterLink, useLocation, Outlet } from "react-router-dom";
 import {
     AppBar, Toolbar, IconButton, Drawer, Box, List, ListItemButton, ListItemIcon,
-    ListItemText, CssBaseline, Divider, Avatar, Paper, Typography, Menu, MenuItem,
-    useMediaQuery, ThemeProvider, createTheme, alpha, GlobalStyles
+    ListItemText, CssBaseline, Divider, Avatar, useMediaQuery, ThemeProvider,
+    createTheme, alpha, Paper, Typography, Menu, MenuItem
 } from "@mui/material";
 import MenuIcon from "@mui/icons-material/Menu";
+import DashboardIcon from "@mui/icons-material/Dashboard";
 import DirectionsCarIcon from "@mui/icons-material/DirectionsCar";
 import AssignmentIcon from "@mui/icons-material/Assignment";
 import CampaignIcon from "@mui/icons-material/Campaign";
 import GroupsIcon from "@mui/icons-material/Groups";
 import StoreMallDirectoryIcon from "@mui/icons-material/StoreMallDirectory";
-import Brightness4Icon from "@mui/icons-material/Brightness4";
-import Brightness7Icon from "@mui/icons-material/Brightness7";
+import EventIcon from "@mui/icons-material/Event";
 import authService from "../../services/authService";
 
 const drawerWidth = 260;
 
+const theme = createTheme({
+    palette: { mode: "light", primary: { main: "#2563EB" }, background: { default: "#f7f8fa" } },
+    shape: { borderRadius: 14 },
+});
+
+// TẤT CẢ link phải nằm dưới /staff
 const NAV_ITEMS = [
+    { label: "Dashboard", to: "/staff", icon: <DashboardIcon />, end: true },
     { label: "Vehicles", to: "/staff/vehicles", icon: <DirectionsCarIcon /> },
     { label: "Warranty Claims", to: "/staff/claims", icon: <AssignmentIcon /> },
     { label: "Service Campaigns", to: "/staff/campaigns", icon: <CampaignIcon /> },
     { label: "Technicians", to: "/staff/technicians", icon: <GroupsIcon /> },
     { label: "Service Centers", to: "/staff/centers", icon: <StoreMallDirectoryIcon /> },
+    { label: "Appointments", to: "/staff/appointments", icon: <EventIcon /> },
 ];
 
 function SidebarContent({ currentPath, onNavigate }) {
     const [anchorEl, setAnchorEl] = React.useState(null);
-    const [user, setUser] = React.useState({ fullName: "SC Staff", role: "Service Center" });
+    const [user, setUser] = React.useState({
+        fullName: "SC Staff",
+        role: "Service Center",
+    });
 
+    // Lấy thông tin user từ API
     React.useEffect(() => {
         (async () => {
             try {
@@ -37,7 +49,9 @@ function SidebarContent({ currentPath, onNavigate }) {
                 if (currentUser) {
                     setUser({
                         fullName: currentUser.fullName || "SC Staff",
-                        role: (currentUser.role && (currentUser.role.name || currentUser.role)) || "Service Center",
+                        role:
+                            (currentUser.role && (currentUser.role.name || currentUser.role)) ||
+                            "Service Center",
                     });
                 }
             } catch (err) {
@@ -46,40 +60,48 @@ function SidebarContent({ currentPath, onNavigate }) {
         })();
     }, []);
 
-    const handleProfile = () => { setAnchorEl(null); window.location.href = "/profile"; };
-    const handleHome = () => { setAnchorEl(null); window.location.href = "/"; };
-    const handleLogout = () => { setAnchorEl(null); authService.logout(); };
+    const handleProfile = () => {
+        setAnchorEl(null);
+        window.location.href = "/profile";
+    };
+
+    const handleHome = () => {
+        setAnchorEl(null);
+        window.location.href = "/";
+    };
+
+    const handleLogout = () => {
+        setAnchorEl(null);
+        authService.logout();
+    };
 
     return (
         <Box sx={{ height: "100%", display: "flex", flexDirection: "column" }}>
             {/* Brand */}
             <Box sx={{ height: 72, display: "flex", alignItems: "center", justifyContent: "space-between", px: 2 }}>
                 <Box sx={{ display: "flex", alignItems: "center", gap: 1.5 }}>
-                    <Box
-                        sx={{
-                            width: 40, height: 40, borderRadius: 2, bgcolor: "primary.main", color: "#fff",
-                            display: "grid", placeItems: "center", boxShadow: 1
-                        }}
-                    >
+                    <Box sx={{
+                        width: 40, height: 40, borderRadius: 2, bgcolor: "primary.main", color: "#fff",
+                        display: "grid", placeItems: "center", boxShadow: 1
+                    }}>
                         <svg width="20" height="20" viewBox="0 0 24 24" stroke="currentColor" fill="none">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 10V3L4 14h7v7l7-7" />
                         </svg>
                     </Box>
-                    <Box sx={{ minWidth: 0 }}>
-                        {/* BỎ chữ "Staff Portal" dưới brand */}
-                        <Typography fontWeight={700} noWrap>EV Warranty Management</Typography>
+                    <Box>
+                        <Typography fontWeight={700}>EV Warranty Management</Typography>
+                        <Typography variant="caption" color="text.secondary">Staff Portal</Typography>
                     </Box>
                 </Box>
             </Box>
 
-            {/* (Giữ/hoặc bỏ Divider này tuỳ bạn; để sạch hơn có thể bỏ) */}
-            {/* <Divider /> */}
+            <Divider />
 
             {/* Nav */}
             <Box sx={{ flex: 1, py: 2 }}>
                 <List component="nav" sx={{ px: 1 }}>
                     {NAV_ITEMS.map((item) => {
-                        const active = currentPath.startsWith(item.to);
+                        const active = item.end ? currentPath === item.to : currentPath.startsWith(item.to);
                         return (
                             <ListItemButton
                                 key={item.to}
@@ -100,18 +122,15 @@ function SidebarContent({ currentPath, onNavigate }) {
                                 <ListItemIcon sx={{ minWidth: 40, color: active ? "primary.main" : "text.secondary" }}>
                                     {item.icon}
                                 </ListItemIcon>
-                                <ListItemText
-                                    primary={item.label}
-                                    primaryTypographyProps={{ fontWeight: active ? 700 : 500 }}
-                                />
+                                <ListItemText primary={item.label} primaryTypographyProps={{ fontWeight: active ? 700 : 500 }} />
                             </ListItemButton>
                         );
                     })}
                 </List>
             </Box>
 
-            {/* User Section */}
-            {/* <Divider />  <-- có thể bỏ để sidebar liền mạch hơn */}
+            {/* User Section với Dropdown */}
+            <Divider />
             <Box sx={{ p: 2 }}>
                 <Paper
                     variant="outlined"
@@ -132,7 +151,10 @@ function SidebarContent({ currentPath, onNavigate }) {
                             height: 40,
                             fontWeight: 700,
                             background: (t) =>
-                                `linear-gradient(135deg, ${t.palette.primary.main}, ${alpha(t.palette.primary.main, 0.4)})`,
+                                `linear-gradient(135deg, ${t.palette.primary.main}, ${alpha(
+                                    t.palette.primary.main,
+                                    0.4
+                                )})`,
                         }}
                     >
                         {user.fullName?.charAt(0).toUpperCase() || "S"}
@@ -147,6 +169,7 @@ function SidebarContent({ currentPath, onNavigate }) {
                     </Box>
                 </Paper>
 
+                {/* Dropdown menu */}
                 <Menu
                     anchorEl={anchorEl}
                     open={Boolean(anchorEl)}
@@ -177,39 +200,12 @@ SidebarContent.propTypes = { currentPath: PropTypes.string.isRequired, onNavigat
 export default function StaffLayout() {
     const location = useLocation();
     const [open, setOpen] = React.useState(false);
-    const [mode, setMode] = React.useState("light");
     const lgUp = useMediaQuery("(min-width:1200px)");
     const drawer = <SidebarContent currentPath={location.pathname} onNavigate={() => setOpen(false)} />;
-
-    const theme = React.useMemo(
-        () =>
-            createTheme({
-                palette: {
-                    mode,
-                    primary: { main: "#2563EB" },
-                    background: {
-                        default: mode === "light" ? "#f7f8fa" : "#0f1115",
-                        paper: mode === "light" ? "#fff" : "#11131a",
-                    },
-                },
-                shape: { borderRadius: 14 },
-            }),
-        [mode]
-    );
 
     return (
         <ThemeProvider theme={theme}>
             <CssBaseline />
-            <GlobalStyles
-                styles={{
-                    "*::-webkit-scrollbar": { width: 8 },
-                    "*::-webkit-scrollbar-thumb": {
-                        backgroundColor: alpha("#000", mode === "light" ? 0.2 : 0.4),
-                        borderRadius: 8,
-                    },
-                }}
-            />
-
             {/* AppBar */}
             <AppBar
                 position="fixed"
@@ -218,34 +214,23 @@ export default function StaffLayout() {
                     backdropFilter: "blur(10px)",
                     bgcolor: (t) => alpha(t.palette.background.paper, 0.8),
                     color: "text.primary",
-                    // BỎ viền dưới AppBar
-                    borderBottom: "none",
+                    borderBottom: (t) => `1px solid ${t.palette.divider}`,
                     width: { lg: `calc(100% - ${drawerWidth}px)` },
                     ml: { lg: `${drawerWidth}px` },
                 }}
             >
-                <Toolbar sx={{ minHeight: 64 }}>
+                <Toolbar>
                     {!lgUp && (
                         <IconButton edge="start" onClick={() => setOpen(true)} sx={{ mr: 1 }}>
                             <MenuIcon />
                         </IconButton>
                     )}
-
-                    {/* BỎ chữ "Staff Portal" */}
                     <Box sx={{ flex: 1 }} />
-
-                    {/* Theme toggle */}
-                    <IconButton
-                        onClick={() => setMode((m) => (m === "light" ? "dark" : "light"))}
-                        sx={{ border: (t) => `1px solid ${t.palette.divider}`, borderRadius: 2 }}
-                    >
-                        {mode === "dark" ? <Brightness7Icon /> : <Brightness4Icon />}
-                    </IconButton>
                 </Toolbar>
             </AppBar>
 
             {/* Sidebar */}
-            <Box component="nav" sx={{ width: { lg: drawerWidth }, flexShrink: { lg: 0 } }}>
+            <Box component="nav" sx={{ width: { lg: drawerWidth }, flexShrink: { lg: 0 } }} aria-label="sidebar">
                 {/* Mobile */}
                 <Drawer
                     variant="temporary"
@@ -266,9 +251,7 @@ export default function StaffLayout() {
                         "& .MuiDrawer-paper": {
                             width: drawerWidth,
                             boxSizing: "border-box",
-                            // BỎ viền phải của Drawer (sidebar)
-                            borderRight: "none",
-                            backgroundImage: "none",
+                            borderRight: (t) => `1px solid ${t.palette.divider}`,
                         },
                     }}
                 >

@@ -261,8 +261,8 @@ const authService = {
   },
 };
 
-// ✅ Export mặc định toàn bộ service
+// Export mặc định toàn bộ service
 export default authService;
 
-// ✅ Export thêm `logout` riêng để hook hoặc component import { logout } dùng trực tiếp
+// Export thêm `logout` riêng để hook hoặc component import { logout } dùng trực tiếp
 export const logout = () => authService.logout();

@@ -31,57 +31,43 @@ import {
   Edit as EditIcon,
   Add as AddIcon,
   Refresh as RefreshIcon,
-  ArrowForward as NextPhaseIcon,
   Check as CheckIcon,
 } from "@mui/icons-material";
 import Autocomplete from "@mui/material/Autocomplete";
 import diagnosticsService from "../../services/diagnosticsService";
-import claimService from "../../services/claimService";
 import axiosInstance from "../../services/axiosInstance";
-import axios from "axios";
-
-/**
- * Diagnostics.jsx
- *
- * Implements:
- * - list (paged) via getMyDiagnostics
- * - getAll (button toggle to view all)
- * - view details (GET by id)
- * - create diagnostic (POST /create)
- * - edit/update (PUT /{id}/update)
- * - next-phase (GET /{claimId}/next-phase)
- * - can-complete (GET /{claimId}/can-complete) -> mark complete via update (assumption)
- *
- * Notes on assumptions:
- * - The 'update' endpoint's request body schema you posted does not explicitly show `phase` in request,
- *   but the response contains `phase`. To mark a diagnostic as COMPLETE we submit the full object and
- *   set `phase: "COMPLETED"`. If your backend requires a different call, replace the "markComplete" logic.
- */
+import authService from "../../services/authService";
 
 export default function Diagnostics() {
   const DIAGNOSTIC_PHASE = {
     PRE_REPAIR: "PRE_REPAIR",
     POST_REPAIR: "POST_REPAIR",
+    COMPLETED: "COMPLETED",
   };
-  const [claimsOptions, setClaimsOptions] = useState([]); // [{ id, vin, ... }]
+
+  // ✅ Lấy userId hiện tại từ localStorage (sau khi đăng nhập)
+  const currentUserId = localStorage.getItem("userId");
+
+  // Data
+  const [claimsOptions, setClaimsOptions] = useState([]);
   const [loadingClaims, setLoadingClaims] = useState(false);
-  // list state
   const [rows, setRows] = useState([]);
+  const [filteredRows, setFilteredRows] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
-  const [page, setPage] = useState(1); // 1-based for UI
+  const [page, setPage] = useState(1);
   const [pageSize] = useState(10);
   const [totalPages, setTotalPages] = useState(1);
-  const [viewAll, setViewAll] = useState(false);
 
-  // dialogs / forms / detail
+  // Dialogs
   const [detailOpen, setDetailOpen] = useState(false);
   const [detailData, setDetailData] = useState(null);
-
   const [formOpen, setFormOpen] = useState(false);
-  const [formMode, setFormMode] = useState("create"); // 'create' | 'edit'
+  const [formMode, setFormMode] = useState("create");
   const [formValues, setFormValues] = useState({
     claimId: "",
+    customerName: "",
+    customerPhone: "",
     sohPct: "",
     socPct: "",
     packVoltage: "",
@@ -90,28 +76,33 @@ export default function Diagnostics() {
     notes: "",
   });
 
-  // notifications
+  // Phase logic
+  const [createPhaseHint, setCreatePhaseHint] = useState(null);
+  const [createPhaseCount, setCreatePhaseCount] = useState(0);
+
+  // Snackbar + confirm
+  const [confirmOpen, setConfirmOpen] = useState(false);
+  const [confirmTarget, setConfirmTarget] = useState({ claimId: null, diagId: null });
   const [snackbar, setSnackbar] = useState({ open: false, message: "", severity: "success" });
 
-  const loadClaims = async () => {
+  const log = {
+    info: (...args) => console.info("📡 [Diagnostics]", ...args),
+    ok: (...args) => console.log("✅ [Diagnostics]", ...args),
+    err: (...args) => console.error("❌ [Diagnostics]", ...args),
+  };
+
+  // ================== LOAD DATA ==================
+  async function loadClaims() {
     try {
       setLoadingClaims(true);
-
-      // 🔹 Gọi song song hai API
       const [claimsRes, vehiclesRes] = await Promise.all([
         axiosInstance.get("claims/get-all"),
         axiosInstance.get("vehicles/get-all"),
       ]);
 
-      const claims = Array.isArray(claimsRes.data)
-        ? claimsRes.data
-        : claimsRes.data?.data || [];
+      const claims = Array.isArray(claimsRes.data) ? claimsRes.data : [];
+      const vehicles = Array.isArray(vehiclesRes.data) ? vehiclesRes.data : [];
 
-      const vehicles = Array.isArray(vehiclesRes.data)
-        ? vehiclesRes.data
-        : vehiclesRes.data?.data || [];
-
-      // 🔹 Ghép claim với vehicle cùng VIN
       const merged = claims.map((claim) => {
         const match = vehicles.find((v) => v.vin === claim.vin);
         return {
@@ -119,163 +110,185 @@ export default function Diagnostics() {
           vin: claim.vin,
           status: claim.status,
           claimType: claim.claimType,
-          // từ vehicle
-          intakeContactName: match?.intakeContactName || "Không rõ",
-          intakeContactPhone: match?.intakeContactPhone || "—",
+          intakeContactName: match?.intakeContactName || claim.intakeContactName || "Không rõ",
+          intakeContactPhone: match?.intakeContactPhone || claim.intakeContactPhone || "—",
         };
       });
 
       setClaimsOptions(merged);
+      log.ok("Loaded claims merged", merged.length);
     } catch (err) {
-      console.error("❌ loadClaims error:", err);
-      setSnackbar({
-        open: true,
-        message: "Không thể tải dữ liệu Claims/Vehicles",
-        severity: "error",
-      });
+      log.err("loadClaims error", err);
+      setSnackbar({ open: true, message: "Không thể tải Claims/Vehicles", severity: "error" });
     } finally {
       setLoadingClaims(false);
     }
-  };
-
-  // Search by claimId
-  const [searchClaimId, setSearchClaimId] = useState("");
-
-  async function handleSearchByClaim() {
-    if (!searchClaimId.trim()) return;
-    setLoading(true);
-    try {
-      const resp = await diagnosticsService.getByClaim(searchClaimId.trim());
-      setRows(resp.data || []);
-      setTotalPages(1); // disable pagination for search results
-      setSnackbar({
-        open: true,
-        message: `Đã tải diagnostics theo Claim ID ${searchClaimId}`,
-        severity: "success",
-      });
-    } catch (err) {
-      console.error("Search error", err);
-      setSnackbar({
-        open: true,
-        message: "Không tìm thấy Claim hoặc lỗi tải dữ liệu",
-        severity: "error",
-      });
-    } finally {
-      setLoading(false);
-    }
   }
 
-  // load page of "my diagnostics" by default
-  useEffect(() => {
-    loadPage(page);
-    loadClaims();
-  }, [page, viewAll]);
-
-  async function loadPage(pageNumber = 1) {
+  // ================== LOAD PAGE ==================
+  async function loadPage(pageNumber = 1, useMy = true) {
     setLoading(true);
     setError(null);
     try {
-      if (viewAll) {
-        // getAll returns array (no paging) - we adapt to pagination locally
-        const resp = await diagnosticsService.getAll();
-        const items = resp.data || [];
-        setTotalPages(Math.max(1, Math.ceil(items.length / pageSize)));
-        // slice page
-        const start = (pageNumber - 1) * pageSize;
-        setRows(items.slice(start, start + pageSize));
-      } else {
-        // backend paged endpoint
+      let items = [];
+      if (useMy) {
+        log.info("GET diagnostics/my-diagnostics");
         const resp = await diagnosticsService.getMyDiagnostics(pageNumber - 1, pageSize);
-        // resp.data expected to be Page object as in your OpenAPI example
-        const payload = resp.data || {};
-        const content = payload.content || [];
-        setRows(content);
-        setTotalPages(payload.totalPages && payload.totalPages > 0 ? payload.totalPages : 1);
+        items = Array.isArray(resp.content) ? resp.content : [];
+        setTotalPages(resp.totalPages || 1);
+      } else {
+        log.info("GET diagnostics/get-all");
+        const resp = await diagnosticsService.getAll();
+        items = Array.isArray(resp) ? resp : [];
+        setTotalPages(Math.max(1, Math.ceil(items.length / pageSize)));
       }
+
+      setRows(items);
+      setFilteredRows(items);
+      log.ok("Diagnostics loaded", items.length);
     } catch (err) {
-      console.error("Load diagnostics error", err);
-      setError(err.response?.data?.message || err.message || "Failed to load diagnostics");
+      log.err("Load diagnostics error", err);
+      setError("Không thể tải danh sách diagnostics");
     } finally {
       setLoading(false);
     }
   }
 
-  // view details by diagnostic id
+  useEffect(() => {
+    loadClaims();
+    loadPage();
+  }, []);
+
+  // ================== SEARCH ==================
+  const [searchQuery, setSearchQuery] = useState("");
+
+  useEffect(() => {
+    if (!searchQuery.trim()) {
+      setFilteredRows(rows);
+      return;
+    }
+    const query = searchQuery.toLowerCase();
+    const filtered = rows.filter(
+      (r) =>
+        r.claimVin?.toLowerCase().includes(query) ||
+        r.performedByName?.toLowerCase().includes(query) ||
+        r.customerName?.toLowerCase().includes(query)
+    );
+    setFilteredRows(filtered);
+  }, [searchQuery, rows]);
+
+  // ================== VIEW DETAIL ==================
   async function handleView(id) {
     setDetailData(null);
     setDetailOpen(true);
     try {
       const resp = await diagnosticsService.getById(id);
-      setDetailData(resp.data);
+      setDetailData(resp);
     } catch (err) {
-      console.error("getById error", err);
+      log.err("getById error", err);
       setSnackbar({ open: true, message: "Không lấy được chi tiết", severity: "error" });
       setDetailOpen(false);
     }
   }
 
-  // open create form
+  // ================== CREATE / EDIT ==================
   function handleOpenCreate() {
     setFormMode("create");
     setFormValues({
       claimId: "",
+      customerName: "",
+      customerPhone: "",
       sohPct: "",
       socPct: "",
       packVoltage: "",
       cellDeltaMv: "",
       cycles: "",
       notes: "",
-      phase: DIAGNOSTIC_PHASE.PRE_REPAIR,
     });
+    setCreatePhaseHint(null);
+    setCreatePhaseCount(0);
     setFormOpen(true);
   }
 
-  // open edit form populated with data
-  async function handleOpenEdit(id) {
-    setFormMode("edit");
-    setFormValues({
-      claimId: "",
-      sohPct: "",
-      socPct: "",
-      packVoltage: "",
-      cellDeltaMv: "",
-      cycles: "",
-      notes: "",
-      id,
-    });
-    // fetch full object
+  async function onSelectClaimForForm(selected) {
+    if (!selected) return;
+    setFormValues((f) => ({
+      ...f,
+      claimId: selected.id,
+      customerName: selected.intakeContactName,
+      customerPhone: selected.intakeContactPhone,
+    }));
+
     try {
-      const resp = await diagnosticsService.getById(id);
-      const d = resp.data || {};
-      setFormValues({
-        id: d.id,
-        claimId: d.claimId || "",
-        claimVin: d.claimVin || "",
-        sohPct: d.sohPct ?? "",
-        socPct: d.socPct ?? "",
-        packVoltage: d.packVoltage ?? "",
-        cellDeltaMv: d.cellDeltaMv ?? "",
-        cycles: d.cycles ?? "",
-        notes: d.notes ?? "",
-      });
-      setFormOpen(true);
+      const resp = await diagnosticsService.getByClaim(selected.id);
+      const arr = Array.isArray(resp) ? resp : [];
+      setCreatePhaseCount(arr.length);
+      setCreatePhaseHint(arr.length === 0 ? DIAGNOSTIC_PHASE.PRE_REPAIR : arr.length === 1 ? DIAGNOSTIC_PHASE.POST_REPAIR : null);
     } catch (err) {
-      console.error("fetch for edit failed", err);
-      setSnackbar({ open: true, message: "Lấy dữ liệu sửa thất bại", severity: "error" });
+      log.err("getByClaim error", err);
     }
   }
 
-  // edit the currently viewed diagnostic (PRE or POST)
-  async function handleEditCurrent() {
-    if (!detailData?.id) return;
+  async function handleSubmitCreate() {
+    if (!formValues.claimId) {
+      setSnackbar({ open: true, message: "Chưa chọn Claim", severity: "warning" });
+      return;
+    }
+
     try {
-      const resp = await diagnosticsService.getById(detailData.id);
-      const d = resp.data || detailData;
+      const existing = await diagnosticsService.getByClaim(formValues.claimId);
+      if (existing.length >= 2) {
+        setSnackbar({ open: true, message: "Claim đã có PRE & POST", severity: "warning" });
+        return;
+      }
+
+      const desiredPhase =
+        existing.length === 0
+          ? DIAGNOSTIC_PHASE.PRE_REPAIR
+          : DIAGNOSTIC_PHASE.POST_REPAIR;
+
+      const payload = {
+        claimId: formValues.claimId,
+        sohPct: Number(formValues.sohPct) || 0,
+        socPct: Number(formValues.socPct) || 0,
+        packVoltage: Number(formValues.packVoltage) || 0,
+        cellDeltaMv: Number(formValues.cellDeltaMv) || 0,
+        cycles: Number(formValues.cycles) || 0,
+        notes: (formValues.notes || "").trim(),
+      };
+
+      console.log("🚀 [Diagnostics] Sending create payload:", payload);
+
+      const result = await diagnosticsService.create(payload);
+
+      console.log("✅ [Diagnostics] Created result:", result);
+      setSnackbar({
+        open: true,
+        message: `Đã tạo bản ${desiredPhase} thành công`,
+        severity: "success",
+      });
+      setFormOpen(false);
+      loadPage();
+    } catch (err) {
+      console.error("❌ [Diagnostics] create error", err);
+      console.log("📩 Server response:", err.response?.data);
+      setSnackbar({
+        open: true,
+        message:
+          err.response?.data?.message ||
+          "Tạo thất bại — kiểm tra lại claimId hoặc dữ liệu nhập",
+        severity: "error",
+      });
+    }
+  }
+
+  async function handleOpenEdit(id) {
+    try {
+      const d = await diagnosticsService.getById(id);
       setFormMode("edit");
       setFormValues({
         id: d.id,
-        claimId: d.claimId || "",
-        claimVin: d.claimVin || "",
+        claimId: d.claimId,
         sohPct: d.sohPct ?? "",
         socPct: d.socPct ?? "",
         packVoltage: d.packVoltage ?? "",
@@ -285,277 +298,108 @@ export default function Diagnostics() {
       });
       setFormOpen(true);
     } catch (err) {
-      console.error("editCurrent error", err);
       setSnackbar({ open: true, message: "Không thể mở form sửa", severity: "error" });
     }
   }
 
-  // submit create
-  async function handleSubmitCreate() {
-    setLoading(true);
-
-    // VALIDATION
-    if (!formValues.claimId) {
-      setSnackbar({ open: true, message: "Vui lòng chọn VIN (một claim) trước khi tạo diagnostic", severity: "error" });
-      setLoading(false);
-      return;
-    }
-    // optional stricter validation: SOH, SOC, Pack Voltage
-    if (formValues.sohPct === "" || formValues.socPct === "" || formValues.packVoltage === "") {
-      setSnackbar({ open: true, message: "Vui lòng nhập đầy đủ: SOH, SOC và Pack Voltage", severity: "warning" });
-      setLoading(false);
-      return;
-    }
-
-    try {
-      const payload = {
-        claimId: formValues.claimId,
-        sohPct: formValues.sohPct !== "" ? parseFloat(formValues.sohPct) : 0,
-        socPct: formValues.socPct !== "" ? parseFloat(formValues.socPct) : 0,
-        packVoltage: formValues.packVoltage !== "" ? parseFloat(formValues.packVoltage) : 0,
-        cellDeltaMv: formValues.cellDeltaMv !== "" ? parseFloat(formValues.cellDeltaMv) : 0,
-        cycles: formValues.cycles !== "" ? parseInt(formValues.cycles, 10) : 0,
-        notes: formValues.notes?.trim() || "",
-        phase: DIAGNOSTIC_PHASE.PRE_REPAIR, // mặc định
-      };
-      const resp = await diagnosticsService.create(payload);
-      setSnackbar({ open: true, message: "Tạo diagnostic thành công", severity: "success" });
-
-      // Reset form & close
-      setFormValues({
-        claimId: "",
-        customerName: "",
-        customerPhone: "",
-        sohPct: "",
-        socPct: "",
-        packVoltage: "",
-        cellDeltaMv: "",
-        cycles: "",
-        notes: "",
-      });
-      setFormOpen(false);
-
-      // reload list
-      loadPage(page);
-    } catch (err) {
-      console.error("create error", err);
-      const serverMessage = err?.response?.data || err?.message || "Tạo diagnostic thất bại";
-      // friendly mapping for common backend messages
-      let friendly = serverMessage;
-      if (typeof serverMessage === "string" && serverMessage.includes("Claim phải có trạng thái")) {
-        friendly = "⚠️ Claim chưa ở giai đoạn yêu cầu để tạo Diagnostic (cần DIAGNOSING/ESTIMATING...).";
-      }
-      setSnackbar({ open: true, message: friendly, severity: "error" });
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  // submit update
   async function handleSubmitUpdate() {
-    if (!formValues.id) {
-      setSnackbar({ open: true, message: "Missing id for update", severity: "error" });
-      return;
-    }
-    setLoading(true);
     try {
-      const payload = {
-        claimId: formValues.claimId,
-        sohPct: parseFloat(formValues.sohPct) || 0,
-        socPct: parseFloat(formValues.socPct) || 0,
-        packVoltage: parseFloat(formValues.packVoltage) || 0,
-        cellDeltaMv: parseFloat(formValues.cellDeltaMv) || 0,
-        cycles: parseInt(formValues.cycles || 0, 10),
-        notes: formValues.notes || "",
+      const current = await diagnosticsService.getById(formValues.id);
+      const clean = {
+        claimId: current.claimId,
+        sohPct: Number(formValues.sohPct) || 0,
+        socPct: Number(formValues.socPct) || 0,
+        packVoltage: Number(formValues.packVoltage) || 0,
+        cellDeltaMv: Number(formValues.cellDeltaMv) || 0,
+        cycles: Number(formValues.cycles) || 0,
+        notes: (formValues.notes || "").trim(),
       };
-      await diagnosticsService.update(formValues.id, payload);
-      setSnackbar({ open: true, message: "Cập nhật diagnostic thành công", severity: "success" });
+      await diagnosticsService.update(formValues.id, clean);
+      setSnackbar({ open: true, message: "Cập nhật thành công", severity: "success" });
       setFormOpen(false);
-      loadPage(page);
+      loadPage();
     } catch (err) {
-      console.error("update error", err);
-      setSnackbar({ open: true, message: "Cập nhật thất bại", severity: "error" });
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  // chuyển phase PRE <-> POST
-  async function handleSwitchPhase(claimId, diagId, currentPhase) {
-    try {
-      const nextPhase = currentPhase === "PRE_REPAIR" ? "POST_REPAIR" : "PRE_REPAIR";
-
-      // lấy dữ liệu hiện tại
-      const { data: current } = await diagnosticsService.getById(diagId);
-      const payload = {
-        claimId: current.claimId,
-        sohPct: current.sohPct ?? 0,
-        socPct: current.socPct ?? 0,
-        packVoltage: current.packVoltage ?? 0,
-        cellDeltaMv: current.cellDeltaMv ?? 0,
-        cycles: current.cycles ?? 0,
-        notes: current.notes ?? "",
-        phase: nextPhase,
-      };
-
-      await diagnosticsService.update(diagId, payload);
-
-      setRows((prev) =>
-        prev.map((r) => (r.id === diagId ? { ...r, phase: nextPhase } : r))
-      );
-
-      setSnackbar({
-        open: true,
-        message: `✅ Đã chuyển sang ${nextPhase}`,
-        severity: "success",
-      });
-    } catch (err) {
-      console.error("switch phase error", err);
-      setSnackbar({
-        open: true,
-        message: "❌ Lỗi khi chuyển phase",
-        severity: "error",
-      });
-    }
-  }
-
-  // So sánh Diagnostics trước và sau
-  async function handleShowPhase(claimId, phase) {
-    try {
-      const resp = await diagnosticsService.getByClaim(claimId);
-      const all = resp.data || [];
-      const found = all.find((d) => d.phase === phase);
-      if (!found) {
-        setSnackbar({
-          open: true,
-          message: `Không có bản ${phase}`,
-          severity: "warning",
-        });
-        return;
+      console.error("❌ Update failed:", err);
+      if (err.response?.data?.error === "AUTH_ERROR") {
+        setSnackbar({ open: true, message: err.response.data.message || "Bạn không có quyền chỉnh sửa bản này", severity: "warning" });
+      } else {
+        setSnackbar({ open: true, message: "Cập nhật thất bại", severity: "error" });
       }
-      setDetailData(found);
-      setSnackbar({
-        open: true,
-        message: `Đang xem bản ${phase}`,
-        severity: "info",
-      });
-    } catch (err) {
-      console.error("show phase error", err);
-      setSnackbar({
-        open: true,
-        message: "❌ Lỗi khi lấy dữ liệu phase",
-        severity: "error",
-      });
     }
   }
 
-  // check can-complete and then mark complete via update (ASSUMPTION: update accepts a phase field)
-  async function handleMarkComplete(claimId, diagId) {
+  // ================== MARK COMPLETE ==================
+  function openConfirmMarkComplete(claimId, diagId) {
+    setConfirmTarget({ claimId, diagId });
+    setConfirmOpen(true);
+  }
+
+  async function handleConfirmMarkComplete() {
+    setConfirmOpen(false);
+    const { claimId, diagId } = confirmTarget;
+    if (!claimId) return;
     try {
-      // 1️⃣ Kiểm tra xem có thể hoàn tất không
-      const resp = await diagnosticsService.canComplete(claimId);
-      const allowed = resp.data === true || resp.data === "true";
-
-      if (!allowed) {
-        setSnackbar({
-          open: true,
-          message: "⚠️ Không thể hoàn tất - điều kiện chưa đủ",
-          severity: "warning",
-        });
-        return;
-      }
-
-      // 2️⃣ Lấy dữ liệu diagnostic hiện tại (để giữ nguyên giá trị cũ)
-      const currentResp = await diagnosticsService.getById(diagId);
-      const current = currentResp.data || {};
-
-      // 3️⃣ Gọi PUT /update với đúng 6 trường hợp lệ
-      const payload = {
+      const current = await diagnosticsService.getById(diagId);
+      const clean = {
         claimId: current.claimId,
-        sohPct: current.sohPct ?? 0,
-        socPct: current.socPct ?? 0,
-        packVoltage: current.packVoltage ?? 0,
-        cellDeltaMv: current.cellDeltaMv ?? 0,
-        cycles: current.cycles ?? 0,
+        sohPct: Number(current.sohPct) || 0,
+        socPct: Number(current.socPct) || 0,
+        packVoltage: Number(current.packVoltage) || 0,
+        cellDeltaMv: Number(current.cellDeltaMv) || 0,
+        cycles: Number(current.cycles) || 0,
         notes: current.notes || "",
       };
-
-      await diagnosticsService.update(diagId, payload);
-
-      setSnackbar({
-        open: true,
-        message: "✅ Diagnostic đã được cập nhật trạng thái hoàn tất",
-        severity: "success",
-      });
-
-      // 4️⃣ Reload danh sách
-      loadPage(page);
+      await diagnosticsService.update(diagId, clean);
+      setSnackbar({ open: true, message: "Đã đánh dấu hoàn tất", severity: "success" });
+      loadPage();
     } catch (err) {
-      console.error("mark complete error", err);
-      setSnackbar({
-        open: true,
-        message: "❌ Lỗi khi đánh dấu hoàn tất",
-        severity: "error",
-      });
+      console.error("❌ Mark complete failed:", err);
+      if (err.response?.data?.error === "AUTH_ERROR") {
+        setSnackbar({ open: true, message: err.response.data.message || "Bạn không có quyền hoàn tất bản này", severity: "warning" });
+      } else {
+        setSnackbar({ open: true, message: "Không thể hoàn tất", severity: "error" });
+      }
     }
+  }
+
+  // ================== UI HELPERS ==================
+  function phaseColor(phase) {
+    if (phase === DIAGNOSTIC_PHASE.PRE_REPAIR) return "success";
+    if (phase === DIAGNOSTIC_PHASE.POST_REPAIR) return "warning";
+    return "default";
   }
 
   function closeSnackbar() {
     setSnackbar((s) => ({ ...s, open: false }));
   }
 
+  // ================== RENDER ==================
   return (
     <Box>
       <Stack direction="row" justifyContent="space-between" alignItems="center" mb={2}>
         <Typography variant="h5">Diagnostics</Typography>
 
-        {/* Search by Claim ID */}
         <Stack direction="row" spacing={1} alignItems="center">
           <TextField
             size="small"
-            label="Search by Claim ID"
+            label="Tìm theo VIN / Tên khách / SĐT"
             variant="outlined"
-            value={searchClaimId}
-            onChange={(e) => setSearchClaimId(e.target.value)}
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
           />
-          <Button variant="outlined" onClick={handleSearchByClaim}>
-            Search
-          </Button>
-          <Button
-            variant="text"
-            onClick={async () => {
-              try {
-                setSearchClaimId("");
-                await loadPage(1);
-              } catch {
-                setSnackbar({ open: true, message: "Không thể tải danh sách", severity: "error" });
-              }
-            }}
-          >
-            Reset
-          </Button>
-        </Stack>
-
-        <Stack direction="row" spacing={1}>
-          <Button
-            variant={viewAll ? "contained" : "outlined"}
-            size="small"
-            onClick={() => {
-              setViewAll(!viewAll);
-              setPage(1);
-            }}
-          >
-            {viewAll ? "Viewing: All" : "Viewing: My Diagnostics"}
-          </Button>
-
-          <Tooltip title="Refresh">
-            <IconButton onClick={() => loadPage(page)}>
+          <Tooltip title="Làm mới">
+            <IconButton onClick={() => loadPage()}>
               <RefreshIcon />
             </IconButton>
           </Tooltip>
-
           <Button variant="contained" startIcon={<AddIcon />} onClick={handleOpenCreate}>
             New
+          </Button>
+          <Button variant="outlined" onClick={() => loadPage(1, true)}>
+            Của tôi
+          </Button>
+          <Button variant="outlined" onClick={() => loadPage(1, false)}>
+            Tất cả
           </Button>
         </Stack>
       </Stack>
@@ -569,122 +413,85 @@ export default function Diagnostics() {
       ) : (
         <Paper variant="outlined">
           <TableContainer>
-            <Table
-              sx={{
-                "& td, & th": {
-                  whiteSpace: "normal",
-                  wordBreak: "break-word",
-                  textAlign: "center",
-                  verticalAlign: "middle",
-                },
-              }}
-            >
+            <Table>
               <TableHead>
                 <TableRow>
-                  <TableCell align="center">STT</TableCell>
-                  <TableCell align="center">Claim VIN</TableCell>
-                  <TableCell align="center">Performed By</TableCell>
-                  <TableCell align="center">SOH / SOC</TableCell>
-                  <TableCell align="center">Pack Voltage</TableCell>
-                  <TableCell align="center">Cycles</TableCell>
-                  <TableCell align="center">Recorded At</TableCell>
-                  <TableCell align="center">Phase</TableCell>
-                  <TableCell align="center">Actions</TableCell>
+                  <TableCell>STT</TableCell>
+                  <TableCell>Claim VIN</TableCell>
+                  <TableCell>Kỹ thuật viên</TableCell>
+                  <TableCell>SOH / SOC</TableCell>
+                  <TableCell>Pack Voltage</TableCell>
+                  <TableCell>Cell Delta (mV)</TableCell>
+                  <TableCell>Cycles</TableCell>
+                  <TableCell>Recorded At</TableCell>
+                  <TableCell>Phase</TableCell>
+                  <TableCell>Actions</TableCell>
                 </TableRow>
               </TableHead>
-
               <TableBody>
-                {rows.length === 0 && (
+                {filteredRows.length === 0 ? (
                   <TableRow>
                     <TableCell colSpan={9} align="center">
-                      <Typography variant="body2" align="center" sx={{ py: 3 }}>
-                        Không có bản ghi
-                      </Typography>
+                      Không có bản ghi
                     </TableCell>
                   </TableRow>
+                ) : (
+                  filteredRows.slice((page - 1) * pageSize, page * pageSize).map((r, i) => (
+                    <TableRow key={r.id}>
+                      <TableCell>{(page - 1) * pageSize + i + 1}</TableCell>
+                      <TableCell>{r.claimVin || "-"}</TableCell>
+                      <TableCell>{r.performedByName || "-"}</TableCell>
+                      <TableCell>
+                        {r.sohPct} / {r.socPct}
+                      </TableCell>
+                      <TableCell>{r.packVoltage}</TableCell>
+                      <TableCell>{r.cellDeltaMv}</TableCell>
+                      <TableCell>{r.cycles}</TableCell>
+                      <TableCell>{r.recordedAt ? new Date(r.recordedAt).toLocaleString() : "-"}</TableCell>
+                      <TableCell>
+                        <Chip label={r.phase} color={phaseColor(r.phase)} size="small" />
+                      </TableCell>
+                      <TableCell>
+                        <Stack direction="row" spacing={1} justifyContent="center">
+                          <Tooltip title="Xem chi tiết">
+                            <IconButton size="small" onClick={() => handleView(r.id)}>
+                              <VisibilityIcon />
+                            </IconButton>
+                          </Tooltip>
+
+                          {/* ✅ Chỉ hiện nếu là người tạo */}
+                          {r.performedById === currentUserId && (
+                            <>
+                              <Tooltip title="Sửa">
+                                <IconButton size="small" onClick={() => handleOpenEdit(r.id)}>
+                                  <EditIcon />
+                                </IconButton>
+                              </Tooltip>
+                              <Tooltip title="Hoàn tất">
+                                <IconButton size="small" onClick={() => openConfirmMarkComplete(r.claimId, r.id)}>
+                                  <CheckIcon />
+                                </IconButton>
+                              </Tooltip>
+                            </>
+                          )}
+                        </Stack>
+                      </TableCell>
+                    </TableRow>
+                  ))
                 )}
-
-                {rows.map((r, idx) => (
-                  <TableRow key={r.id}>
-                    <TableCell align="center">{(page - 1) * pageSize + idx + 1}</TableCell>
-                    <TableCell align="center">{r.claimVin || "-"}</TableCell>
-                    <TableCell align="center">{r.performedByName || "-"}</TableCell>
-                    <TableCell align="center">
-                      {r.sohPct ?? "-"} / {r.socPct ?? "-"}
-                    </TableCell>
-                    <TableCell align="center">{r.packVoltage ?? "-"}</TableCell>
-                    <TableCell align="center">{r.cycles ?? "-"}</TableCell>
-                    <TableCell align="center">
-                      {r.recordedAt ? new Date(r.recordedAt).toLocaleString() : "-"}
-                    </TableCell>
-                    <TableCell align="center">
-                      <Chip label={r.phase || "UNKNOWN"} size="small" />
-                    </TableCell>
-                    <TableCell align="center">
-                      <Stack direction="row" spacing={1} justifyContent="center">
-                        <Tooltip title="Xem chi tiết">
-                          <IconButton size="small" onClick={() => handleView(r.id)}>
-                            <VisibilityIcon />
-                          </IconButton>
-                        </Tooltip>
-
-                        <Tooltip title="Sửa">
-                          <IconButton size="small" onClick={() => handleOpenEdit(r.id)}>
-                            <EditIcon />
-                          </IconButton>
-                        </Tooltip>
-
-                        <Tooltip
-                          title={
-                            r.phase === "PRE_REPAIR"
-                              ? "Chuyển sang POST_REPAIR"
-                              : "Chuyển sang PRE_REPAIR"
-                          }
-                        >
-                          <IconButton
-                            size="small"
-                            onClick={() => handleSwitchPhase(r.claimId, r.id, r.phase)}
-                          >
-                            <NextPhaseIcon
-                              sx={{
-                                transform:
-                                  r.phase === "POST_REPAIR" ? "rotate(180deg)" : "none",
-                              }}
-                            />
-                          </IconButton>
-                        </Tooltip>
-
-                        <Tooltip title="Hoàn tất">
-                          <IconButton
-                            size="small"
-                            onClick={() => handleMarkComplete(r.claimId, r.id)}
-                          >
-                            <CheckIcon />
-                          </IconButton>
-                        </Tooltip>
-                      </Stack>
-                    </TableCell>
-                  </TableRow>
-                ))}
               </TableBody>
             </Table>
           </TableContainer>
 
-          {/* Pagination */}
           <Box display="flex" justifyContent="center" p={2}>
-            <Pagination
-              count={Math.max(1, totalPages)}
-              page={page}
-              onChange={(_, v) => setPage(v)}
-              color="primary"
-            />
+            <Pagination count={Math.max(1, totalPages)} page={page} onChange={(_, v) => setPage(v)} color="primary" />
           </Box>
         </Paper>
       )}
 
       {/* Detail dialog */}
       <Dialog open={detailOpen} onClose={() => setDetailOpen(false)} fullWidth maxWidth="md">
-        <DialogTitle>Diagnostic Details (View Only)</DialogTitle>
+        <DialogTitle>Diagnostic Details</DialogTitle>
         <DialogContent dividers>
           {!detailData ? (
             <Box display="flex" justifyContent="center" p={4}>
@@ -692,288 +499,101 @@ export default function Diagnostics() {
             </Box>
           ) : (
             <Grid container spacing={2}>
-              <Grid item xs={12} md={6}>
-                <Typography variant="subtitle2">VIN</Typography>
-                <Typography variant="body1">{detailData.claimVin || "-"}</Typography>
+              <Grid item xs={6}>
+                <Typography>VIN</Typography>
+                <Typography>{detailData.claimVin}</Typography>
               </Grid>
-
-              <Grid item xs={6} md={3}>
-                <Typography variant="subtitle2">Performed By</Typography>
-                <Typography variant="body1">{detailData.performedByName || "-"}</Typography>
-              </Grid>
-
-              <Grid item xs={6} md={3}>
-                <Typography variant="subtitle2">SOH %</Typography>
-                <Typography variant="body1">{detailData.sohPct}</Typography>
-              </Grid>
-
-              <Grid item xs={6} md={3}>
-                <Typography variant="subtitle2">SOC %</Typography>
-                <Typography variant="body1">{detailData.socPct}</Typography>
-              </Grid>
-
-              <Grid item xs={6} md={3}>
-                <Typography variant="subtitle2">Pack Voltage</Typography>
-                <Typography variant="body1">{detailData.packVoltage}</Typography>
-              </Grid>
-
-              <Grid item xs={6} md={3}>
-                <Typography variant="subtitle2">Cell Delta (mV)</Typography>
-                <Typography variant="body1">{detailData.cellDeltaMv}</Typography>
-              </Grid>
-
-              <Grid item xs={6} md={3}>
-                <Typography variant="subtitle2">Cycles</Typography>
-                <Typography variant="body1">{detailData.cycles}</Typography>
-              </Grid>
-
-              <Grid item xs={12}>
-                <Typography variant="subtitle2">Notes</Typography>
-                <Typography variant="body2" color="text.secondary">
-                  {detailData.notes || "-"}
+              <Grid item xs={6}>
+                <Typography>SOH / SOC</Typography>
+                <Typography>
+                  {detailData.sohPct} / {detailData.socPct}
                 </Typography>
               </Grid>
-
-              <Grid item xs={12}>
-                <Typography variant="caption" color="text.secondary">
-                  Recorded: {detailData.recordedAt ? new Date(detailData.recordedAt).toLocaleString() : "-"}
-                </Typography>
+              <Grid item xs={6}>
+                <Typography>Pack Voltage</Typography>
+                <Typography>{detailData.packVoltage}</Typography>
               </Grid>
-
+              <Grid item xs={6}>
+                <Typography>Cell Delta (mV)</Typography>
+                <Typography>{detailData.cellDeltaMv}</Typography>
+              </Grid>
+              <Grid item xs={6}>
+                <Typography>Performed By</Typography>
+                <Typography>{detailData.performedByName}</Typography>
+              </Grid>
+              <Grid item xs={6}>
+                <Typography>Cycles</Typography>
+                <Typography>{detailData.cycles}</Typography>
+              </Grid>
               <Grid item xs={12}>
-                <Typography variant="subtitle2">Phase</Typography>
-                <Chip label={detailData.phase || "UNKNOWN"} />
+                <Typography>Notes</Typography>
+                <Typography>{detailData.notes}</Typography>
               </Grid>
             </Grid>
           )}
         </DialogContent>
-
-        <DialogActions sx={{ justifyContent: "space-between" }}>
-          {/* Nhóm nút chuyển phase */}
-          <Stack direction="row" spacing={1} alignItems="center">
-            <Tooltip title="Xem PRE_REPAIR">
-              <span>
-                <IconButton
-                  onClick={() => handleShowPhase(detailData.claimId, "PRE_REPAIR")}
-                  disabled={detailData?.phase === "PRE_REPAIR"}
-                >
-                  <NextPhaseIcon
-                    sx={{
-                      transform: "rotate(180deg)",
-                      color:
-                        detailData?.phase === "PRE_REPAIR"
-                          ? "action.disabled"
-                          : "primary.main",
-                    }}
-                  />
-                </IconButton>
-              </span>
-            </Tooltip>
-
-            <Typography variant="body2" color="text.secondary">
-              {detailData?.phase || "UNKNOWN"}
-            </Typography>
-
-            <Tooltip title="Xem POST_REPAIR">
-              <span>
-                <IconButton
-                  onClick={() => handleShowPhase(detailData.claimId, "POST_REPAIR")}
-                  disabled={detailData?.phase === "POST_REPAIR"}
-                >
-                  <NextPhaseIcon
-                    sx={{
-                      color:
-                        detailData?.phase === "POST_REPAIR"
-                          ? "action.disabled"
-                          : "primary.main",
-                    }}
-                  />
-                </IconButton>
-              </span>
-            </Tooltip>
-          </Stack>
-
-          {/* Nhóm nút điều khiển */}
-          <Stack direction="row" spacing={1}>
-            <Button onClick={() => setDetailOpen(false)}>Close</Button>
-          </Stack>
+        <DialogActions>
+          <Button onClick={() => setDetailOpen(false)}>Đóng</Button>
         </DialogActions>
       </Dialog>
 
-      {/* Create / Edit Dialog */}
+      {/* Form Create/Edit */}
       <Dialog open={formOpen} onClose={() => setFormOpen(false)} fullWidth maxWidth="sm">
         <DialogTitle>{formMode === "create" ? "Create Diagnostic" : "Edit Diagnostic"}</DialogTitle>
-
         <DialogContent dividers>
-          <Grid container spacing={2} sx={{ mt: 0.5 }}>
-            <Grid item xs={12} md={12}>
-              <Autocomplete
-                options={claimsOptions || []}
-                loading={loadingClaims}
-                getOptionLabel={(opt) => {
-                  if (!opt) return "";
-                  const vin = opt.vin || "(Không có VIN)";
-                  const name = opt.intakeContactName || "Không rõ";
-                  const phone = opt.intakeContactPhone || "—";
-                  return `${vin} — ${name} (${phone})`;
-                }}
-                isOptionEqualToValue={(option, value) =>
-                  String(option?.id) === String(value?.id)
-                }
-                value={
-                  claimsOptions.find(
-                    (c) => String(c.id) === String(formValues.claimId)
-                  ) || null
-                }
-                onChange={(_, selected) => {
-                  if (selected) {
-                    setFormValues((f) => ({
-                      ...f,
-                      claimId: selected.id,
-                      customerName: selected.intakeContactName,
-                      customerPhone: selected.intakeContactPhone,
-                    }));
-                  } else {
-                    setFormValues((f) => ({
-                      ...f,
-                      claimId: "",
-                      customerName: "",
-                      customerPhone: "",
-                    }));
-                  }
-                }}
-                renderInput={(params) => (
-                  <TextField
-                    {...params}
-                    label="Chọn Claim (VIN / Khách hàng)"
-                    fullWidth
-                    helperText="Chọn Claim hợp lệ để tạo Diagnostic"
-                    InputProps={{
-                      ...params.InputProps,
-                      endAdornment: (
-                        <>
-                          {loadingClaims ? (
-                            <CircularProgress color="inherit" size={20} />
-                          ) : null}
-                          {params.InputProps.endAdornment}
-                        </>
-                      ),
-                    }}
-                  />
-                )}
-                noOptionsText={
-                  loadingClaims ? "Đang tải dữ liệu..." : "Không có Claim phù hợp"
-                }
-                clearOnEscape
-                disableClearable={false}
-              />
-            </Grid>
-
-            <Grid item xs={12} md={6}>
-              <TextField
-                label="Tên Khách Hàng"
-                value={formValues.customerName || ""}
-                fullWidth
-                InputProps={{ readOnly: true }}
-              />
-            </Grid>
-
-            <Grid item xs={12} md={6}>
-              <TextField
-                label="Số Điện Thoại"
-                value={formValues.customerPhone || ""}
-                fullWidth
-                InputProps={{ readOnly: true }}
-              />
-            </Grid>
-
-            <Grid item xs={6}>
-              <TextField
-                label="SOH %"
-                type="number"
-                fullWidth
-                value={formValues.sohPct}
-                onChange={(e) => setFormValues((s) => ({ ...s, sohPct: e.target.value }))}
-              />
-            </Grid>
-
-            <Grid item xs={6}>
-              <TextField
-                label="SOC %"
-                type="number"
-                fullWidth
-                value={formValues.socPct}
-                onChange={(e) => setFormValues((s) => ({ ...s, socPct: e.target.value }))}
-              />
-            </Grid>
-
-            <Grid item xs={6}>
-              <TextField
-                label="Pack Voltage"
-                type="number"
-                fullWidth
-                value={formValues.packVoltage}
-                onChange={(e) => setFormValues((s) => ({ ...s, packVoltage: e.target.value }))}
-              />
-            </Grid>
-
-            <Grid item xs={6}>
-              <TextField
-                label="Cell Delta (mV)"
-                type="number"
-                fullWidth
-                value={formValues.cellDeltaMv}
-                onChange={(e) => setFormValues((s) => ({ ...s, cellDeltaMv: e.target.value }))}
-              />
-            </Grid>
-
-            <Grid item xs={6}>
-              <TextField
-                label="Cycles"
-                type="number"
-                fullWidth
-                value={formValues.cycles}
-                onChange={(e) => setFormValues((s) => ({ ...s, cycles: e.target.value }))}
-              />
-            </Grid>
-
+          <Grid container spacing={2}>
             <Grid item xs={12}>
-              <TextField
-                label="Notes"
-                fullWidth
-                multiline
-                rows={3}
-                value={formValues.notes}
-                onChange={(e) => setFormValues((s) => ({ ...s, notes: e.target.value }))}
+              <Autocomplete
+                options={claimsOptions}
+                loading={loadingClaims}
+                getOptionLabel={(opt) => `${opt.vin} — ${opt.intakeContactName} (${opt.intakeContactPhone})`}
+                value={claimsOptions.find((c) => c.id === formValues.claimId) || null}
+                onChange={(_, selected) => onSelectClaimForForm(selected)}
+                renderInput={(params) => <TextField {...params} label="Chọn Claim (VIN / Khách hàng)" />}
               />
+            </Grid>
+            <Grid item xs={6}>
+              <TextField label="SOH %" fullWidth value={formValues.sohPct} onChange={(e) => setFormValues({ ...formValues, sohPct: e.target.value })} />
+            </Grid>
+            <Grid item xs={6}>
+              <TextField label="SOC %" fullWidth value={formValues.socPct} onChange={(e) => setFormValues({ ...formValues, socPct: e.target.value })} />
+            </Grid>
+            <Grid item xs={6}>
+              <TextField label="Pack Voltage" fullWidth value={formValues.packVoltage} onChange={(e) => setFormValues({ ...formValues, packVoltage: e.target.value })} />
+            </Grid>
+            <Grid item xs={6}>
+              <TextField label="Cell Delta (mV)" fullWidth value={formValues.cellDeltaMv} onChange={(e) => setFormValues({ ...formValues, cellDeltaMv: e.target.value })} />
+            </Grid>
+            <Grid item xs={6}>
+              <TextField label="Cycles" fullWidth value={formValues.cycles} onChange={(e) => setFormValues({ ...formValues, cycles: e.target.value })} />
+            </Grid>
+            <Grid item xs={12}>
+              <TextField label="Notes" multiline fullWidth rows={3} value={formValues.notes} onChange={(e) => setFormValues({ ...formValues, notes: e.target.value })} />
             </Grid>
           </Grid>
         </DialogContent>
-
         <DialogActions>
           <Button onClick={() => setFormOpen(false)}>Cancel</Button>
-          {formMode === "create" ? (
-            <Button variant="contained" onClick={handleSubmitCreate}>
-              Create
-            </Button>
-          ) : (
-            <Button variant="contained" onClick={handleSubmitUpdate}>
-              Save
-            </Button>
-          )}
+          <Button variant="contained" onClick={formMode === "create" ? handleSubmitCreate : handleSubmitUpdate}>
+            {formMode === "create" ? "Create" : "Save"}
+          </Button>
         </DialogActions>
       </Dialog>
 
-      <Snackbar
-        open={snackbar.open}
-        onClose={closeSnackbar}
-        autoHideDuration={3500}
-      >
-        <Alert
-          severity={snackbar.severity || "info"}
-          onClose={closeSnackbar}
-          sx={{ width: "100%" }}
-        >
+      {/* Confirm Complete */}
+      <Dialog open={confirmOpen} onClose={() => setConfirmOpen(false)} fullWidth maxWidth="xs">
+        <DialogTitle>Xác nhận hoàn tất</DialogTitle>
+        <DialogContent>Bạn có chắc muốn hoàn tất diagnostic này?</DialogContent>
+        <DialogActions>
+          <Button onClick={() => setConfirmOpen(false)}>Hủy</Button>
+          <Button variant="contained" onClick={handleConfirmMarkComplete}>
+            Xác nhận
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      <Snackbar open={snackbar.open} autoHideDuration={3000} onClose={closeSnackbar}>
+        <Alert severity={snackbar.severity} onClose={closeSnackbar}>
           {snackbar.message}
         </Alert>
       </Snackbar>

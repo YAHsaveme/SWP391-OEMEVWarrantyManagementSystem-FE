@@ -248,6 +248,40 @@ export default function Dashboard() {
     fetchUser();
   }, []);
 
+  const [technicians, setTechnicians] = useState([]);
+
+  useEffect(() => {
+    const fetchTechnicians = async () => {
+      try {
+        const res = await axiosInstance.get("/auth/admin/users", {
+          params: { page: 0, size: 9999 },
+        });
+
+        // Lấy danh sách user
+        const allUsers = Array.isArray(res.data?.content)
+          ? res.data.content
+          : Array.isArray(res.data)
+            ? res.data
+            : [];
+
+        // Lọc ra những user có role là SC_TECHNICIAN
+        const technicians = allUsers.filter(
+          (u) =>
+            u.role === "SC_TECHNICIAN" ||
+            u.role?.name === "SC_TECHNICIAN" ||
+            u.role?.includes?.("SC_TECHNICIAN")
+        );
+
+        console.log("✅ Danh sách kỹ thuật viên:", technicians);
+        setTechnicians(technicians);
+      } catch (error) {
+        console.error("❌ Lỗi tải danh sách kỹ thuật viên:", error);
+      }
+    };
+
+    fetchTechnicians();
+  }, []);
+
   const handleProfile = () => {
     setAnchorEl(null);
     window.location.href = "/profile";
@@ -564,16 +598,6 @@ export default function Dashboard() {
                     chip={<SoftChip size="small" color="info" label="Đang hoạt động" />}
                   />
                 </Grid>
-
-                <Grid item xs={12} md={3}>
-                  <MetricCard
-                    title="Kỹ thuật viên"
-                    value={stats.activeTechnicians}
-                    icon={<SettingsIcon />}
-                    tone="secondary"
-                    chip={<SoftChip size="small" color="secondary" label="Đang làm việc" />}
-                  />
-                </Grid>
               </Grid>
 
               {/* Recent Claims & Service centers */}
@@ -674,14 +698,8 @@ export default function Dashboard() {
             />
           )}
 
-          {activeTab === "technicians" && (
-            <TechnicianManagement
-              search={search}
-              setSearch={setSearch}
-              theme={theme}
-              GlassCard={GlassCard}
-            />
-          )}
+          {/* TECHNICIAN MANAGEMENT */}
+          {activeTab === 'technicians' && <TechnicianManagement search={search} setSearch={setSearch} theme={theme} />}
 
           {/* Placeholder tabs (extend later) */}
           {activeTab !== "overview" && activeTab !== "users" && (
@@ -693,13 +711,6 @@ export default function Dashboard() {
                 {activeTab === "analytics" && "Phân tích & Báo cáo"}
                 {activeTab === "vehicles" && "Hồ sơ xe"}
               </Typography>
-              <GlassCard>
-                <CardContent>
-                  <Typography color="text.secondary">
-                    Nội dung sẽ được phát triển. Hãy yêu cầu nếu bạn muốn thêm bảng, biểu đồ hoặc bộ lọc cụ thể.
-                  </Typography>
-                </CardContent>
-              </GlassCard>
             </Box>
           )}
         </Box>

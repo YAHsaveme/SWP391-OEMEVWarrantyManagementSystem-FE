@@ -1,168 +1,102 @@
+// src/services/technicianService.js
 import axiosInstance from "./axiosInstance";
 
 /**
  * API Endpoints (chuẩn theo Swagger):
- * - GET  /api/auth/staff/technicians                         → Lấy danh sách kỹ thuật viên
- * - GET  /api/technicians/{technicianId}/schedules/get-slots → Lấy slot theo khoảng
- * - POST /api/technicians/{technicianId}/schedules/book       → Đặt lịch
- * - POST /api/technicians/{technicianId}/schedules/cancel     → Hủy lịch
- * - POST /api/technicians/{technicianId}/schedules/restore    → Khôi phục lịch
- * - POST /api/technicians/{technicianId}/schedules/generate-month → Tạo lịch tháng
- * - POST /api/technicians/{technicianId}/schedules/create-sunday → Tạo ca Chủ Nhật
+ * - GET  /api/technicians/{userId}/get                     → Lấy thông tin kỹ thuật viên
+ * - POST /api/technicians/{userId}/profile                 → Tạo hồ sơ kỹ thuật viên
+ * - PUT  /api/technicians/{userId}/update                  → Cập nhật kỹ năng
+ * - GET  /api/technicians/by-center/{centerId}             → Lấy kỹ thuật viên theo trung tâm
+ * - GET  /api/technicians/get-all                          → Lấy toàn bộ kỹ thuật viên
  */
 
-const API_BASE_LIST = "auth/staff/technicians";
-const API_BASE_TECH = "technicians";
+const API_BASE = "technicians";
 
 const technicianService = {
   /**
-   * Lấy danh sách kỹ thuật viên (phân trang)
+   * Lấy thông tin kỹ thuật viên
+   * GET /api/technicians/{userId}/get
    */
-  getAll: async (page = 0, size = 10) => {
-    const res = await axiosInstance.get(API_BASE_LIST, { params: { page, size } });
-    return res.data.content || [];
-  },
-
-  /**
-   * Lấy lịch làm việc (slot) của kỹ thuật viên theo khoảng ngày
-   * GET /api/technicians/{technicianId}/schedules/get-slots?from=yyyy-MM-dd&to=yyyy-MM-dd
-   */
-  getTechnicianSlots: async (technicianId, from, to) => {
-    if (!technicianId || !from || !to) {
-      throw new Error("Thiếu technicianId hoặc khoảng thời gian (from, to)");
-    }
-
+  getById: async (userId) => {
+    if (!userId) throw new Error("Thiếu userId để lấy thông tin kỹ thuật viên");
     try {
-      const res = await axiosInstance.get(
-        `${API_BASE_TECH}/${technicianId}/schedules/get-slots`,
-        { params: { from, to } }
-      );
-
-      // ✅ Backend trả về { days: [ { workDate, slots: [ ... ] } ] }
-      const data = res.data;
-      if (Array.isArray(data.days)) {
-        return data.days.flatMap((d) =>
-          d.slots.map((s) => ({
-            id: s.id,
-            workDate: d.workDate,
-            startTime: s.startTime,
-            endTime: s.endTime,
-            status: s.status,
-            note: s.note,
-          }))
-        );
-      }
-
-      return [];
+      const res = await axiosInstance.get(`${API_BASE}/${userId}/get`);
+      return res.data;
     } catch (err) {
-      console.error("❌ getTechnicianSlots failed:", err);
+      console.error("❌ getById failed:", err);
       throw err;
     }
   },
 
   /**
-   * Đặt lịch làm việc
+   * Tạo hồ sơ kỹ thuật viên
+   * POST /api/technicians/{userId}/profile
+   * Request body: { skills: ["TRIAGE", "DIAGNOSIS", ...] }
    */
-  bookSchedule: async (technicianId, payload) => {
-    if (!technicianId) throw new Error("Thiếu technicianId để đặt lịch");
-    const required = ["centerId", "workDate", "startTime"];
-    for (const field of required) {
-      if (!payload?.[field]) throw new Error(`Thiếu trường bắt buộc: ${field}`);
-    }
+  createProfile: async (userId, payload) => {
+    if (!userId) throw new Error("Thiếu userId để tạo hồ sơ kỹ thuật viên");
+    if (!payload?.skills || !Array.isArray(payload.skills))
+      throw new Error("Trường 'skills' là bắt buộc và phải là mảng");
 
-    const res = await axiosInstance.post(
-      `${API_BASE_TECH}/${technicianId}/schedules/book`,
-      {
-        centerId: payload.centerId,
-        workDate: payload.workDate,
-        startTime: payload.startTime,
-        note: payload.note || "",
-      }
-    );
-    return res.data;
+    try {
+      const res = await axiosInstance.post(`${API_BASE}/${userId}/profile`, {
+        skills: payload.skills,
+      });
+      return res.data;
+    } catch (err) {
+      console.error("❌ createProfile failed:", err);
+      throw err;
+    }
   },
 
   /**
-   * Hủy lịch
+   * Cập nhật kỹ năng kỹ thuật viên
+   * PUT /api/technicians/{userId}/update
+   * Request body: { skills: [...] }
    */
-  cancelSchedule: async (technicianId, payload) => {
-    if (!technicianId) throw new Error("Thiếu technicianId để hủy lịch");
-    const required = ["dateFrom", "dateTo", "slotTimes"];
-    for (const field of required) {
-      if (!payload?.[field]) throw new Error(`Thiếu trường bắt buộc: ${field}`);
-    }
+  updateProfile: async (userId, payload) => {
+    if (!userId) throw new Error("Thiếu userId để cập nhật kỹ năng");
+    if (!payload?.skills || !Array.isArray(payload.skills))
+      throw new Error("Trường 'skills' là bắt buộc và phải là mảng");
 
-    const res = await axiosInstance.post(
-      `${API_BASE_TECH}/${technicianId}/schedules/cancel`,
-      {
-        dateFrom: payload.dateFrom,
-        dateTo: payload.dateTo,
-        slotTimes: payload.slotTimes,
-        note: payload.note || "",
-      }
-    );
-    return res.data;
+    try {
+      const res = await axiosInstance.put(`${API_BASE}/${userId}/update`, {
+        skills: payload.skills,
+      });
+      return res.data;
+    } catch (err) {
+      console.error("❌ updateProfile failed:", err);
+      throw err;
+    }
   },
 
   /**
-   * Khôi phục lịch
+   * Lấy danh sách kỹ thuật viên theo trung tâm
+   * GET /api/technicians/by-center/{centerId}
    */
-  restoreSchedule: async (technicianId, payload) => {
-    if (!technicianId) throw new Error("Thiếu technicianId để khôi phục lịch");
-    const required = ["dateFrom", "dateTo", "slotTimes"];
-    for (const field of required) {
-      if (!payload?.[field]) throw new Error(`Thiếu trường bắt buộc: ${field}`);
+  getByCenter: async (centerId) => {
+    if (!centerId) throw new Error("Thiếu centerId để lấy danh sách kỹ thuật viên theo trung tâm");
+    try {
+      const res = await axiosInstance.get(`${API_BASE}/by-center/${centerId}`);
+      return res.data;
+    } catch (err) {
+      console.error("❌ getByCenter failed:", err);
+      throw err;
     }
-
-    const res = await axiosInstance.post(
-      `${API_BASE_TECH}/${technicianId}/schedules/restore`,
-      {
-        dateFrom: payload.dateFrom,
-        dateTo: payload.dateTo,
-        slotTimes: payload.slotTimes,
-      }
-    );
-    return res.data;
   },
 
   /**
-   * Tạo lịch tháng
+   * Lấy tất cả kỹ thuật viên
+   * GET /api/technicians/get-all
    */
-  generateMonthSchedule: async (technicianId, payload) => {
-    if (!technicianId) throw new Error("Thiếu technicianId để tạo lịch tháng");
-    const required = ["centerId", "targetMonth"];
-    for (const field of required) {
-      if (!payload?.[field]) throw new Error(`Thiếu trường bắt buộc: ${field}`);
+  getAll: async () => {
+    try {
+      const res = await axiosInstance.get(`${API_BASE}/get-all`);
+      return Array.isArray(res.data) ? res.data : [];
+    } catch (err) {
+      console.error("❌ getAll failed:", err);
+      throw err;
     }
-
-    const res = await axiosInstance.post(
-      `${API_BASE_TECH}/${technicianId}/schedules/generate-month`,
-      {
-        centerId: payload.centerId,
-        targetMonth: payload.targetMonth,
-      }
-    );
-    return res.data;
-  },
-
-  /**
-   * Tạo ca Chủ Nhật
-   */
-  createSundaySchedule: async (technicianId, payload) => {
-    if (!technicianId) throw new Error("Thiếu technicianId để tạo ca Chủ Nhật");
-    const required = ["centerId", "date"];
-    for (const field of required) {
-      if (!payload?.[field]) throw new Error(`Thiếu trường bắt buộc: ${field}`);
-    }
-
-    const res = await axiosInstance.post(
-      `${API_BASE_TECH}/${technicianId}/schedules/create-sunday`,
-      {
-        centerId: payload.centerId,
-        date: payload.date,
-      }
-    );
-    return res.data;
   },
 };
 

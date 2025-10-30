@@ -1,74 +1,169 @@
-import api from "./axiosInstance";
+// src/services/scheduleService.js
+import axiosInstance from "./axiosInstance";
 
-const BASE_URL = "/api/schedules";
+/**
+ * API Endpoints (giữ nguyên format & logic gốc):
+ * - GET  /api/auth/staff/technicians                         → Lấy danh sách kỹ thuật viên (phân trang)
+ * - GET  /api/technicians/{technicianId}/schedules/get-slots → Lấy slot theo khoảng
+ * - POST /api/technicians/{technicianId}/schedules/book       → Đặt lịch
+ * - POST /api/technicians/{technicianId}/schedules/cancel     → Hủy lịch
+ * - POST /api/technicians/{technicianId}/schedules/restore    → Khôi phục lịch
+ * - POST /api/technicians/{technicianId}/schedules/generate-month → Tạo lịch tháng
+ * - POST /api/technicians/{technicianId}/schedules/create-sunday → Tạo ca Chủ Nhật
+ */
+
+const API_BASE_LIST = "auth/staff/technicians";
+const API_BASE_TECH = "technicians";
 
 const scheduleService = {
-  // 📅 Lấy tất cả lịch hẹn (có thể phân trang, lọc theo ngày, trung tâm, kỹ thuật viên,...)
-  getAll: async (params = {}) => {
-    const response = await api.get(BASE_URL, { params });
-    return response.data;
+  /**
+   * Lấy danh sách kỹ thuật viên (phân trang)
+   */
+  getAll: async (page = 0, size = 10) => {
+    const res = await axiosInstance.get(API_BASE_LIST, { params: { page, size } });
+    return res.data.content || [];
   },
 
-  // 🔍 Lấy lịch hẹn theo ID
-  getById: async (scheduleId) => {
-    const response = await api.get(`${BASE_URL}/${scheduleId}`);
-    return response.data;
+  /**
+   * Lấy lịch làm việc (slot) của kỹ thuật viên theo khoảng ngày
+   * GET /api/technicians/{technicianId}/schedules/get-slots?from=yyyy-MM-dd&to=yyyy-MM-dd
+   */
+  getTechnicianSlots: async (technicianId, from, to) => {
+    if (!technicianId || !from || !to) {
+      throw new Error("Thiếu technicianId hoặc khoảng thời gian (from, to)");
+    }
+
+    try {
+      const res = await axiosInstance.get(
+        `${API_BASE_TECH}/${technicianId}/schedules/get-slots`,
+        { params: { from, to } }
+      );
+
+      // ✅ Backend trả về { days: [ { workDate, slots: [ ... ] } ] }
+      const data = res.data;
+      if (Array.isArray(data.days)) {
+        return data.days.flatMap((d) =>
+          d.slots.map((s) => ({
+            id: s.id,
+            workDate: d.workDate,
+            startTime: s.startTime,
+            endTime: s.endTime,
+            status: s.status,
+            note: s.note,
+          }))
+        );
+      }
+
+      return [];
+    } catch (err) {
+      console.error("❌ getTechnicianSlots failed:", err);
+      throw err;
+    }
   },
 
-  // 👤 Lấy lịch hẹn của một khách hàng
-  getByCustomer: async (customerId) => {
-    const response = await api.get(`${BASE_URL}/customer/${customerId}`);
-    return response.data;
+  /**
+   * Đặt lịch làm việc
+   */
+  bookSchedule: async (technicianId, payload) => {
+    if (!technicianId) throw new Error("Thiếu technicianId để đặt lịch");
+    const required = ["centerId", "workDate", "startTime"];
+    for (const field of required) {
+      if (!payload?.[field]) throw new Error(`Thiếu trường bắt buộc: ${field}`);
+    }
+
+    const res = await axiosInstance.post(
+      `${API_BASE_TECH}/${technicianId}/schedules/book`,
+      {
+        centerId: payload.centerId,
+        workDate: payload.workDate,
+        startTime: payload.startTime,
+        note: payload.note || "",
+      }
+    );
+    return res.data;
   },
 
-  // 👨‍🔧 Lấy lịch hẹn của kỹ thuật viên
-  getByTechnician: async (technicianId) => {
-    const response = await api.get(`${BASE_URL}/technician/${technicianId}`);
-    return response.data;
+  /**
+   * Hủy lịch
+   */
+  cancelSchedule: async (technicianId, payload) => {
+    if (!technicianId) throw new Error("Thiếu technicianId để hủy lịch");
+    const required = ["dateFrom", "dateTo", "slotTimes"];
+    for (const field of required) {
+      if (!payload?.[field]) throw new Error(`Thiếu trường bắt buộc: ${field}`);
+    }
+
+    const res = await axiosInstance.post(
+      `${API_BASE_TECH}/${technicianId}/schedules/cancel`,
+      {
+        dateFrom: payload.dateFrom,
+        dateTo: payload.dateTo,
+        slotTimes: payload.slotTimes,
+        note: payload.note || "",
+      }
+    );
+    return res.data;
   },
 
-  // 🚗 Lấy lịch hẹn của một xe cụ thể
-  getByVehicle: async (vehicleId) => {
-    const response = await api.get(`${BASE_URL}/vehicle/${vehicleId}`);
-    return response.data;
+  /**
+   * Khôi phục lịch
+   */
+  restoreSchedule: async (technicianId, payload) => {
+    if (!technicianId) throw new Error("Thiếu technicianId để khôi phục lịch");
+    const required = ["dateFrom", "dateTo", "slotTimes"];
+    for (const field of required) {
+      if (!payload?.[field]) throw new Error(`Thiếu trường bắt buộc: ${field}`);
+    }
+
+    const res = await axiosInstance.post(
+      `${API_BASE_TECH}/${technicianId}/schedules/restore`,
+      {
+        dateFrom: payload.dateFrom,
+        dateTo: payload.dateTo,
+        slotTimes: payload.slotTimes,
+      }
+    );
+    return res.data;
   },
 
-  // 🏢 Lấy lịch hẹn theo trung tâm bảo hành
-  getByServiceCenter: async (centerId) => {
-    const response = await api.get(`${BASE_URL}/service-center/${centerId}`);
-    return response.data;
+  /**
+   * Tạo lịch tháng
+   */
+  generateMonthSchedule: async (technicianId, payload) => {
+    if (!technicianId) throw new Error("Thiếu technicianId để tạo lịch tháng");
+    const required = ["centerId", "targetMonth"];
+    for (const field of required) {
+      if (!payload?.[field]) throw new Error(`Thiếu trường bắt buộc: ${field}`);
+    }
+
+    const res = await axiosInstance.post(
+      `${API_BASE_TECH}/${technicianId}/schedules/generate-month`,
+      {
+        centerId: payload.centerId,
+        targetMonth: payload.targetMonth,
+      }
+    );
+    return res.data;
   },
 
-  // 🔎 Tìm kiếm lịch hẹn theo từ khóa, trạng thái hoặc ngày
-  search: async (query, status, date) => {
-    const response = await api.get(`${BASE_URL}/search`, {
-      params: { q: query, status, date },
-    });
-    return response.data;
-  },
+  /**
+   * Tạo ca Chủ Nhật
+   */
+  createSundaySchedule: async (technicianId, payload) => {
+    if (!technicianId) throw new Error("Thiếu technicianId để tạo ca Chủ Nhật");
+    const required = ["centerId", "date"];
+    for (const field of required) {
+      if (!payload?.[field]) throw new Error(`Thiếu trường bắt buộc: ${field}`);
+    }
 
-  // ➕ Tạo mới lịch hẹn
-  create: async (scheduleData) => {
-    const response = await api.post(BASE_URL, scheduleData);
-    return response.data;
-  },
-
-  // ✏️ Cập nhật lịch hẹn
-  update: async (scheduleId, scheduleData) => {
-    const response = await api.put(`${BASE_URL}/${scheduleId}`, scheduleData);
-    return response.data;
-  },
-
-  // 🔄 Cập nhật trạng thái lịch hẹn (VD: "PENDING", "CONFIRMED", "CANCELLED", "COMPLETED")
-  updateStatus: async (scheduleId, statusData) => {
-    const response = await api.patch(`${BASE_URL}/${scheduleId}/status`, statusData);
-    return response.data;
-  },
-
-  // ❌ Xóa lịch hẹn
-  delete: async (scheduleId) => {
-    const response = await api.delete(`${BASE_URL}/${scheduleId}`);
-    return response.data;
+    const res = await axiosInstance.post(
+      `${API_BASE_TECH}/${technicianId}/schedules/create-sunday`,
+      {
+        centerId: payload.centerId,
+        date: payload.date,
+      }
+    );
+    return res.data;
   },
 };
 

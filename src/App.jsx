@@ -21,6 +21,7 @@ import SCTechnicianDashboard from "./components/tech/SCTechnicianDashboard";
 
 // SC_Staff
 import StaffLayout from "./components/staff/StaffLayout";
+import StaffOverview from "./components/staff/StaffOverview";
 import CampaignsPage from "./components/staff/CampaignsPage";
 import VehiclesPage from "./components/staff/VehiclesPage";
 import VehicleDetailPage from "./components/staff/VehicleDetailPage";
@@ -28,6 +29,7 @@ import WarrantyClaimsPage from "./components/staff/WarrantyClaim";
 import TechniciansPage from "./components/staff/TechniciansPage";
 import EvModelsPage from "./components/staff/EvModelsPage";
 import ServiceCentersPage from "./components/staff/ServiceCentersPage";
+import Appointment from "./components/staff/Appointment";
 
 function AutoLogoutWrapper() {
   useAutoLogout();
@@ -84,7 +86,7 @@ export default function App() {
             </PrivateRoute>
           }
         >
-          <Route index element={<VehiclesPage />} />
+          <Route index element={<StaffOverview />} />
           <Route path="campaigns" element={<CampaignsPage />} />
           <Route path="vehicles" element={<VehiclesPage />} />
           <Route path="vehicles/:vin" element={<VehicleDetailPage />} />
@@ -92,6 +94,7 @@ export default function App() {
           <Route path="technicians" element={<TechniciansPage />} />
           <Route path="ev-models" element={<EvModelsPage />} />
           <Route path="centers" element={<ServiceCentersPage />} />
+          <Route path="appointments" element={<Appointment />} />
         </Route>
 
         {/* ===== 404 ===== */}
