@@ -5,10 +5,17 @@ import {
     Snackbar, Alert,
 } from "@mui/material";
 import axios from "axios";
+import { AdapterDateFns } from "@mui/x-date-pickers/AdapterDateFns";
+import { LocalizationProvider, DateTimePicker } from "@mui/x-date-pickers";
+import { vi } from "date-fns/locale";
 
-/* ====== TOKEN HELPERS (đồng bộ với trang list) ====== */
+/* ====== CONFIG ====== */
+const API_BASE = "http://localhost:8080";
+
+/* ====== TOKEN HELPERS (đồng bộ với UpdateVehicleDialog) ====== */
 function readRawToken() {
     return (
+        localStorage.getItem("accessToken") ||
         localStorage.getItem("access_token") ||
         localStorage.getItem("token") ||
         ""
@@ -17,35 +24,56 @@ function readRawToken() {
 function sanitizeToken(t) {
     if (!t) return "";
     t = String(t).trim();
-    if (t.startsWith('"') && t.endsWith('"')) t = t.slice(1, -1); // bỏ ngoặc kép
-    if (t.toLowerCase().startsWith("bearer ")) t = t.slice(7).trim(); // bỏ "Bearer " thừa
+    if (t.startsWith('"') && t.endsWith('"')) t = t.slice(1, -1);
+    if (t.toLowerCase().startsWith("bearer ")) t = t.slice(7).trim();
     return t;
 }
 function getToken() {
     return sanitizeToken(readRawToken());
 }
 
-/* ---------- helper ---------- */
-function toLocalDatetimeInput(date) {
-    const pad = (n) => String(n).padStart(2, "0");
-    const y = date.getFullYear();
-    const m = pad(date.getMonth() + 1);
-    const d = pad(date.getDate());
-    const hh = pad(date.getHours());
-    const mm = pad(date.getMinutes());
-    // format dành cho <input type="datetime-local">
-    return `${y}-${m}-${d}T${hh}:${mm}`;
-}
+/* ====== DATE HELPERS (GIỐNG UpdateVehicleDialog) ====== */
+const pad2 = (n) => String(n).padStart(2, "0");
+
+// ISO-8601 kèm offset, ví dụ: "2025-11-23T20:48:00+07:00"
+const toIsoWithOffset = (d) => {
+    if (!(d instanceof Date)) return "";
+    const y = d.getFullYear();
+    const M = pad2(d.getMonth() + 1);
+    const day = pad2(d.getDate());
+    const h = pad2(d.getHours());
+    const m = pad2(d.getMinutes());
+    const s = pad2(d.getSeconds());
+    const tzMin = -d.getTimezoneOffset(); // VN: +420
+    const sign = tzMin >= 0 ? "+" : "-";
+    const hh = pad2(Math.floor(Math.abs(tzMin) / 60));
+    const mm = pad2(Math.abs(tzMin) % 60);
+    return `${y}-${M}-${day}T${h}:${m}:${s}${sign}${hh}:${mm}`;
+};
+
+// Parse mọi dạng từ BE: "YYYY-MM-DD HH:mm:ss[.SSS][+hh:mm]" hoặc có 'T'
+const parseAnyToDate = (s) => {
+    if (!s) return null;
+    try {
+        let x = String(s).trim()
+            .replace(" ", "T")
+            .replace(/(\.\d{3})\d+/, "$1");
+        if (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(x)) x += ":00";
+        const d = new Date(x);
+        return isNaN(d.getTime()) ? null : d;
+    } catch {
+        return null;
+    }
+};
 
 export default function CreateVehicleDialog({ open, onClose, onCreated }) {
-    // default datetime-local = now
-    const nowLocal = useMemo(() => toLocalDatetimeInput(new Date()), []);
+    const nowIsoWithOffset = useMemo(() => toIsoWithOffset(new Date()), []);
     const [formData, setFormData] = useState({
         vin: "",
         modelCode: "",
         model: "",
-        inServiceDate: nowLocal,      // datetime-local for input
-        productionDate: nowLocal,     // datetime-local for input
+        inServiceDate: nowIsoWithOffset,    // "YYYY-MM-DDTHH:mm:ss+07:00"
+        productionDate: nowIsoWithOffset,   // "YYYY-MM-DDTHH:mm:ss+07:00"
         intakeContactName: "",
         intakeContactPhone: "",
     });
@@ -53,21 +81,41 @@ export default function CreateVehicleDialog({ open, onClose, onCreated }) {
     const [submitting, setSubmitting] = useState(false);
     const [toast, setToast] = useState({ open: false, message: "", severity: "success" });
 
-    const onChange = (field) => (e) => setFormData((s) => ({ ...s, [field]: e.target.value }));
+    const onChange = (field) => (e) =>
+        setFormData((s) => ({ ...s, [field]: e.target.value }));
+
+    // Date pickers nhận Date, state lưu chuỗi ISO có offset
+    const onPickInService = (val) =>
+        setFormData((s) => ({ ...s, inServiceDate: val ? toIsoWithOffset(val) : "" }));
+    const onPickProduction = (val) =>
+        setFormData((s) => ({ ...s, productionDate: val ? toIsoWithOffset(val) : "" }));
 
     const validate = () => {
         const f = formData;
         if (!f.vin || f.vin.trim().length < 11) return "VIN phải ≥ 11 ký tự.";
-        if (!f.model) return "Vui lòng nhập Model.";
-        if (!f.modelCode) return "Vui lòng nhập Model Code.";
-        if (!f.inServiceDate) return "Vui lòng chọn In Service Date.";
-        if (!f.productionDate) return "Vui lòng chọn Production Date.";
-        // Production phải TRƯỚC hoặc BẰNG In Service
-        if (new Date(f.productionDate) > new Date(f.inServiceDate))
-            return "Production Date không được sau In Service Date.";
-        if (!f.intakeContactName) return "Vui lòng nhập tên người tiếp nhận.";
-        if (!f.intakeContactPhone || f.intakeContactPhone.trim().length < 8)
-            return "Số điện thoại người tiếp nhận không hợp lệ.";
+        if (!f.model.trim()) return "Vui lòng nhập Model.";
+        if (!f.modelCode.trim()) return "Vui lòng nhập Model Code.";
+        if (!f.inServiceDate) return "Vui lòng chọn In-service date.";
+        if (!f.productionDate) return "Vui lòng chọn Production date.";
+
+        const inServ = parseAnyToDate(f.inServiceDate);
+        const prod = parseAnyToDate(f.productionDate);
+        if (!inServ) return "In-service date không hợp lệ.";
+        if (!prod) return "Production date không hợp lệ.";
+        if (prod > inServ) return "Production date không thể sau In-service date.";
+
+        if (!f.intakeContactName.trim()) return "Vui lòng nhập tên người tiếp nhận.";
+
+        // Chuẩn theo BE: bắt đầu bằng 0, 10–11 chữ số (nếu người dùng nhập +84 sẽ chuẩn hoá trước khi gửi)
+        const phoneRaw = (f.intakeContactPhone || "").replace(/\s/g, "");
+        if (
+            !/^0\d{9,10}$/.test(phoneRaw) &&
+            !/^\+84\d{9,10}$/.test(phoneRaw) &&
+            !/^84\d{9,10}$/.test(phoneRaw)
+        ) {
+            return "Số điện thoại phải là 0xxxxxxxxx (hoặc +84/84 sẽ tự chuyển về 0).";
+        }
+
         return null;
     };
 
@@ -79,23 +127,27 @@ export default function CreateVehicleDialog({ open, onClose, onCreated }) {
             return;
         }
 
-        // chuẩn payload đúng schema BE
+        // Chuẩn hoá phone về đầu 0 cho đúng BE
+        let phone = (formData.intakeContactPhone || "").trim();
+        if (/^\+84\d{9,10}$/.test(phone)) phone = "0" + phone.slice(3);
+        else if (/^84\d{9,10}$/.test(phone)) phone = "0" + phone.slice(2);
+
         const payload = {
             vin: formData.vin.trim(),
             modelCode: formData.modelCode.trim(),
             model: formData.model.trim(),
-            inServiceDate: new Date(formData.inServiceDate).toISOString(),
-            productionDate: new Date(formData.productionDate).toISOString(),
+            inServiceDate: formData.inServiceDate,      // ISO có offset
+            productionDate: formData.productionDate,    // ISO có offset
             intakeContactName: formData.intakeContactName.trim(),
-            intakeContactPhone: formData.intakeContactPhone.trim(),
+            intakeContactPhone: phone,                  // 0xxxxxxxxx
         };
 
         try {
             setSubmitting(true);
-            const token = getToken(); // dùng token đã sanitize
+            const token = getToken();
 
             const res = await axios.post(
-                "http://localhost:8080/api/vehicles/create",
+                `${API_BASE}/api/vehicles/create`,
                 payload,
                 {
                     headers: {
@@ -108,36 +160,27 @@ export default function CreateVehicleDialog({ open, onClose, onCreated }) {
             );
 
             if (res.status >= 400) {
-                const msg = typeof res.data === "string" ? res.data : res.data?.message || "Tạo vehicle thất bại.";
-                if (String(msg).toLowerCase().includes("invalid") || String(msg).toLowerCase().includes("expired")) {
-                    localStorage.removeItem("access_token");
-                    localStorage.removeItem("token");
-                    setToast({ open: true, message: "Phiên đăng nhập hết hạn. Vui lòng đăng nhập lại.", severity: "error" });
-                    return;
-                }
+                const msg =
+                    typeof res.data === "string" ? res.data : res.data?.message || "Tạo vehicle thất bại.";
                 setToast({ open: true, message: `${res.status} ${msg}`, severity: "error" });
                 return;
             }
 
-            // Thành công
             setToast({ open: true, message: "✅ Vehicle created successfully.", severity: "success" });
-
-            // >>> QUAN TRỌNG: báo parent để refetch list ngay
             onCreated?.();
+            onClose?.();
 
-            // reset form (để nhập tiếp lần sau)
+            // reset form cho lần sau
+            const nowNext = toIsoWithOffset(new Date());
             setFormData({
                 vin: "",
                 modelCode: "",
                 model: "",
-                inServiceDate: toLocalDatetimeInput(new Date()),
-                productionDate: toLocalDatetimeInput(new Date()),
+                inServiceDate: nowNext,
+                productionDate: nowNext,
                 intakeContactName: "",
                 intakeContactPhone: "",
             });
-
-            // đóng dialog
-            onClose?.();
         } catch (error) {
             setToast({ open: true, message: "Failed to create vehicle.", severity: "error" });
         } finally {
@@ -156,88 +199,83 @@ export default function CreateVehicleDialog({ open, onClose, onCreated }) {
                             Add a new vehicle to the service center system
                         </Typography>
 
-                        <Stack spacing={2}>
-                            <TextField
-                                label="VIN (Vehicle Identification Number)"
-                                placeholder="1HGBH41JXMN109186"
-                                value={formData.vin}
-                                onChange={onChange("vin")}
-                                inputProps={{ style: { fontFamily: "monospace" } }}
-                                required
-                                fullWidth
-                            />
+                        <LocalizationProvider dateAdapter={AdapterDateFns} adapterLocale={vi}>
+                            <Stack spacing={2}>
+                                <TextField
+                                    label="VIN (Vehicle Identification Number)"
+                                    placeholder="1HGBH41JXMN109186"
+                                    value={formData.vin}
+                                    onChange={onChange("vin")}
+                                    inputProps={{ style: { fontFamily: "monospace" } }}
+                                    required
+                                    fullWidth
+                                />
 
-                            <Grid container spacing={2}>
-                                <Grid item xs={12} sm={6}>
-                                    <TextField
-                                        label="Model"
-                                        placeholder="IONIQ 5 / Model 3 ..."
-                                        value={formData.model}
-                                        onChange={onChange("model")}
-                                        required
-                                        fullWidth
-                                    />
+                                <Grid container spacing={2}>
+                                    <Grid item xs={12} sm={6}>
+                                        <TextField
+                                            label="Model"
+                                            value={formData.model}
+                                            onChange={onChange("model")}
+                                            required
+                                            fullWidth
+                                        />
+                                    </Grid>
+                                    <Grid item xs={12} sm={6}>
+                                        <TextField
+                                            label="Model Code"
+                                            value={formData.modelCode}
+                                            onChange={onChange("modelCode")}
+                                            required
+                                            fullWidth
+                                        />
+                                    </Grid>
                                 </Grid>
-                                <Grid item xs={12} sm={6}>
-                                    <TextField
-                                        label="Model Code"
-                                        placeholder="IONIQ-5-2024 / MODEL-3-2024 ..."
-                                        value={formData.modelCode}
-                                        onChange={onChange("modelCode")}
-                                        required
-                                        fullWidth
-                                    />
-                                </Grid>
-                            </Grid>
 
-                            <Grid container spacing={2}>
-                                <Grid item xs={12} sm={6}>
-                                    <TextField
-                                        label="In Service Date"
-                                        type="datetime-local"
-                                        value={formData.inServiceDate}
-                                        onChange={onChange("inServiceDate")}
-                                        required
-                                        fullWidth
-                                        InputLabelProps={{ shrink: true }}
-                                    />
+                                <Grid container spacing={2}>
+                                    <Grid item xs={12} sm={6}>
+                                        <DateTimePicker
+                                            ampm={false} // ✅ 24h format (giống UpdateVehicleDialog)
+                                            label="In-service Date"
+                                            value={parseAnyToDate(formData.inServiceDate)}
+                                            onChange={onPickInService}
+                                            slotProps={{ textField: { required: true, fullWidth: true } }}
+                                        />
+                                    </Grid>
+                                    <Grid item xs={12} sm={6}>
+                                        <DateTimePicker
+                                            ampm={false}
+                                            label="Production Date"
+                                            value={parseAnyToDate(formData.productionDate)}
+                                            onChange={onPickProduction}
+                                            slotProps={{ textField: { required: true, fullWidth: true } }}
+                                        />
+                                    </Grid>
                                 </Grid>
-                                <Grid item xs={12} sm={6}>
-                                    <TextField
-                                        label="Production Date"
-                                        type="datetime-local"
-                                        value={formData.productionDate}
-                                        onChange={onChange("productionDate")}
-                                        required
-                                        fullWidth
-                                        InputLabelProps={{ shrink: true }}
-                                    />
-                                </Grid>
-                            </Grid>
 
-                            <Grid container spacing={2}>
-                                <Grid item xs={12} sm={6}>
-                                    <TextField
-                                        label="Intake Contact Name"
-                                        placeholder="Nguyễn Văn A"
-                                        value={formData.intakeContactName}
-                                        onChange={onChange("intakeContactName")}
-                                        required
-                                        fullWidth
-                                    />
+                                <Grid container spacing={2}>
+                                    <Grid item xs={12} sm={6}>
+                                        <TextField
+                                            label="Intake Contact Name"
+                                            value={formData.intakeContactName}
+                                            onChange={onChange("intakeContactName")}
+                                            required
+                                            fullWidth
+                                        />
+                                    </Grid>
+                                    <Grid item xs={12} sm={6}>
+                                        <TextField
+                                            label="Intake Contact Phone"
+                                            value={formData.intakeContactPhone}
+                                            onChange={onChange("intakeContactPhone")}
+                                            placeholder="0xxxxxxxxx hoặc +84xxxxxxxxx"
+                                            required
+                                            fullWidth
+                                        />
+                                    </Grid>
                                 </Grid>
-                                <Grid item xs={12} sm={6}>
-                                    <TextField
-                                        label="Intake Contact Phone"
-                                        placeholder="0987 654 321"
-                                        value={formData.intakeContactPhone}
-                                        onChange={onChange("intakeContactPhone")}
-                                        required
-                                        fullWidth
-                                    />
-                                </Grid>
-                            </Grid>
-                        </Stack>
+                            </Stack>
+                        </LocalizationProvider>
                     </DialogContent>
 
                     <DialogActions>
