@@ -6,7 +6,7 @@ import {
     Table, TableBody, TableCell, TableHead, TableRow, TextField, Typography,
     Toolbar, Tooltip, Snackbar, Alert, CircularProgress, TableContainer,
     TablePagination, IconButton, Dialog, DialogTitle, DialogContent, DialogActions,
-    Chip, Stack, ToggleButton
+    Chip, Stack, ToggleButton, Autocomplete, Checkbox, FormControlLabel
 } from "@mui/material";
 import { alpha, styled } from "@mui/material/styles";
 import {
@@ -131,15 +131,20 @@ const PillTextField = styled(TextField)(({ theme }) => ({
 }));
 
 /* ================= Helpers ================= */
-const fmtDate = (iso) => {
-    if (!iso) return { time: "—", date: "—" };
+const safeDate = (iso) => {
+    if (!iso) return null;
     const d = new Date(iso);
+    return isNaN(d.getTime()) ? null : d;
+};
+const fmtDate = (iso) => {
+    const d = safeDate(iso);
+    if (!d) return { time: "—", date: "—" };
     const pad = (x) => String(x).padStart(2, "0");
     return { time: `${pad(d.getHours())}:${pad(d.getMinutes())}`, date: `${pad(d.getDate())}/${pad(d.getMonth() + 1)}/${d.getFullYear()}` };
 };
 const fmtDay = (iso) => {
-    if (!iso) return "—";
-    const d = new Date(iso);
+    const d = safeDate(iso);
+    if (!d) return "—";
     const pad = (x) => String(x).padStart(2, "0");
     return `${pad(d.getDate())}/${pad(d.getMonth() + 1)}/${d.getFullYear()}`;
 };
@@ -190,9 +195,16 @@ function PartFormDialog({ open, onClose, onSubmit, initial }) {
     const handleChange = (k) => (e) => setForm((s) => ({ ...s, [k]: e.target.value }));
 
     const handleSubmit = async () => {
-        if (!form.partNo || !form.partName) return alert("Nhập Part No và Tên phụ tùng");
+        // client-side validation
+        if (!String(form.partNo).trim() || !String(form.partName).trim()) {
+            setServerErr("Vui lòng nhập Part No và Tên phụ tùng");
+            return;
+        }
         const priceNum = form.unitPrice === "" ? 0 : Number(form.unitPrice);
-        if (Number.isNaN(priceNum) || priceNum < 0) return alert("Giá không hợp lệ");
+        if (Number.isNaN(priceNum) || priceNum < 0) {
+            setServerErr("Giá không hợp lệ");
+            return;
+        }
 
         const payload = {
             partNo: String(form.partNo).trim(),
@@ -224,6 +236,10 @@ function PartFormDialog({ open, onClose, onSubmit, initial }) {
                 <TextField label="Nhóm/Loại" value={form.category} onChange={handleChange("category")} size="small" />
                 <TextField label="Đơn vị" value={form.unitOfMeasure} onChange={handleChange("unitOfMeasure")} size="small" />
                 <TextField label="Giá (VND)" type="number" value={form.unitPrice} onChange={handleChange("unitPrice")} size="small" />
+                <FormControlLabel
+                    control={<Checkbox checked={!!form.isSerialized} onChange={(e) => setForm(s => ({ ...s, isSerialized: e.target.checked }))} size="small" />}
+                    label="Theo dõi theo serial (isSerialized)"
+                />
                 {serverErr && <Alert severity="error" variant="outlined">{serverErr}</Alert>}
             </DialogContent>
             <DialogActions sx={{ p: 1, pt: 0 }}>
@@ -247,6 +263,43 @@ function LotFormDialog({ open, onClose, onSubmit, initial }) {
     const [submitting, setSubmitting] = React.useState(false);
     const [serverErr, setServerErr] = React.useState("");
 
+    // Danh sách parts ACTIVE cho dropdown
+    const [parts, setParts] = React.useState([]);
+    const [partsLoading, setPartsLoading] = React.useState(false);
+    // Part đang chọn trong Autocomplete
+    const [selectedPart, setSelectedPart] = React.useState(null);
+
+    // Khi mở dialog: load parts ACTIVE + sync initial
+    React.useEffect(() => {
+        if (!open) return;
+        const ab = new AbortController();
+        (async () => {
+            try {
+                setPartsLoading(true);
+                const list = await partApi.getActives(ab.signal);
+                const options = (Array.isArray(list) ? list : []).map(p => ({
+                    id: p.id,
+                    partNo: p.partNo || "",
+                    partName: p.partName || ""
+                }));
+                setParts(options);
+
+                if (initial?.partId) {
+                    const found = options.find(o => String(o.id) === String(initial.partId));
+                    setSelectedPart(found || null);
+                } else {
+                    setSelectedPart(null);
+                }
+            } catch (err) {
+                console.error("Load active parts failed:", err);
+            } finally {
+                setPartsLoading(false);
+            }
+        })();
+        return () => ab.abort();
+    }, [open, initial?.partId]);
+
+    // Sync form khi mở/sửa
     React.useEffect(() => {
         setForm({
             partId: initial?.partId || "",
@@ -260,13 +313,17 @@ function LotFormDialog({ open, onClose, onSubmit, initial }) {
     const handleChange = (k) => (e) => setForm((s) => ({ ...s, [k]: e.target.value }));
 
     const handleSubmit = async () => {
-        if (!form.partId?.trim()) return alert("Vui lòng nhập Part ID");
-        if (!form.serialNo?.trim()) return alert("Vui lòng nhập Serial No");
-        if (!form.batchNo?.trim()) return alert("Vui lòng nhập Batch No");
-        if (!form.mfgDate?.trim()) return alert("Vui lòng chọn Ngày sản xuất");
+        const finalPartId = selectedPart?.id ?? form.partId;
+
+        // client-side validation
+        if (!String(finalPartId).trim()) return setServerErr("Vui lòng chọn phụ tùng");
+        if (!form.serialNo?.trim() || form.serialNo.trim().length < 3) return setServerErr("Serial No tối thiểu 3 ký tự");
+        if (!form.batchNo?.trim() || form.batchNo.trim().length < 3) return setServerErr("Batch No tối thiểu 3 ký tự");
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(String(form.mfgDate))) return setServerErr("Ngày sản xuất dạng YYYY-MM-DD");
+        if (!safeDate(form.mfgDate)) return setServerErr("Ngày sản xuất không hợp lệ");
 
         const payload = {
-            partId: String(form.partId).trim(),
+            partId: String(finalPartId).trim(),
             serialNo: String(form.serialNo).trim(),
             batchNo: String(form.batchNo).trim(),
             mfgDate: String(form.mfgDate).slice(0, 10)
@@ -290,13 +347,56 @@ function LotFormDialog({ open, onClose, onSubmit, initial }) {
                 {initial ? "Cập nhật lô phụ tùng" : "Thêm lô phụ tùng"}
             </DialogTitle>
             <DialogContent sx={{ pt: 0.5, display: "grid", gap: 1.25 }}>
+                {/* Dropdown tìm theo Part Name / Part No */}
+                <Autocomplete
+                    options={parts}
+                    loading={partsLoading}
+                    value={selectedPart}
+                    onChange={(e, val) => {
+                        setSelectedPart(val);
+                        setForm((s) => ({ ...s, partId: val?.id ?? "" }));
+                    }}
+                    getOptionLabel={(o) => o ? `${o.partName}${o.partNo ? ` (${o.partNo})` : ""}` : ""}
+                    renderInput={(params) => (
+                        <TextField
+                            {...params}
+                            label="Phụ tùng"
+                            size="small"
+                            placeholder="Tìm theo tên hoặc Part No…"
+                            InputProps={{
+                                ...params.InputProps,
+                                endAdornment: (
+                                    <>
+                                        {partsLoading ? <CircularProgress size={16} /> : null}
+                                        {params.InputProps.endAdornment}
+                                    </>
+                                ),
+                            }}
+                        />
+                    )}
+                    renderOption={(props, option) => (
+                        <li {...props} key={option.id}>
+                            <Box sx={{ display: "flex", flexDirection: "column" }}>
+                                <Typography fontWeight={700} noWrap>{option.partName || "—"}</Typography>
+                                <Typography variant="caption" color="text.secondary" noWrap>
+                                    {option.partNo ? `Part No: ${option.partNo}` : "Không có Part No"}
+                                </Typography>
+                            </Box>
+                        </li>
+                    )}
+                    isOptionEqualToValue={(a, b) => String(a?.id) === String(b?.id)}
+                    clearOnBlur={false}
+                />
+
+                {/* Ẩn/Read-only để xem id khi cần (vẫn cho phép paste ID nếu muốn) */}
                 <TextField
-                    label="Part ID"
-                    value={form.partId}
+                    label="Part ID (tự điền khi chọn ở trên)"
+                    value={selectedPart?.id ?? form.partId}
                     onChange={handleChange("partId")}
                     size="small"
-                    required
+                    InputProps={{ readOnly: Boolean(selectedPart) }}
                 />
+
                 <TextField
                     label="Serial No"
                     value={form.serialNo}
@@ -322,7 +422,7 @@ function LotFormDialog({ open, onClose, onSubmit, initial }) {
                 />
                 {serverErr && <Alert severity="error" variant="outlined">{serverErr}</Alert>}
             </DialogContent>
-            <DialogActions sx={{ p: 1, pt: 0 }}>
+            <DialogActions sx={{ p: 1 }}>
                 <Button onClick={() => onClose(false)} size="small" disabled={submitting}>
                     Hủy
                 </Button>
@@ -361,44 +461,42 @@ function PartsView({ onSwitch }) {
             category: x.category,
             unitOfMeasure: x.unitOfMeasure,
             unitPrice: x.unitPrice,
-            createAt: x.createAt,
+            createAt: x.createAt ?? x.createdAt ?? null,
             isDelete: Boolean(x.isDelete),
             isSerialized: Boolean(x.isSerialized),
         }));
 
-    const loadAll = React.useCallback(async () => {
-        const ctrl = new AbortController();
+    const loadAll = React.useCallback(async (signal) => {
         try {
             setLoading(true); setError("");
-            const list = await partApi.getAll(ctrl.signal);
+            const list = await partApi.getAll(signal);
             setRows(normalizeList(list));
             setSnack({ open: true, type: "success", msg: `Tải ${list.length} phụ tùng` });
         } catch (e) {
+            if (e?.name === "AbortError") return;
             const msg = e?.message || "Lỗi tải danh sách parts";
             setError(msg);
             setSnack({ open: true, type: "error", msg: `Lỗi tải dữ liệu: ${msg}` });
         } finally {
             setLoading(false);
         }
-        return () => ctrl.abort();
     }, []);
 
-    const loadActiveOnly = React.useCallback(async () => {
-        const ctrl = new AbortController();
+    const loadActiveOnly = React.useCallback(async (signal) => {
         try {
             setLoading(true); setError("");
-            const list = await partApi.getActives(ctrl.signal);
+            const list = await partApi.getActives(signal);
             setRows(normalizeList(list));
             setSnack({ open: true, type: "success", msg: `Tải ${list.length} phụ tùng ACTIVE` });
             setPage(0);
         } catch (e) {
+            if (e?.name === "AbortError") return;
             const msg = e?.message || "Lỗi tải danh sách ACTIVE";
             setError(msg);
             setSnack({ open: true, type: "error", msg: `Lỗi tải dữ liệu: ${msg}` });
         } finally {
             setLoading(false);
         }
-        return () => ctrl.abort();
     }, []);
 
     const toggleActive = async () => {
@@ -411,7 +509,11 @@ function PartsView({ onSwitch }) {
         }
     };
 
-    React.useEffect(() => { loadAll(); }, [loadAll]);
+    React.useEffect(() => {
+        const ctrl = new AbortController();
+        loadAll(ctrl.signal);
+        return () => ctrl.abort();
+    }, [loadAll]);
 
     const filtered = React.useMemo(() => {
         if (!q.trim()) return rows;
@@ -511,7 +613,7 @@ function PartsView({ onSwitch }) {
 
                         <Tooltip title="Tải lại">
                             <span>
-                                <IconButton size="small" onClick={loadAll} disabled={loading} sx={{ height: 36, width: 36 }}>
+                                <IconButton size="small" onClick={() => loadAll()} disabled={loading} sx={{ height: 36, width: 36 }}>
                                     {loading ? <CircularProgress size={18} /> : <RefreshIcon fontSize="small" />}
                                 </IconButton>
                             </span>
@@ -522,6 +624,7 @@ function PartsView({ onSwitch }) {
                             selected={activeOnly}
                             onChange={toggleActive}
                             size="small"
+                            disabled={loading}
                             sx={{ height: 36, textTransform: "none", borderRadius: 1.25, px: 1.25, "&.Mui-selected": { borderColor: "primary.main" } }}
                         >
                             <PlayArrow fontSize="small" style={{ marginRight: 6 }} />
@@ -697,39 +800,37 @@ function LotsView({ onSwitch }) {
             status: (x.isDelete === true || x.status === "DELETED") ? "DELETED" : "ACTIVE",
         }));
 
-    const loadLots = React.useCallback(async () => {
-        const ctrl = new AbortController();
+    const loadLots = React.useCallback(async (signal) => {
         try {
             setLoading(true); setError("");
-            const list = await lotApi.getAll(ctrl.signal);
+            const list = await lotApi.getAll(signal);
             setRows(normalize(list));
             setSnack({ open: true, type: "success", msg: `Tải ${list.length} lô phụ tùng` });
         } catch (e) {
+            if (e?.name === "AbortError") return;
             const msg = e?.message || "Lỗi tải danh sách lô phụ tùng";
             setError(msg);
             setSnack({ open: true, type: "error", msg });
         } finally {
             setLoading(false);
         }
-        return () => ctrl.abort();
     }, []);
 
-    const loadActiveLots = React.useCallback(async () => {
-        const ctrl = new AbortController();
+    const loadActiveLots = React.useCallback(async (signal) => {
         try {
             setLoading(true); setError("");
-            const list = await lotApi.getActives(ctrl.signal);
+            const list = await lotApi.getActives(signal);
             setRows(normalize(list));
             setSnack({ open: true, type: "success", msg: `Tải ${list.length} lô ACTIVE` });
             setPage(0);
         } catch (e) {
+            if (e?.name === "AbortError") return;
             const msg = e?.message || "Lỗi tải danh sách lô ACTIVE";
             setError(msg);
             setSnack({ open: true, type: "error", msg });
         } finally {
             setLoading(false);
         }
-        return () => ctrl.abort();
     }, []);
 
     const toggleActive = async () => {
@@ -774,7 +875,11 @@ function LotsView({ onSwitch }) {
         }
     };
 
-    React.useEffect(() => { loadLots(); }, [loadLots]);
+    React.useEffect(() => {
+        const ctrl = new AbortController();
+        loadLots(ctrl.signal);
+        return () => ctrl.abort();
+    }, [loadLots]);
 
     const filtered = React.useMemo(() => {
         if (!q.trim()) return rows;
@@ -829,7 +934,7 @@ function LotsView({ onSwitch }) {
 
                         <Tooltip title="Tải lại">
                             <span>
-                                <IconButton size="small" onClick={loadLots} disabled={loading} sx={{ height: 36, width: 36 }}>
+                                <IconButton size="small" onClick={() => loadLots()} disabled={loading} sx={{ height: 36, width: 36 }}>
                                     {loading ? <CircularProgress size={18} /> : <RefreshIcon fontSize="small" />}
                                 </IconButton>
                             </span>
@@ -840,6 +945,7 @@ function LotsView({ onSwitch }) {
                             selected={activeOnly}
                             onChange={toggleActive}
                             size="small"
+                            disabled={loading}
                             sx={{ height: 36, textTransform: "none", borderRadius: 1.25, px: 1.25, "&.Mui-selected": { borderColor: "primary.main" } }}
                         >
                             <PlayArrow fontSize="small" style={{ marginRight: 6 }} />
@@ -973,7 +1079,7 @@ function LotsView({ onSwitch }) {
                             <Typography><b>Part No:</b> {detailRow.partNo}</Typography>
                             <Typography><b>Part ID:</b> {detailRow.partId || "—"}</Typography>
                             <Typography><b>Ngày SX:</b> {fmtDay(detailRow.mfgDate)}</Typography>
-                            <Typography><b>Ngày tạo:</b> {fmtDate(detailRow.createAt).date} {fmtDate(detailRow.createAt).time}</Typography>
+                            {(() => { const d = fmtDate(detailRow.createAt); return <Typography><b>Ngày tạo:</b> {d.date} {d.time}</Typography>; })()}
                             <Typography><b>Trạng thái:</b> {detailRow.status}</Typography>
                         </>
                     )}

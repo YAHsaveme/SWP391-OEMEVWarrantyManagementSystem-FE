@@ -23,7 +23,7 @@ import ElectricBoltIcon from "@mui/icons-material/ElectricBolt"
 import ShieldIcon from "@mui/icons-material/Security"
 import BatteryChargingFullIcon from "@mui/icons-material/BatteryChargingFull"
 import DirectionsCarIcon from "@mui/icons-material/DirectionsCar"
-import { login } from "../../services/authService"  // gọi API login
+import authService from "../../services/authService"
 import { useNavigate } from "react-router-dom"
 
 function Login() {
@@ -51,48 +51,48 @@ function Login() {
     }
 
     const handleSubmit = async (e) => {
-    e.preventDefault()
-    setError("")
-    setLoading(true)
+        e.preventDefault()
+        setError("")
+        setLoading(true)
 
-    try {
-        const data = await login(email, password) // gọi API login
+        try {
+            const data = await authService.login(email, password)
 
-        if (data?.token) {
-            localStorage.setItem("token", data.token)
-            localStorage.setItem("fullName", data.user.fullName)
-            localStorage.setItem("role", data.user.role)
+            if (data?.token) {
+                localStorage.setItem("token", data.token)
+                localStorage.setItem("fullName", data.user.fullName)
+                localStorage.setItem("role", data.user.role)
 
-            // Điều hướng theo role backend trả về
-            switch (data.user.role) {
-                case "ADMIN":
-                    navigate("/dashboard")
-                    break
-                case "EVM_STAFF":
-                    navigate("/overview")
-                    break
-                case "SC_STAFF":
-                    navigate("/staff")
-                    break
-                case "SC_TECHNICIAN":
-                    navigate("/tech")
-                    break
-                default:
-                    navigate("/")
+                // Điều hướng theo role backend trả về
+                switch (data.user.role) {
+                    case "ADMIN":
+                        navigate("/dashboard")
+                        break
+                    case "EVM_STAFF":
+                        navigate("/overview")
+                        break
+                    case "SC_STAFF":
+                        navigate("/staff")
+                        break
+                    case "SC_TECHNICIAN":
+                        navigate("/tech")
+                        break
+                    default:
+                        navigate("/")
+                }
+            } else {
+                setError("Phản hồi không hợp lệ từ server")
             }
-        } else {
-            setError("Phản hồi không hợp lệ từ server")
+        } catch (err) {
+            const msg =
+                err.response?.data?.message ||
+                err.response?.data?.error ||
+                "Sai email hoặc mật khẩu"
+            setError(msg)
+        } finally {
+            setLoading(false)
         }
-    } catch (err) {
-        const msg =
-            err.response?.data?.message ||
-            err.response?.data?.error ||
-            "Sai email hoặc mật khẩu"
-        setError(msg)
-    } finally {
-        setLoading(false)
     }
-}
 
     return (
         <Box

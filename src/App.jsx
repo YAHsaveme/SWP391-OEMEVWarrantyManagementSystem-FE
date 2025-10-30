@@ -21,7 +21,6 @@ import SCTechnicianDashboard from "./components/tech/SCTechnicianDashboard";
 
 // SC_Staff
 import StaffLayout from "./components/staff/StaffLayout";
-import StaffOverview from "./components/staff/StaffOverview";
 import CampaignsPage from "./components/staff/CampaignsPage";
 import VehiclesPage from "./components/staff/VehiclesPage";
 import VehicleDetailPage from "./components/staff/VehicleDetailPage";
@@ -85,7 +84,7 @@ export default function App() {
             </PrivateRoute>
           }
         >
-          <Route index element={<StaffOverview />} />
+          <Route index element={<VehiclesPage />} />
           <Route path="campaigns" element={<CampaignsPage />} />
           <Route path="vehicles" element={<VehiclesPage />} />
           <Route path="vehicles/:vin" element={<VehicleDetailPage />} />

@@ -7,6 +7,9 @@ import ProductManagement from "./ProductManagement";
 import WarrantyRequests from "./WarrantyRequests";
 import WarrantyPolicy from "./WarrantyPolicy";
 import ServiceCenters from "./ServiceCenters";
+import authService from "../../services/authService";
+import InventoryMovement from "./InventoryMovement";
+import InventoryPart from "./InventoryPart";
 
 import {
     AppBar, Toolbar, Typography, Container, Box, Avatar, Tabs, Tab,
@@ -30,6 +33,7 @@ import { alpha, createTheme } from "@mui/material/styles";
 import { ThemeProvider, useTheme } from "@mui/material/styles";
 import useMediaQuery from "@mui/material/useMediaQuery";
 import useScrollTrigger from "@mui/material/useScrollTrigger";
+import CompareArrowsIcon from "@mui/icons-material/CompareArrows";
 
 /* ===== Helper: nâng AppBar khi cuộn ===== */
 function ElevationScroll({ children }) {
@@ -85,6 +89,29 @@ export default function Overview() {
             }),
         [mode]
     );
+
+    const [user, setUser] = React.useState({
+        fullName: "Admin",
+        role: "Administrator",
+    });
+
+    React.useEffect(() => {
+        (async () => {
+            try {
+                const currentUser = await authService.getCurrentUser();
+                if (currentUser) {
+                    setUser({
+                        fullName: currentUser.fullName || "Admin",
+                        role:
+                            (currentUser.role && (currentUser.role.name || currentUser.role)) ||
+                            "Administrator",
+                    });
+                }
+            } catch (err) {
+                console.warn("Không thể tải thông tin người dùng:", err);
+            }
+        })();
+    }, []);
 
     return (
         <ThemeProvider theme={theme}>
@@ -144,17 +171,56 @@ export default function Overview() {
                                     <MenuItem onClick={() => setAnchorMore(null)}>Xuất báo cáo PDF</MenuItem>
                                 </Menu>
 
+                                {/* Avatar người dùng (có dropdown) */}
                                 <Avatar
-                                    sx={{ bgcolor: "primary.main", fontWeight: "bold", cursor: "pointer" }}
+                                    sx={{
+                                        bgcolor: "primary.main",
+                                        fontWeight: "bold",
+                                        cursor: "pointer",
+                                        width: 42,
+                                        height: 42,
+                                    }}
                                     onClick={(e) => setAnchorUser(e.currentTarget)}
                                 >
-                                    A
+                                    {user.fullName ? user.fullName.charAt(0).toUpperCase() : "A"}
                                 </Avatar>
-                                <Menu anchorEl={anchorUser} open={Boolean(anchorUser)} onClose={() => setAnchorUser(null)}>
-                                    <MenuItem onClick={() => setAnchorUser(null)}>Tài khoản</MenuItem>
-                                    <MenuItem onClick={() => setAnchorUser(null)}>Tuỳ chỉnh giao diện</MenuItem>
+
+                                <Menu
+                                    anchorEl={anchorUser}
+                                    open={Boolean(anchorUser)}
+                                    onClose={() => setAnchorUser(null)}
+                                    PaperProps={{
+                                        sx: {
+                                            mt: 1,
+                                            borderRadius: 2,
+                                            minWidth: 220,
+                                            boxShadow: "0 6px 20px rgba(0,0,0,0.15)",
+                                        },
+                                    }}
+                                >
+                                    <Box sx={{ px: 2, py: 1.5 }}>
+                                        <Typography variant="subtitle1" fontWeight={700} noWrap>
+                                            {user.fullName}
+                                        </Typography>
+                                        <Typography variant="body2" color="text.secondary" noWrap>
+                                            {user.role}
+                                        </Typography>
+                                    </Box>
                                     <Divider />
-                                    <MenuItem onClick={() => setAnchorUser(null)}>Đăng xuất</MenuItem>
+                                    <MenuItem onClick={() => (window.location.href = "/profile")}>
+                                        Hồ sơ cá nhân
+                                    </MenuItem>
+                                    <MenuItem onClick={() => (window.location.href = "/")}>Về trang chủ</MenuItem>
+                                    <Divider />
+                                    <MenuItem
+                                        onClick={() => {
+                                            authService.logout();
+                                            setAnchorUser(null);
+                                        }}
+                                        sx={{ color: "error.main" }}
+                                    >
+                                        Đăng xuất
+                                    </MenuItem>
                                 </Menu>
                             </Box>
                         </Toolbar>
@@ -204,9 +270,10 @@ export default function Overview() {
                             }}
                         >
                             <Tab iconPosition="start" icon={<AlertTriangle />} label="Quản lý phụ tùng" />
-                            <Tab iconPosition="start" icon={<PackageIcon />} label="Quản lý Sản phẩm" />
+                            <Tab iconPosition="start" icon={<PackageIcon />} label="Quản lý mẫu xe" />
+                            <Tab iconPosition="start" icon={<BarChartIcon />} label="Kho phụ tùng" />
                             <Tab iconPosition="start" icon={<FileText />} label="Yêu cầu Bảo hành" />
-                            <Tab iconPosition="start" icon={<SettingsIcon />} label="Chuỗi Cung ứng" />
+                            <Tab iconPosition="start" icon={<CompareArrowsIcon />} label="Luân chuyển kho" />
                             <Tab iconPosition="start" icon={<CarIcon />} label="Trung tâm Dịch vụ" />
                             <Tab iconPosition="start" icon={<BarChartIcon />} label="Báo cáo & Phân tích" />
                             <Tab iconPosition="start" icon={<FileText />} label="Chính sách Bảo hành" />
@@ -215,15 +282,13 @@ export default function Overview() {
                         <Box sx={{ p: 2.5, bgcolor: "background.paper", borderRadius: 2 }}>
                             {tab === 0 && <PartManagement />}
                             {tab === 1 && <ProductManagement />}
-                            {tab === 2 && <WarrantyRequests />}
-                            {tab === 3 && (
-                                <Typography variant="body1" color="text.secondary">
-                                    Chức năng Chuỗi Cung ứng đang được phát triển.
-                                </Typography>
-                            )}
-                            {tab === 4 && <ServiceCenters />}
-                            {tab === 5 && <Analytics />}
-                            {tab === 6 && <WarrantyPolicy />}
+                            {tab === 2 && <InventoryPart />}
+                            {tab === 3 && <WarrantyRequests />}
+                            {tab === 4 && <InventoryMovement />}
+                            {tab === 5 && <ServiceCenters />}
+                            {tab === 6 && <Analytics />}
+                            {tab === 7 && <WarrantyPolicy />}
+
                         </Box>
                     </Paper>
 

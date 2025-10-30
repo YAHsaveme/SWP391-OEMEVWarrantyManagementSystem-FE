@@ -61,6 +61,7 @@ import {
 } from "recharts";
 
 import UserManagement from "./UserManagement";
+import TechnicianManagement from "./TechnicianManagement";
 
 const drawerWidth = 264;
 
@@ -223,46 +224,46 @@ export default function Dashboard() {
   const [user, setUser] = useState(null);
 
   useEffect(() => {
-  const fetchUser = async () => {
-    try {
-      const res = await axiosInstance.get("/auth/users/me");
+    const fetchUser = async () => {
+      try {
+        const res = await axiosInstance.get("/auth/users/me");
 
-      // debug xem API trả về gì
-      console.log("Dữ liệu user nhận được:", res.data);
+        // debug xem API trả về gì
+        console.log("Dữ liệu user nhận được:", res.data);
 
-      // set đúng field name và role
-      setUser({
-        fullName: res.data.fullName || res.data.name || res.data.username,
-        role: res.data.role?.name || res.data.role || "Không rõ vai trò",
-      });
-    } catch (error) {
-      console.error("❌ Lỗi tải thông tin người dùng:", error);
-      if (error.response?.status === 401) {
-        localStorage.removeItem("token");
-        window.location.href = "/login";
+        // set đúng field name và role
+        setUser({
+          fullName: res.data.fullName || res.data.name || res.data.username,
+          role: res.data.role?.name || res.data.role || "Không rõ vai trò",
+        });
+      } catch (error) {
+        console.error("❌ Lỗi tải thông tin người dùng:", error);
+        if (error.response?.status === 401) {
+          localStorage.removeItem("token");
+          window.location.href = "/login";
+        }
       }
-    }
-  };
+    };
 
-  fetchUser();
-}, []);
+    fetchUser();
+  }, []);
 
   const handleProfile = () => {
-  setAnchorEl(null);
-  window.location.href = "/profile";
-};
+    setAnchorEl(null);
+    window.location.href = "/profile";
+  };
 
-const handleHome = () => {
-  setAnchorEl(null);
-  window.location.href = "/";
-};
+  const handleHome = () => {
+    setAnchorEl(null);
+    window.location.href = "/";
+  };
 
-const handleLogout = () => {
-  setAnchorEl(null);
-  localStorage.removeItem("token");
-  localStorage.removeItem("user");
-  window.location.href = "/login";
-};
+  const handleLogout = () => {
+    setAnchorEl(null);
+    localStorage.removeItem("token");
+    localStorage.removeItem("user");
+    window.location.href = "/login";
+  };
 
   const theme = useMemo(
     () =>
@@ -405,6 +406,7 @@ const handleLogout = () => {
               { key: "overview", icon: <BarChartIcon />, label: "Tổng quan" },
               { key: "claims", icon: <DescriptionIcon />, label: "Yêu cầu bảo hành" },
               { key: "users", icon: <PeopleAltIcon />, label: "Người dùng" },
+              { key: "technicians", icon: <BuildIcon />, label: "Kỹ thuật viên" },
               { key: "service-centers", icon: <BuildIcon />, label: "Trung tâm dịch vụ" },
               { key: "inventory", icon: <Inventory2Icon />, label: "Kho phụ tùng" },
               { key: "analytics", icon: <AnalyticsIcon />, label: "Phân tích & Báo cáo" },
@@ -423,77 +425,77 @@ const handleLogout = () => {
           <Divider sx={{ my: 1.5 }} />
           {/* Avatar + Tên người dùng */}
           <Box>
-    <Divider sx={{ my: 1.5 }} />
+            <Divider sx={{ my: 1.5 }} />
 
-    <Box
-      sx={{
-        p: 2,
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "flex-start",
-        cursor: "pointer",
-        borderRadius: 2,
-        "&:hover": {
-          backgroundColor: (theme) => alpha(theme.palette.primary.main, 0.08),
-        },
-        transition: "all 0.2s ease",
-      }}
-      onClick={(e) => setAnchorEl(e.currentTarget)}
-    >
-      <Avatar
-        sx={{
-          bgcolor: "primary.main",
-          color: "white",
-          fontWeight: 600,
-          width: 42,
-          height: 42,
-          mr: 1.5,
-          flexShrink: 0,
-        }}
-      >
-        {user?.fullName
-          ? user.fullName.charAt(0).toUpperCase()
-          : user?.name
-          ? user.name.charAt(0).toUpperCase()
-          : "U"}
-      </Avatar>
+            <Box
+              sx={{
+                p: 2,
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "flex-start",
+                cursor: "pointer",
+                borderRadius: 2,
+                "&:hover": {
+                  backgroundColor: (theme) => alpha(theme.palette.primary.main, 0.08),
+                },
+                transition: "all 0.2s ease",
+              }}
+              onClick={(e) => setAnchorEl(e.currentTarget)}
+            >
+              <Avatar
+                sx={{
+                  bgcolor: "primary.main",
+                  color: "white",
+                  fontWeight: 600,
+                  width: 42,
+                  height: 42,
+                  mr: 1.5,
+                  flexShrink: 0,
+                }}
+              >
+                {user?.fullName
+                  ? user.fullName.charAt(0).toUpperCase()
+                  : user?.name
+                    ? user.name.charAt(0).toUpperCase()
+                    : "U"}
+              </Avatar>
 
-      <Box sx={{ overflow: "hidden" }}>
-        <Typography
-          variant="subtitle2"
-          noWrap
-          sx={{ fontWeight: 600, lineHeight: 1.2 }}
-        >
-          {user?.fullName || user?.name || "Người dùng"}
-        </Typography>
-        <Typography variant="caption" color="text.secondary" noWrap>
-          {user?.role || "Vai trò"}
-        </Typography>
-      </Box>
-    </Box>
+              <Box sx={{ overflow: "hidden" }}>
+                <Typography
+                  variant="subtitle2"
+                  noWrap
+                  sx={{ fontWeight: 600, lineHeight: 1.2 }}
+                >
+                  {user?.fullName || user?.name || "Người dùng"}
+                </Typography>
+                <Typography variant="caption" color="text.secondary" noWrap>
+                  {user?.role || "Vai trò"}
+                </Typography>
+              </Box>
+            </Box>
 
-    {/* --- Menu bật ra khi click avatar --- */}
-    <Menu
-      anchorEl={anchorEl}
-      open={Boolean(anchorEl)}
-      onClose={() => setAnchorEl(null)}
-      PaperProps={{
-        sx: {
-          mt: 1,
-          borderRadius: 2,
-          minWidth: 180,
-          boxShadow: "0 6px 20px rgba(0,0,0,0.15)",
-        },
-      }}
-    >
-      <MenuItem onClick={handleProfile}>Hồ sơ</MenuItem>
-      <MenuItem onClick={handleHome}>Về trang chủ</MenuItem>
-      <Divider />
-      <MenuItem onClick={handleLogout} sx={{ color: "error.main" }}>
-        Đăng xuất
-      </MenuItem>
-    </Menu>
-  </Box>
+            {/* --- Menu bật ra khi click avatar --- */}
+            <Menu
+              anchorEl={anchorEl}
+              open={Boolean(anchorEl)}
+              onClose={() => setAnchorEl(null)}
+              PaperProps={{
+                sx: {
+                  mt: 1,
+                  borderRadius: 2,
+                  minWidth: 180,
+                  boxShadow: "0 6px 20px rgba(0,0,0,0.15)",
+                },
+              }}
+            >
+              <MenuItem onClick={handleProfile}>Hồ sơ</MenuItem>
+              <MenuItem onClick={handleHome}>Về trang chủ</MenuItem>
+              <Divider />
+              <MenuItem onClick={handleLogout} sx={{ color: "error.main" }}>
+                Đăng xuất
+              </MenuItem>
+            </Menu>
+          </Box>
         </Drawer>
 
         {/* Main */}
@@ -665,6 +667,15 @@ const handleLogout = () => {
           {/* USERS MANAGEMENT */}
           {activeTab === "users" && (
             <UserManagement
+              search={search}
+              setSearch={setSearch}
+              theme={theme}
+              GlassCard={GlassCard}
+            />
+          )}
+
+          {activeTab === "technicians" && (
+            <TechnicianManagement
               search={search}
               setSearch={setSearch}
               theme={theme}
