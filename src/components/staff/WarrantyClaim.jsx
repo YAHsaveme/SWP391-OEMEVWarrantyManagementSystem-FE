@@ -252,40 +252,16 @@ export default function WarrantyClaimsPage() {
 
   return (
     <Container maxWidth="lg" sx={{ py: 5 }}>
-      {/* Header */}
-      <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb: 2 }}>
-        <Box>
-          <Typography variant="h4" fontWeight={800}>Warranty Claims</Typography>
-          <Typography color="text.secondary">Manage and track warranty claims</Typography>
-        </Box>
-        <Button variant="contained" onClick={() => setCreateOpen(true)}>
-          Create Claim
-        </Button>
-      </Stack>
 
-      {/* Stats */}
-      <Grid container spacing={2} sx={{ mb: 3 }}>
-        <Grid item xs={12} sm={6} md={3}>
-          <StatCard icon={<DescriptionIcon />} label="Total Claims" value={totals.count} />
-        </Grid>
-        <Grid item xs={12} sm={6} md={3}>
-          <StatCard icon={<PendingActionsIcon />} label="Pending" value={totals.pending} />
-        </Grid>
-        <Grid item xs={12} sm={6} md={3}>
-          <StatCard icon={<CheckCircleIcon />} label="Approved" value={totals.approved} />
-        </Grid>
-        <Grid item xs={12} sm={6} md={3}>
-          <StatCard icon={<DoneAllIcon />} label="Completed" value={totals.completed} />
-        </Grid>
-      </Grid>
-
-      {/* Search & Filter */}
-      <Grid container spacing={2} sx={{ mb: 2 }}>
-        <Grid item xs={12} md={8}>
+      {/* Search + Filter + Create */}
+      <Grid container spacing={2} alignItems="center" sx={{ mb: 2 }}>
+        {/* Search field nhỏ hơn */}
+        <Grid item xs={12} md={7}>
           <form onSubmit={handleSearchSubmit}>
             <TextField
               fullWidth
-              placeholder="Search by VIN, summary, or claim ID... (Enter to search by VIN)"
+              size="small"
+              placeholder="Search by VIN, summary, or claim ID..."
               value={q}
               onChange={(e) => setQ(e.target.value)}
               InputProps={{
@@ -296,31 +272,43 @@ export default function WarrantyClaimsPage() {
                 ),
               }}
               onKeyDown={(e) => {
-                if (e.key === "Enter") {
-                  handleSearchSubmit(e);
-                }
+                if (e.key === "Enter") handleSearchSubmit(e);
               }}
             />
           </form>
         </Grid>
-        <Grid item xs={12} md={4}>
-          <FormControl fullWidth>
-            <InputLabel id="status-label">Filter by status</InputLabel>
-            <Select
-              labelId="status-label"
-              label="Filter by status"
-              value={statusFilter}
-              onChange={(e) => setStatusFilter(e.target.value)}
+
+        {/* Filter + Create Button cạnh nhau */}
+        <Grid item xs={12} md={5}>
+          <Stack direction="row" spacing={1.5} alignItems="center">
+            <FormControl fullWidth size="small">
+              <InputLabel id="status-label">Filter by status</InputLabel>
+              <Select
+                labelId="status-label"
+                label="Filter by status"
+                value={statusFilter}
+                onChange={(e) => setStatusFilter(e.target.value)}
+              >
+                <MenuItem value="all">All Status</MenuItem>
+                <MenuItem value={CLAIM_STATUS.DIAGNOSING}>Diagnosing</MenuItem>
+                <MenuItem value={CLAIM_STATUS.ESTIMATING}>Estimating</MenuItem>
+                <MenuItem value={CLAIM_STATUS.UNDER_REVIEW}>Under Review</MenuItem>
+                <MenuItem value={CLAIM_STATUS.APPROVED}>Approved</MenuItem>
+                <MenuItem value={CLAIM_STATUS.COMPLETED}>Completed</MenuItem>
+                <MenuItem value={CLAIM_STATUS.REJECTED}>Rejected</MenuItem>
+              </Select>
+            </FormControl>
+
+            {/* Nút Create kế bên filter */}
+            <Button
+              variant="contained"
+              color="primary"
+              onClick={() => setCreateOpen(true)}
+              sx={{ whiteSpace: "nowrap", minWidth: 130 }}
             >
-              <MenuItem value="all">All Status</MenuItem>
-              <MenuItem value={CLAIM_STATUS.DIAGNOSING}>Diagnosing</MenuItem>
-              <MenuItem value={CLAIM_STATUS.ESTIMATING}>Estimating</MenuItem>
-              <MenuItem value={CLAIM_STATUS.UNDER_REVIEW}>Under Review</MenuItem>
-              <MenuItem value={CLAIM_STATUS.APPROVED}>Approved</MenuItem>
-              <MenuItem value={CLAIM_STATUS.COMPLETED}>Completed</MenuItem>
-              <MenuItem value={CLAIM_STATUS.REJECTED}>Rejected</MenuItem>
-            </Select>
-          </FormControl>
+              Create Claim
+            </Button>
+          </Stack>
         </Grid>
       </Grid>
 

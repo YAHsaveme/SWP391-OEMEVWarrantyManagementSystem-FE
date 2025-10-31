@@ -1,9 +1,9 @@
 import React, { useMemo, useState, useEffect, useCallback } from "react";
 import axios from "axios";
 import {
-    Container, Box, Card, CardContent, TextField, InputAdornment, Button, IconButton,
+    Container, Box, TextField, InputAdornment, Button, IconButton, MenuItem,
     Table, TableHead, TableRow, TableCell, TableBody, Stack, Divider, Dialog,
-    DialogTitle, DialogContent, DialogActions, Snackbar, Alert, CircularProgress, Typography,
+    DialogTitle, DialogContent, DialogActions, Snackbar, Alert, CircularProgress, Typography, Card
 } from "@mui/material";
 import AddIcon from "@mui/icons-material/Add";
 import SearchIcon from "@mui/icons-material/Search";
@@ -57,8 +57,8 @@ const api = axios.create({
 api.interceptors.request.use((config) => {
     const t = getToken();
     config.headers = { ...(config.headers || {}), Accept: "application/json" };
-    if (t) config.headers.Authorization = `Bearer ${t}`; // đúng format
-    config.withCredentials = false; // JWT header, không cần cookie
+    if (t) config.headers.Authorization = `Bearer ${t}`;
+    config.withCredentials = false;
     return config;
 });
 
@@ -103,6 +103,7 @@ api.interceptors.response.use(
 /* ================== COMPONENT ================== */
 export default function VehiclesPage() {
     const [searchQuery, setSearchQuery] = useState("");
+    const [sortOrder, setSortOrder] = useState("newest"); // 👈 dropdown sort
     const [createOpen, setCreateOpen] = useState(false);
     const [updateOpen, setUpdateOpen] = useState(false);
     const [selectedVehicle, setSelectedVehicle] = useState(null);
@@ -117,7 +118,7 @@ export default function VehiclesPage() {
     const [targetVehicle, setTargetVehicle] = useState(null);
     const [snack, setSnack] = useState({ open: false, message: "", severity: "info" });
 
-    /* ===== TÁCH fetchVehicles để tái sử dụng (refetch sau create/update/activate) ===== */
+    /* ===== Fetch ===== */
     const fetchVehicles = useCallback(async () => {
         const token = getToken();
         if (!token) {
@@ -127,14 +128,10 @@ export default function VehiclesPage() {
         }
         try {
             const res = await api.get("/api/vehicles/get-all", { validateStatus: () => true });
-            console.log("📦 Status:", res.status);
-            console.log("📦 Data:", res.data);
 
             if (res.status >= 400) {
                 const rawMsg =
-                    typeof res.data === "string"
-                        ? res.data
-                        : String(res.data?.message || "");
+                    typeof res.data === "string" ? res.data : String(res.data?.message || "");
                 const msg = rawMsg.toLowerCase();
                 if (msg.includes("invalid") || msg.includes("expired")) {
                     clearTokensAndGotoLogin("Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại.");
@@ -153,47 +150,57 @@ export default function VehiclesPage() {
         }
     }, []);
 
-    /* ===== Load lần đầu ===== */
     useEffect(() => {
         fetchVehicles();
     }, [fetchVehicles]);
 
-    /* ===== Callback sau khi create/update để refetch ===== */
     const handleCreated = () => {
         setCreateOpen(false);
         setPage(1);
         fetchVehicles();
         setSnack({ open: true, message: "✅ Đã tạo xe mới", severity: "success" });
     };
-
     const handleUpdated = () => {
         setUpdateOpen(false);
         fetchVehicles();
         setSnack({ open: true, message: "✅ Đã cập nhật xe", severity: "success" });
     };
 
-    /* ===== Filtering & pagination ===== */
-    const filtered = useMemo(() => {
-        const q = searchQuery.trim().toLowerCase();
-        if (!q) return vehicals;
+    /* ===== Filter + Sort + Pagination ===== */
+    const getCreatedAtMs = useCallback((v) => {
+        const iso = v?.createdAt ?? v?.createAt ?? v?.create_at ?? v?.created_at;
+        const d = iso ? new Date(iso) : null;
+        return d && !isNaN(d.getTime()) ? d.getTime() : -Infinity;
+    }, []);
 
+    const filteredSorted = useMemo(() => {
+        const q = searchQuery.trim().toLowerCase();
         const safe = (v) => (typeof v === "string" ? v.toLowerCase() : "");
-        return vehicals.filter((v) => {
-            return (
+
+        let arr = vehicals;
+        if (q) {
+            arr = vehicals.filter((v) =>
                 safe(v?.vin).includes(q) ||
                 safe(v?.model).includes(q) ||
                 safe(v?.modelCode).includes(q) ||
                 safe(v?.intakeContactName).includes(q) ||
                 safe(v?.intakeContactPhone).includes(q)
             );
-        });
-    }, [searchQuery, vehicals]);
+        }
 
-    const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize));
+        // sort theo dropdown
+        return [...arr].sort((a, b) =>
+            sortOrder === "newest"
+                ? getCreatedAtMs(b) - getCreatedAtMs(a)
+                : getCreatedAtMs(a) - getCreatedAtMs(b)
+        );
+    }, [searchQuery, vehicals, getCreatedAtMs, sortOrder]);
+
+    const totalPages = Math.max(1, Math.ceil(filteredSorted.length / pageSize));
     const pageItems = useMemo(() => {
         const start = (page - 1) * pageSize;
-        return filtered.slice(start, start + pageSize);
-    }, [filtered, page]);
+        return filteredSorted.slice(start, start + pageSize);
+    }, [filteredSorted, page]);
 
     useEffect(() => {
         if (page > totalPages) setPage(1);
@@ -253,7 +260,6 @@ export default function VehiclesPage() {
                     message: `✅ Đã kích hoạt bảo hành cho VIN ${targetVehicle.vin}`,
                     severity: "success",
                 });
-                // REFRESH danh sách để thấy trạng thái mới
                 await fetchVehicles();
             }
         } catch (e) {
@@ -267,52 +273,70 @@ export default function VehiclesPage() {
     }
 
     return (
-        <Container maxWidth="lg" sx={{ py: 5 }}>
-            {/* Header */}
-            <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb: 2 }}>
-                <Box>
-                    <Box component="h1" sx={{ m: 0, fontSize: 28, fontWeight: 800 }}>Vehicles</Box>
-                    <Box sx={{ color: "text.secondary", mt: 0.5 }}>Manage vehicle registrations</Box>
-                </Box>
-                <Button variant="contained" startIcon={<AddIcon />} onClick={() => setCreateOpen(true)}>
-                    Register Vehicle
-                </Button>
-            </Stack>
+        <Container maxWidth="lg" sx={{ pt: 1, pb: 3 }}>
+            {/* --- Hàng duy nhất: Search + Sort + Register (không dùng Card) --- */}
+            <Stack
+                direction={{ xs: "column", sm: "row" }}
+                alignItems="center"
+                justifyContent="space-between"
+                spacing={1.5}
+                sx={{ mb: 2 }}
+            >
+                {/* 🔍 Search */}
+                <TextField
+                    placeholder="Search by VIN, model, model code, contact name or phone..."
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    size="small"
+                    sx={{
+                        flexGrow: 1,
+                        maxWidth: { xs: "100%", sm: 420 },
+                        "& .MuiInputBase-root": { borderRadius: 2 },
+                    }}
+                    InputProps={{
+                        startAdornment: (
+                            <InputAdornment position="start">
+                                <SearchIcon fontSize="small" />
+                            </InputAdornment>
+                        ),
+                    }}
+                />
 
-            {/* Search */}
-            <Card variant="outlined" sx={{ mb: 3 }}>
-                <CardContent>
-                    <Stack direction={{ xs: "column", sm: "row" }} spacing={2}>
-                        <TextField
-                            fullWidth
-                            placeholder="Search by VIN, model, model code, contact name or phone..."
-                            value={searchQuery}
-                            onChange={(e) => setSearchQuery(e.target.value)}
-                            InputProps={{
-                                startAdornment: (
-                                    <InputAdornment position="start">
-                                        <SearchIcon fontSize="small" />
-                                    </InputAdornment>
-                                ),
-                            }}
-                        />
-                        <Button variant="outlined">Filter</Button>
-                    </Stack>
-                </CardContent>
-            </Card>
+                {/* Nhóm Sort + Register */}
+                <Stack direction="row" alignItems="center" spacing={1.25}>
+                    <TextField
+                        select
+                        size="small"
+                        value={sortOrder}
+                        onChange={(e) => setSortOrder(e.target.value)}
+                        sx={{ minWidth: 150, "& .MuiInputBase-root": { borderRadius: 2 } }}
+                    >
+                        <MenuItem value="newest">Newest first</MenuItem>
+                        <MenuItem value="oldest">Oldest first</MenuItem>
+                    </TextField>
+
+                    <Button
+                        variant="contained"
+                        startIcon={<AddIcon />}
+                        onClick={() => setCreateOpen(true)}
+                        sx={{ borderRadius: 2, px: 2.5, whiteSpace: "nowrap", fontWeight: 600 }}
+                    >
+                        Register Vehicle
+                    </Button>
+                </Stack>
+            </Stack>
 
             {/* Table */}
             <Card variant="outlined">
-                {/* Bỏ overflowX để tránh thanh kéo ngang */}
                 <Box>
                     <Table
-                        size="small" // gọn hơn
+                        size="small"
                         sx={{
                             width: "100%",
-                            tableLayout: "fixed", // ép chia cột đều
+                            tableLayout: "fixed",
                             "& th, & td": {
                                 whiteSpace: "normal",
-                                wordBreak: "break-word", // text tự xuống dòng
+                                wordBreak: "break-word",
                                 py: 1,
                             },
                         }}
@@ -332,7 +356,7 @@ export default function VehiclesPage() {
                         </TableHead>
                         <TableBody>
                             {pageItems.map((v) => (
-                                <TableRow key={v.vin || `${v.model}-${v.modelCode}`} hover>
+                                <TableRow key={v.vin || `${v.model}-${v.modelCode}-${v.createdAt || v.createAt || Math.random()}`} hover>
                                     <TableCell>
                                         <Mono>{v.vin || "—"}</Mono>
                                     </TableCell>
@@ -342,7 +366,7 @@ export default function VehiclesPage() {
                                     <TableCell>{fmtDateTime(v.productionDate)}</TableCell>
                                     <TableCell>{v.intakeContactName || "—"}</TableCell>
                                     <TableCell>{v.intakeContactPhone || "—"}</TableCell>
-                                    <TableCell>{fmtDateTime(v.createAt)}</TableCell>
+                                    <TableCell>{fmtDateTime(v.createdAt ?? v.createAt ?? v.create_at ?? v.created_at)}</TableCell>
 
                                     <TableCell align="right">
                                         <Stack direction="row" spacing={1} justifyContent="flex-end">
@@ -384,12 +408,12 @@ export default function VehiclesPage() {
                     page={page}
                     setPage={setPage}
                     pageSize={pageSize}
-                    total={filtered.length}
-                    totalPages={Math.max(1, Math.ceil(filtered.length / pageSize))}
+                    total={filteredSorted.length}
+                    totalPages={Math.max(1, Math.ceil(filteredSorted.length / pageSize))}
                 />
             </Card>
 
-            {/* Truyền onCreated / onUpdated để refetch */}
+            {/* Dialogs */}
             <CreateVehicleDialog
                 open={createOpen}
                 onClose={() => setCreateOpen(false)}

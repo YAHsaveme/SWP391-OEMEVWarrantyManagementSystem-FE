@@ -515,21 +515,27 @@ function PartsView({ onSwitch }) {
         return () => ctrl.abort();
     }, [loadAll]);
 
+    // --- SORT THEO GIÁ CAO -> THẤP ---
+    const sorted = React.useMemo(() => {
+        return [...rows].sort((a, b) => (Number(a.unitPrice) || 0) - (Number(b.unitPrice) || 0));
+    }, [rows]);
+
     const filtered = React.useMemo(() => {
-        if (!q.trim()) return rows;
+        if (!q.trim()) return sorted;
         const kw = q.trim().toLowerCase();
-        return rows.filter(r =>
+        return sorted.filter(r =>
             (r.partNo && r.partNo.toLowerCase().includes(kw)) ||
             (r.partName && r.partName.toLowerCase().includes(kw)) ||
             (r.category && r.category.toLowerCase().includes(kw)) ||
             (r.unitOfMeasure && r.unitOfMeasure.toLowerCase().includes(kw))
         );
-    }, [rows, q]);
+    }, [sorted, q]);
 
     const pageRows = React.useMemo(() => {
         const start = page * pageSize;
         return filtered.slice(start, start + pageSize);
     }, [filtered, page, pageSize]);
+
 
     const closeConfirm = () => setConfirm({ open: false, type: null, row: null });
 

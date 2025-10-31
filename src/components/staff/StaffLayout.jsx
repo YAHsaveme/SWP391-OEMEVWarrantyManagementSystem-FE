@@ -27,7 +27,7 @@ const theme = createTheme({
 const NAV_ITEMS = [
     { label: "Dashboard", to: "/staff", icon: <DashboardIcon />, end: true },
     { label: "Vehicles", to: "/staff/vehicles", icon: <DirectionsCarIcon /> },
-    { label: "Warranty Claims", to: "/staff/claims", icon: <AssignmentIcon /> },
+    { label: "Claims", to: "/staff/claims", icon: <AssignmentIcon /> },
     { label: "Service Campaigns", to: "/staff/campaigns", icon: <CampaignIcon /> },
     { label: "Technicians", to: "/staff/technicians", icon: <GroupsIcon /> },
     { label: "Service Centers", to: "/staff/centers", icon: <StoreMallDirectoryIcon /> },
