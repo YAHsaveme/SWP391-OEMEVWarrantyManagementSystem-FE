@@ -56,6 +56,7 @@ export default function UserManagement({ search, setSearch, theme }) {
   // Filters
   const [roleFilter, setRoleFilter] = useState(""); // "" => all roles
 
+  const [deletedFilter, setDeletedFilter] = useState("");
   // Loading & notifications
   const [listLoading, setListLoading] = useState(false);
   const [actionLoading, setActionLoading] = useState(false);
@@ -187,17 +188,19 @@ export default function UserManagement({ search, setSearch, theme }) {
       const data = await authService.adminSearchUsers({ q: q || "", role: role || "", page: p, size });
       // Expect pageable: { content, totalPages, totalElements, number }
       if (data && Array.isArray(data.content)) {
-        // keep deleted ones so admin can recover them; UI will show status chip
-        setUsers(data.content);
+        // Sort theo ngày tạo mới nhất (createdAt hoặc createAt)
+        const sorted = [...data.content].sort((a, b) => {
+          const dateA = new Date(a.createdAt || a.createAt || 0);
+          const dateB = new Date(b.createdAt || b.createAt || 0);
+          return dateB - dateA; // mới nhất lên đầu
+        });
+
+        setUsers(sorted);
         setTotalPages(Number.isInteger(data.totalPages) ? data.totalPages : 0);
         setTotalElements(Number.isInteger(data.totalElements) ? data.totalElements : 0);
         setPage(typeof data.number === "number" ? data.number : p);
-      } else if (Array.isArray(data)) {
-        setUsers(data);
-        setTotalPages(1);
-        setTotalElements(data.length);
-        setPage(0);
-      } else {
+      }
+      else {
         // fallback
         setUsers(Array.isArray(data?.content) ? data.content : []);
         setTotalPages(data?.totalPages || 0);
@@ -534,6 +537,19 @@ export default function UserManagement({ search, setSearch, theme }) {
               </Select>
             </FormControl>
 
+            <FormControl size="small" sx={{ minWidth: 160 }}>
+              <InputLabel>Trạng thái</InputLabel>
+              <Select
+                value={deletedFilter}
+                label="Trạng thái"
+                onChange={(e) => { setDeletedFilter(e.target.value); setPage(0); }}
+              >
+                <MenuItem value="">Tất cả</MenuItem>
+                <MenuItem value="active">Hoạt động</MenuItem>
+                <MenuItem value="deleted">Đã xóa</MenuItem>
+              </Select>
+            </FormControl>
+
             <Box sx={{ ml: "auto", display: "flex", gap: 1, alignItems: "center" }}>
               <Typography variant="body2" color="text.secondary">Số bản ghi:</Typography>
               <FormControl size="small" sx={{ minWidth: 100 }}>
@@ -573,90 +589,96 @@ export default function UserManagement({ search, setSearch, theme }) {
 
               <tbody>
                 {users.length > 0 ? (
-                  users.map((u, idx) => {
-                    const rowIndex = page * pageSize + idx + 1;
-                    const isDeleted = !!u.deleted;
-                    const isSelf = currentUser && currentUser.id && u.id === currentUser.id;
-                    return (
-                      <tr
-                        key={`${u.email || rowIndex}-${page}-${idx}`}
-                        style={{
-                          backgroundColor: "transparent",
-                          transition: "background 0.2s",
-                        }}
-                        onMouseEnter={(e) =>
-                          (e.currentTarget.style.backgroundColor = alpha(theme.palette.primary.main, 0.03))
-                        }
-                        onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = "transparent")}
-                      >
-                        <td style={{ padding: "10px", borderBottom: `1px solid ${theme.palette.divider}` }}>{rowIndex}</td>
-                        <td style={{ padding: "10px", borderBottom: `1px solid ${theme.palette.divider}` }}>{u.fullName}</td>
-                        <td style={{ padding: "10px", borderBottom: `1px solid ${theme.palette.divider}` }}>{u.email}</td>
-                        <td style={{ padding: "10px", borderBottom: `1px solid ${theme.palette.divider}` }}>{u.phone || "-"}</td>
-                        <td style={{ padding: "10px", borderBottom: `1px solid ${theme.palette.divider}` }}>
-                          <Chip
-                            size="small"
-                            label={u.role}
-                            color={
-                              u.role === "ADMIN"
-                                ? "secondary"
-                                : u.role === "EVM_STAFF"
-                                  ? "info"
-                                  : u.role === "SC_TECHNICIAN"
-                                    ? "warning"
-                                    : "default"
-                            }
-                            variant="outlined"
-                          />
-                        </td>
-                        <td style={{ padding: "10px", borderBottom: `1px solid ${theme.palette.divider}` }}>
-                          {getCenterName(u.centerId)}
-                        </td>
-                        <td style={{ padding: "10px", borderBottom: `1px solid ${theme.palette.divider}` }}>
-                          {isDeleted ? (
-                            <Chip size="small" label="Đã xoá" color="error" variant="outlined" />
-                          ) : (
-                            <Chip size="small" label="Hoạt động" color="success" variant="outlined" />
-                          )}
-                        </td>
-                        <td style={{ padding: "10px", borderBottom: `1px solid ${theme.palette.divider}` }}>
-                          <Typography variant="body2">{formatDate(u.createAt || u.createdAt)}</Typography>
-                        </td>
-                        <td style={{ padding: "10px", borderBottom: `1px solid ${theme.palette.divider}` }}>
-                          <Stack direction="row" spacing={1} justifyContent="center">
-                            {!isDeleted ? (
-                              <>
-                                <Button size="small" variant="outlined" onClick={() => openEditModal(u)} disabled={actionLoading}>
-                                  Cập nhật
-                                </Button>
-                                <Button
-                                  size="small"
-                                  variant="outlined"
-                                  onClick={() => openResetPasswordModal(u.id)}
-                                  disabled={actionLoading}
-                                >
-                                  Đặt lại mật khẩu
-                                </Button>
-                                <Button
-                                  size="small"
-                                  variant="outlined"
-                                  color="error"
-                                  onClick={() => openDeleteDialog(u.id)}
-                                  disabled={isSelf || actionLoading}
-                                >
-                                  {isSelf ? "Không thể xóa chính bạn" : "Xóa"}
-                                </Button>
-                              </>
+                  users
+                    .filter((u) => {
+                      if (deletedFilter === "active") return !u.deleted;
+                      if (deletedFilter === "deleted") return u.deleted;
+                      return true;
+                    })
+                    .map((u, idx) => {
+                      const rowIndex = page * pageSize + idx + 1;
+                      const isDeleted = !!u.deleted;
+                      const isSelf = currentUser && currentUser.id && u.id === currentUser.id;
+                      return (
+                        <tr
+                          key={`${u.email || rowIndex}-${page}-${idx}`}
+                          style={{
+                            backgroundColor: "transparent",
+                            transition: "background 0.2s",
+                          }}
+                          onMouseEnter={(e) =>
+                            (e.currentTarget.style.backgroundColor = alpha(theme.palette.primary.main, 0.03))
+                          }
+                          onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = "transparent")}
+                        >
+                          <td style={{ padding: "10px", borderBottom: `1px solid ${theme.palette.divider}` }}>{rowIndex}</td>
+                          <td style={{ padding: "10px", borderBottom: `1px solid ${theme.palette.divider}` }}>{u.fullName}</td>
+                          <td style={{ padding: "10px", borderBottom: `1px solid ${theme.palette.divider}` }}>{u.email}</td>
+                          <td style={{ padding: "10px", borderBottom: `1px solid ${theme.palette.divider}` }}>{u.phone || "-"}</td>
+                          <td style={{ padding: "10px", borderBottom: `1px solid ${theme.palette.divider}` }}>
+                            <Chip
+                              size="small"
+                              label={u.role}
+                              color={
+                                u.role === "ADMIN"
+                                  ? "secondary"
+                                  : u.role === "EVM_STAFF"
+                                    ? "info"
+                                    : u.role === "SC_TECHNICIAN"
+                                      ? "warning"
+                                      : "default"
+                              }
+                              variant="outlined"
+                            />
+                          </td>
+                          <td style={{ padding: "10px", borderBottom: `1px solid ${theme.palette.divider}` }}>
+                            {getCenterName(u.centerId)}
+                          </td>
+                          <td style={{ padding: "10px", borderBottom: `1px solid ${theme.palette.divider}` }}>
+                            {isDeleted ? (
+                              <Chip size="small" label="Đã xoá" color="error" variant="outlined" />
                             ) : (
-                              <Button size="small" variant="outlined" onClick={() => handleRecover(u.id)} disabled={actionLoading}>
-                                Phục hồi
-                              </Button>
+                              <Chip size="small" label="Hoạt động" color="success" variant="outlined" />
                             )}
-                          </Stack>
-                        </td>
-                      </tr>
-                    );
-                  })
+                          </td>
+                          <td style={{ padding: "10px", borderBottom: `1px solid ${theme.palette.divider}` }}>
+                            <Typography variant="body2">{formatDate(u.createAt || u.createdAt)}</Typography>
+                          </td>
+                          <td style={{ padding: "10px", borderBottom: `1px solid ${theme.palette.divider}` }}>
+                            <Stack direction="row" spacing={1} justifyContent="center">
+                              {!isDeleted ? (
+                                <>
+                                  <Button size="small" variant="outlined" onClick={() => openEditModal(u)} disabled={actionLoading}>
+                                    Cập nhật
+                                  </Button>
+                                  <Button
+                                    size="small"
+                                    variant="outlined"
+                                    onClick={() => openResetPasswordModal(u.id)}
+                                    disabled={actionLoading}
+                                  >
+                                    Đặt lại mật khẩu
+                                  </Button>
+                                  <Button
+                                    size="small"
+                                    variant="outlined"
+                                    color="error"
+                                    onClick={() => openDeleteDialog(u.id)}
+                                    disabled={isSelf || actionLoading}
+                                  >
+                                    {isSelf ? "Không thể xóa chính bạn" : "Xóa"}
+                                  </Button>
+                                </>
+                              ) : (
+                                <Button size="small" variant="outlined" onClick={() => handleRecover(u.id)} disabled={actionLoading}>
+                                  Phục hồi
+                                </Button>
+                              )}
+                            </Stack>
+                          </td>
+                        </tr>
+                      );
+                    })
                 ) : (
                   <tr>
                     <td colSpan={9} style={{ textAlign: "center", padding: "20px", color: "gray" }}>
