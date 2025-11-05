@@ -6,7 +6,7 @@ import {
     Table, TableBody, TableCell, TableHead, TableRow, TextField, Typography,
     Toolbar, Tooltip, Snackbar, Alert, CircularProgress, TableContainer,
     TablePagination, IconButton, Dialog, DialogTitle, DialogContent, DialogActions,
-    Chip, Stack, ToggleButton, Autocomplete, Checkbox, FormControlLabel
+    Chip, Stack, ToggleButton, Autocomplete, Checkbox, FormControlLabel, MenuItem
 } from "@mui/material";
 import { alpha, styled } from "@mui/material/styles";
 import {
@@ -73,6 +73,12 @@ const partApi = {
         if (!res.ok) throw new Error(`HTTP ${res.status} – ${await res.text().catch(() => "")}`);
         return res.json().catch(() => ({}));
     },
+    async search({ q = "", page = 0, size = 10 }) {
+        const url = `/api/parts/search?q=${encodeURIComponent(q)}&page=${page}&size=${size}`;
+        const res = await authFetch(url, { method: "GET" });
+        if (!res.ok) throw new Error(`HTTP ${res.status} – ${await res.text().catch(() => "")}`);
+        return res.json(); // Expect Spring Page
+    },
 };
 
 const lotApi = {
@@ -110,6 +116,17 @@ const lotApi = {
         const res = await authFetch(`/api/part-lots/${encodeURIComponent(lotId)}/recover`, { method: "POST" });
         if (!res.ok) throw new Error(`HTTP ${res.status} – ${await res.text().catch(() => "")}`);
         return res.json().catch(() => ({}));
+    },
+    async search({ q = "", page = 0, size = 10 }) {
+        const url = `/api/part-lots/search?q=${encodeURIComponent(q)}&page=${page}&size=${size}`;
+        const res = await authFetch(url, { method: "GET" });
+        if (!res.ok) throw new Error(`HTTP ${res.status} – ${await res.text().catch(() => "")}`);
+        return res.json();
+    },
+    async getByPart(partId) {
+        const res = await authFetch(`/api/part-lots/by-part/${encodeURIComponent(partId)}/get`, { method: "GET" });
+        if (!res.ok) throw new Error(`HTTP ${res.status} – ${await res.text().catch(() => "")}`);
+        return res.json();
     },
 };
 
@@ -206,11 +223,27 @@ function PartFormDialog({ open, onClose, onSubmit, initial }) {
             return;
         }
 
+        // Chuẩn hóa enum + fallback hợp lệ
+        let category = normalizeEnum(form.category);
+        let unitOfMeasure = normalizeEnum(form.unitOfMeasure);
+        const unitCandidates = new Set(["PCS", "EA", "UNIT", "PIECE", "CAI", "CÁI"]);
+        const knownCategories = new Set(["BATTERY", "MOTOR", "TIRE", "BRAKE", "ELECTRIC", "ACCESSORY", "OTHER"]);
+
+        // Nếu người dùng nhập nhầm "PCS" vào Nhóm/Loại → đẩy sang Đơn vị
+        if (unitCandidates.has(category) && !unitOfMeasure) {
+            unitOfMeasure = category;
+            category = "OTHER";
+        }
+        // Nếu category rỗng hoặc không nằm trong tập enum BE → gán OTHER
+        if (!category || !knownCategories.has(category)) category = "OTHER";
+        // Nếu đơn vị trống → gán PCS mặc định
+        if (!unitOfMeasure) unitOfMeasure = "PCS";
+
         const payload = {
             partNo: String(form.partNo).trim(),
             partName: String(form.partName).trim(),
-            category: normalizeEnum(form.category),
-            unitOfMeasure: normalizeEnum(form.unitOfMeasure),
+            category,
+            unitOfMeasure,
             unitPrice: priceNum,
             isSerialized: Boolean(form.isSerialized),
         };
@@ -233,8 +266,38 @@ function PartFormDialog({ open, onClose, onSubmit, initial }) {
             <DialogContent sx={{ pt: 0.5, display: "grid", gap: 1.25 }}>
                 <TextField label="Part No" value={form.partNo} onChange={handleChange("partNo")} size="small" />
                 <TextField label="Tên phụ tùng" value={form.partName} onChange={handleChange("partName")} size="small" />
-                <TextField label="Nhóm/Loại" value={form.category} onChange={handleChange("category")} size="small" />
-                <TextField label="Đơn vị" value={form.unitOfMeasure} onChange={handleChange("unitOfMeasure")} size="small" />
+                {/* Category (enum theo BE) */}
+                <TextField
+                    label="Nhóm/Loại"
+                    value={form.category}
+                    onChange={handleChange("category")}
+                    size="small"
+                    select
+                    SelectProps={{ native: false }}
+                    helperText="Theo BE: BATTERY, MOTOR, TIRE, BRAKE, ELECTRIC, ACCESSORY, OTHER"
+                >
+                    {[
+                        "BATTERY",
+                        "MOTOR",
+                        "TIRE",
+                        "BRAKE",
+                        "ELECTRIC",
+                        "ACCESSORY",
+                        "OTHER",
+                    ].map((opt) => (
+                        <MenuItem key={opt} value={opt}>{opt}</MenuItem>
+                    ))}
+                </TextField>
+
+                {/* Đơn vị (free text) */}
+                <TextField
+                    label="Đơn vị"
+                    value={form.unitOfMeasure}
+                    onChange={handleChange("unitOfMeasure")}
+                    size="small"
+                    placeholder="VD: PCS, EA, UNIT…"
+                    helperText="Đơn vị là text tự do; để trống sẽ mặc định PCS"
+                />
                 <TextField label="Giá (VND)" type="number" value={form.unitPrice} onChange={handleChange("unitPrice")} size="small" />
                 <FormControlLabel
                     control={<Checkbox checked={!!form.isSerialized} onChange={(e) => setForm(s => ({ ...s, isSerialized: e.target.checked }))} size="small" />}
@@ -388,14 +451,7 @@ function LotFormDialog({ open, onClose, onSubmit, initial }) {
                     clearOnBlur={false}
                 />
 
-                {/* Ẩn/Read-only để xem id khi cần (vẫn cho phép paste ID nếu muốn) */}
-                <TextField
-                    label="Part ID (tự điền khi chọn ở trên)"
-                    value={selectedPart?.id ?? form.partId}
-                    onChange={handleChange("partId")}
-                    size="small"
-                    InputProps={{ readOnly: Boolean(selectedPart) }}
-                />
+                {/* Ẩn Part ID khỏi UI: Part ID sẽ tự gắn theo lựa chọn ở Autocomplete */}
 
                 <TextField
                     label="Serial No"
@@ -444,6 +500,8 @@ function PartsView({ onSwitch }) {
     const [snack, setSnack] = React.useState({ open: false, type: "success", msg: "" });
     const [page, setPage] = React.useState(0);
     const [pageSize, setPageSize] = React.useState(10);
+    const [totalCount, setTotalCount] = React.useState(0);
+    const [serverPaging, setServerPaging] = React.useState(false); // true khi đang dùng API search
 
     const [openCreate, setOpenCreate] = React.useState(false);
     const [editRow, setEditRow] = React.useState(null);
@@ -515,26 +573,47 @@ function PartsView({ onSwitch }) {
         return () => ctrl.abort();
     }, [loadAll]);
 
-    // --- SORT THEO GIÁ CAO -> THẤP ---
-    const sorted = React.useMemo(() => {
-        return [...rows].sort((a, b) => (Number(a.unitPrice) || 0) - (Number(b.unitPrice) || 0));
-    }, [rows]);
+    // Dùng server search khi có từ khóa và bấm Search
+    const searchParts = React.useCallback(async (_page = page, _size = pageSize) => {
+        try {
+            setLoading(true); setError("");
+            const res = await partApi.search({ q, page: _page, size: _size });
+            const content = Array.isArray(res?.content) ? res.content : [];
+            setRows(content.map(normalizeList)[0] ? content.map((x) => ({
+                id: x.id,
+                partNo: x.partNo,
+                partName: x.partName,
+                category: x.category,
+                unitOfMeasure: x.unitOfMeasure,
+                unitPrice: x.unitPrice,
+                createAt: x.createAt ?? x.createdAt ?? null,
+                isDelete: Boolean(x.isDelete),
+                isSerialized: Boolean(x.isSerialized),
+            })) : content);
+            setTotalCount(Number(res?.totalElements || content.length));
+            setServerPaging(true);
+        } catch (e) {
+            const msg = e?.message || "Lỗi search parts";
+            setError(msg);
+            setSnack({ open: true, type: "error", msg });
+        } finally {
+            setLoading(false);
+        }
+    }, [q, page, pageSize]);
 
-    const filtered = React.useMemo(() => {
-        if (!q.trim()) return sorted;
+    const pageRows = React.useMemo(() => {
+        if (serverPaging) return rows; // server đã phân trang
+        const sorted = [...rows].sort((a, b) => (Number(a.unitPrice) || 0) - (Number(b.unitPrice) || 0));
+        if (!q.trim()) return sorted.slice(page * pageSize, page * pageSize + pageSize);
         const kw = q.trim().toLowerCase();
-        return sorted.filter(r =>
+        const filtered = sorted.filter(r =>
             (r.partNo && r.partNo.toLowerCase().includes(kw)) ||
             (r.partName && r.partName.toLowerCase().includes(kw)) ||
             (r.category && r.category.toLowerCase().includes(kw)) ||
             (r.unitOfMeasure && r.unitOfMeasure.toLowerCase().includes(kw))
         );
-    }, [sorted, q]);
-
-    const pageRows = React.useMemo(() => {
-        const start = page * pageSize;
-        return filtered.slice(start, start + pageSize);
-    }, [filtered, page, pageSize]);
+        return filtered.slice(page * pageSize, page * pageSize + pageSize);
+    }, [rows, q, page, pageSize, serverPaging]);
 
 
     const closeConfirm = () => setConfirm({ open: false, type: null, row: null });
@@ -594,7 +673,7 @@ function PartsView({ onSwitch }) {
                             placeholder="Tìm Part No / Tên / Nhóm / Đơn vị…"
                             size="small"
                             value={q}
-                            onChange={(e) => { setQ(e.target.value); setPage(0); }}
+                            onChange={(e) => { setQ(e.target.value); setPage(0); setServerPaging(false); }}
                             InputProps={{
                                 startAdornment: (
                                     <InputAdornment position="start">
@@ -604,6 +683,9 @@ function PartsView({ onSwitch }) {
                             }}
                             sx={{ minWidth: 280, maxWidth: 380 }}
                         />
+                        <Button variant="outlined" size="small" onClick={() => { setPage(0); searchParts(0, pageSize); }}>
+                            Search
+                        </Button>
 
                         <Divider orientation="vertical" flexItem sx={{ mx: 0.5 }} />
 
@@ -687,9 +769,6 @@ function PartsView({ onSwitch }) {
                                     <TableRow key={r.id} hover>
                                         <RowCell>
                                             <Typography fontWeight={800} noWrap>{r.partNo || "—"}</Typography>
-                                            <Typography variant="caption" color="text.secondary" noWrap title={r.id}>
-                                                {r.id ? `(${String(r.id).slice(0, 8)}…)` : ""}
-                                            </Typography>
                                         </RowCell>
                                         <RowCell><Typography noWrap>{r.partName || "—"}</Typography></RowCell>
                                         <RowCell><Typography noWrap>{r.category || "—"}</Typography></RowCell>
@@ -734,11 +813,11 @@ function PartsView({ onSwitch }) {
                 <Box sx={{ display: "flex", justifyContent: "flex-end", p: 0.5 }}>
                     <TablePagination
                         component="div"
-                        count={filtered.length}
+                        count={serverPaging ? totalCount : pageRows.length + (page * pageSize)}
                         page={page}
-                        onPageChange={(e, p) => setPage(p)}
+                        onPageChange={(e, p) => { setPage(p); serverPaging ? searchParts(p, pageSize) : null; }}
                         rowsPerPage={pageSize}
-                        onRowsPerPageChange={(e) => { setPageSize(parseInt(e.target.value, 10)); setPage(0); }}
+                        onRowsPerPageChange={(e) => { const sz = parseInt(e.target.value, 10); setPageSize(sz); setPage(0); serverPaging ? searchParts(0, sz) : null; }}
                         rowsPerPageOptions={[5, 10, 20, 50]}
                         labelRowsPerPage="Hàng/trang"
                     />
@@ -783,6 +862,8 @@ function LotsView({ onSwitch }) {
     const [page, setPage] = React.useState(0);
     const [pageSize, setPageSize] = React.useState(10);
     const [snack, setSnack] = React.useState({ open: false, type: "success", msg: "" });
+    const [totalCount, setTotalCount] = React.useState(0);
+    const [serverPaging, setServerPaging] = React.useState(false);
 
     const [openCreate, setOpenCreate] = React.useState(false);
     const [editRow, setEditRow] = React.useState(null);
@@ -842,9 +923,11 @@ function LotsView({ onSwitch }) {
     const toggleActive = async () => {
         if (activeOnly) {
             setActiveOnly(false);
+            setServerPaging(false);
             await loadLots();
         } else {
             setActiveOnly(true);
+            setServerPaging(false);
             await loadActiveLots();
         }
     };
@@ -888,6 +971,7 @@ function LotsView({ onSwitch }) {
     }, [loadLots]);
 
     const filtered = React.useMemo(() => {
+        if (serverPaging) return rows;
         if (!q.trim()) return rows;
         const kw = q.trim().toLowerCase();
         return rows.filter(r =>
@@ -898,9 +982,36 @@ function LotsView({ onSwitch }) {
     }, [rows, q]);
 
     const pageRows = React.useMemo(() => {
+        if (serverPaging) return rows;
         const start = page * pageSize;
         return filtered.slice(start, start + pageSize);
-    }, [filtered, page, pageSize]);
+    }, [filtered, page, pageSize, rows, serverPaging]);
+
+    const searchLots = React.useCallback(async (_page = page, _size = pageSize) => {
+        try {
+            setLoading(true); setError("");
+            const res = await lotApi.search({ q, page: _page, size: _size });
+            const content = Array.isArray(res?.content) ? res.content : [];
+            setRows(content.map(normalize)[0] ? content.map((x) => ({
+                id: x.id,
+                partId: x.partId,
+                partNo: x.partNo ?? x.part?.partNo ?? "—",
+                serialNo: x.serialNo ?? "—",
+                batchNo: x.batchNo ?? "—",
+                mfgDate: x.mfgDate ?? null,
+                createAt: x.createAt ?? x.createdAt ?? null,
+                status: (x.isDelete === true || x.status === "DELETED") ? "DELETED" : "ACTIVE",
+            })) : content);
+            setTotalCount(Number(res?.totalElements || content.length));
+            setServerPaging(true);
+        } catch (e) {
+            const msg = e?.message || "Lỗi search lô phụ tùng";
+            setError(msg);
+            setSnack({ open: true, type: "error", msg });
+        } finally {
+            setLoading(false);
+        }
+    }, [q, page, pageSize]);
 
     const dTitle = confirm.type === "delete" ? "Xóa lô phụ tùng?" :
         confirm.type === "recover" ? "Khôi phục lô phụ tùng?" : "";
@@ -921,10 +1032,13 @@ function LotsView({ onSwitch }) {
                             placeholder="Tìm Serial / Batch / Part No…"
                             size="small"
                             value={q}
-                            onChange={(e) => { setQ(e.target.value); setPage(0); }}
+                            onChange={(e) => { setQ(e.target.value); setPage(0); setServerPaging(false); }}
                             InputProps={{ startAdornment: (<InputAdornment position="start"><Search fontSize="small" /></InputAdornment>) }}
                             sx={{ minWidth: 280, maxWidth: 380 }}
                         />
+                        <Button variant="outlined" size="small" onClick={() => { setPage(0); searchLots(0, pageSize); }}>
+                            Search
+                        </Button>
 
                         <Divider orientation="vertical" flexItem sx={{ mx: 0.5 }} />
 
@@ -994,7 +1108,7 @@ function LotsView({ onSwitch }) {
                         <TableBody>
                             {!loading && pageRows.length === 0 && (
                                 <TableRow>
-                                    {/* giảm colSpan vì bớt 1 cột */}
+                                    {/* giữ nguyên colSpan hiện tại */}
                                     <RowCell colSpan={6}>
                                         <Box sx={{ py: 3, textAlign: "center", color: "text.secondary" }}>
                                             Không có dữ liệu phù hợp
@@ -1008,12 +1122,9 @@ function LotsView({ onSwitch }) {
                                 const isDeleted = r.status === "DELETED";
                                 return (
                                     <TableRow key={r.id} hover>
-                                        {/* Batch No (kèm ID rút gọn) */}
+                                        {/* Chỉ hiển thị Batch No, ẩn ID */}
                                         <RowCell>
                                             <Typography fontWeight={800} noWrap>{r.batchNo}</Typography>
-                                            <Typography variant="caption" color="text.secondary" noWrap title={r.id}>
-                                                {r.id ? `(${String(r.id).slice(0, 8)}…)` : ""}
-                                            </Typography>
                                         </RowCell>
                                         <RowCell><Typography noWrap>{r.partNo}</Typography></RowCell>
                                         <RowCell><Typography noWrap>{fmtDay(r.mfgDate)}</Typography></RowCell>
@@ -1063,11 +1174,11 @@ function LotsView({ onSwitch }) {
                 <Box sx={{ display: "flex", justifyContent: "flex-end", p: 0.5 }}>
                     <TablePagination
                         component="div"
-                        count={filtered.length}
+                        count={serverPaging ? totalCount : filtered.length}
                         page={page}
-                        onPageChange={(e, p) => setPage(p)}
+                        onPageChange={(e, p) => { setPage(p); serverPaging ? searchLots(p, pageSize) : null; }}
                         rowsPerPage={pageSize}
-                        onRowsPerPageChange={(e) => { setPageSize(parseInt(e.target.value, 10)); setPage(0); }}
+                        onRowsPerPageChange={(e) => { const sz = parseInt(e.target.value, 10); setPageSize(sz); setPage(0); serverPaging ? searchLots(0, sz) : null; }}
                         rowsPerPageOptions={[5, 10, 20, 50]}
                         labelRowsPerPage="Hàng/trang"
                     />
@@ -1083,7 +1194,7 @@ function LotsView({ onSwitch }) {
                             <Typography><b>Serial No:</b> {detailRow.serialNo}</Typography>
                             <Typography><b>Batch No:</b> {detailRow.batchNo}</Typography>
                             <Typography><b>Part No:</b> {detailRow.partNo}</Typography>
-                            <Typography><b>Part ID:</b> {detailRow.partId || "—"}</Typography>
+                            {/* Ẩn Part ID trong popup chi tiết */}
                             <Typography><b>Ngày SX:</b> {fmtDay(detailRow.mfgDate)}</Typography>
                             {(() => { const d = fmtDate(detailRow.createAt); return <Typography><b>Ngày tạo:</b> {d.date} {d.time}</Typography>; })()}
                             <Typography><b>Trạng thái:</b> {detailRow.status}</Typography>
