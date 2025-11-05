@@ -1,156 +1,142 @@
 // src/services/appointmentService.js
 import axiosInstance from "./axiosInstance";
 
-const validateUuidLike = (val) => typeof val === "string" && val.trim().length > 0;
+const isValidString = (val) => typeof val === "string" && val.trim().length > 0;
 
 const appointmentService = {
-    // GET /api/appointments/{appointmentId}/get
+    // ✅ GET /api/appointments/{appointmentId}/get
     async getById(appointmentId) {
-        if (!validateUuidLike(appointmentId)) {
-            return { success: false, message: "Invalid appointmentId" };
-        }
+        if (!isValidString(appointmentId)) return { success: false, message: "appointmentId không hợp lệ" };
         try {
             const res = await axiosInstance.get(`/appointments/${appointmentId}/get`);
             return { success: true, data: res.data };
-        } catch (error) {
-            console.error("[AppointmentService] getById failed:", error.response?.data || error);
-            return { success: false, error: error.response?.data || error };
+        } catch (err) {
+            console.error("[AppointmentService] getById:", err.response?.data || err.message);
+            return { success: false, error: err.response?.data || err };
         }
     },
 
-    // PUT /api/appointments/{appointmentId}/update
+    // ✅ PUT /api/appointments/{appointmentId}/update
     async update(appointmentId, payload = {}) {
-        if (!validateUuidLike(appointmentId)) {
-            return { success: false, message: "Invalid appointmentId" };
-        }
-        if (payload.slotIds && !Array.isArray(payload.slotIds)) {
-            return { success: false, message: "slotIds must be an array" };
-        }
+        if (!isValidString(appointmentId)) return { success: false, message: "appointmentId không hợp lệ" };
+        if (payload.slotIds && !Array.isArray(payload.slotIds))
+            return { success: false, message: "slotIds phải là mảng" };
+
+        const cleanPayload = Object.fromEntries(
+            Object.entries(payload).filter(([_, v]) => v !== null && v !== undefined && v !== "")
+        );
+
         try {
-            console.log("[AppointmentService] update payload:", payload);
-            const res = await axiosInstance.put(`/appointments/${appointmentId}/update`, payload);
+            console.log("[AppointmentService] update payload:", cleanPayload);
+            const res = await axiosInstance.put(`/appointments/${appointmentId}/update`, cleanPayload);
             return { success: true, data: res.data };
-        } catch (error) {
-            console.error("[AppointmentService] update failed:", error.response?.data || error);
-            return { success: false, error: error.response?.data || error };
+        } catch (err) {
+            console.error("[AppointmentService] update:", err.response?.data || err.message);
+            return { success: false, error: err.response?.data || err };
         }
     },
 
-    // PUT /api/appointments/{appointmentId}/update-status
+    // ✅ PUT /api/appointments/{appointmentId}/update-status
     async updateStatus(appointmentId, { status } = {}) {
-        if (!validateUuidLike(appointmentId)) {
-            return { success: false, message: "Invalid appointmentId" };
-        }
-        if (typeof status !== "string" || status.trim() === "") {
-            return { success: false, message: "status is required" };
-        }
+        if (!isValidString(appointmentId)) return { success: false, message: "appointmentId không hợp lệ" };
+        if (!isValidString(status)) return { success: false, message: "Trạng thái (status) là bắt buộc" };
         try {
             console.log("[AppointmentService] updateStatus:", appointmentId, status);
             const res = await axiosInstance.put(`/appointments/${appointmentId}/update-status`, { status });
             return { success: true, data: res.data };
-        } catch (error) {
-            console.error("[AppointmentService] updateStatus failed:", error.response?.data || error);
-            return { success: false, error: error.response?.data || error };
+        } catch (err) {
+            console.error("[AppointmentService] updateStatus:", err.response?.data || err.message);
+            return { success: false, error: err.response?.data || err };
         }
     },
 
-    // GET /api/appointments/by-claim/{claimId}/get
+    // ✅ GET /api/appointments/by-claim/{claimId}/get
     async getByClaim(claimId) {
-        if (!validateUuidLike(claimId)) {
-            return { success: false, message: "Invalid claimId" };
-        }
+        if (!isValidString(claimId)) return { success: false, message: "claimId không hợp lệ" };
         try {
             const res = await axiosInstance.get(`/appointments/by-claim/${claimId}/get`);
             return { success: true, data: res.data };
-        } catch (error) {
-            console.error("[AppointmentService] getByClaim failed:", error.response?.data || error);
-            return { success: false, error: error.response?.data || error };
+        } catch (err) {
+            console.error("[AppointmentService] getByClaim:", err.response?.data || err.message);
+            return { success: false, error: err.response?.data || err };
         }
     },
 
-    // GET /api/appointments/by-status/{status}/get
+    // ✅ GET /api/appointments/by-status/{status}/get
     async getByStatus(status) {
-        if (typeof status !== "string" || status.trim() === "") {
-            return { success: false, message: "status is required" };
-        }
+        if (!isValidString(status)) return { success: false, message: "status là bắt buộc" };
         try {
             const res = await axiosInstance.get(`/appointments/by-status/${encodeURIComponent(status)}/get`);
             return { success: true, data: res.data };
-        } catch (error) {
-            console.error("[AppointmentService] getByStatus failed:", error.response?.data || error);
-            return { success: false, error: error.response?.data || error };
+        } catch (err) {
+            console.error("[AppointmentService] getByStatus:", err.response?.data || err.message);
+            return { success: false, error: err.response?.data || err };
         }
     },
 
-    // GET /api/appointments/by-technician/{technicianId}/get
+    // ✅ GET /api/appointments/by-technician/{technicianId}/get
     async getByTechnician(technicianId) {
-        if (!validateUuidLike(technicianId)) {
-            return { success: false, message: "Invalid technicianId" };
-        }
+        if (!isValidString(technicianId)) return { success: false, message: "technicianId không hợp lệ" };
         try {
             const res = await axiosInstance.get(`/appointments/by-technician/${technicianId}/get`);
             return { success: true, data: res.data };
-        } catch (error) {
-            console.error("[AppointmentService] getByTechnician failed:", error.response?.data || error);
-            return { success: false, error: error.response?.data || error };
+        } catch (err) {
+            console.error("[AppointmentService] getByTechnician:", err.response?.data || err.message);
+            return { success: false, error: err.response?.data || err };
         }
     },
 
-    // POST /api/appointments/create
+    // ✅ POST /api/appointments/create
     async create(payload = {}) {
-        // ✅ Validation cơ bản
-        if (!payload.claimId || !payload.centerId) {
-            console.warn("[AppointmentService] Missing claimId or centerId", payload);
-            return { success: false, message: "claimId and centerId are required" };
-        }
-        if (!Array.isArray(payload.slotIds) || payload.slotIds.length === 0) {
-            console.warn("[AppointmentService] Missing slotIds", payload);
-            return { success: false, message: "At least one slotId is required" };
-        }
+        if (!isValidString(payload.claimId)) return { success: false, message: "claimId là bắt buộc" };
+        if (!Array.isArray(payload.slotIds) || payload.slotIds.length === 0)
+            return { success: false, message: "slotIds là bắt buộc và phải có ít nhất 1 slot" };
+        if (!isValidString(payload.technicianId))
+            return { success: false, message: "technicianId là bắt buộc" };
 
-        // ✅ Bổ sung fallback type (đề phòng backend null)
-        if (!payload.type) {
-            payload.type = "INSPECTION_ONLY";
-        }
-
-        // ✅ Xóa field null hoặc undefined để tránh backend reject
+        // Loại bỏ field rỗng
         const cleanPayload = Object.fromEntries(
-            Object.entries(payload).filter(([_, v]) => v !== null && v !== undefined && v !== "")
+            Object.entries({
+                ...payload,
+                type: payload.type || "RECALL", // fallback theo Swagger mặc định
+            }).filter(([_, v]) => v !== null && v !== undefined && v !== "")
         );
 
         try {
             console.log("[AppointmentService] create payload:", cleanPayload);
             const res = await axiosInstance.post(`/appointments/create`, cleanPayload);
             return { success: true, data: res.data };
-        } catch (error) {
-            console.error("[AppointmentService] create failed:", error.response?.data || error);
-            return { success: false, error: error.response?.data || error };
+        } catch (err) {
+            console.error("[AppointmentService] create:", err.response?.data || err.message);
+            return { success: false, error: err.response?.data || err };
         }
     },
 
-    // GET /api/appointments/get-all
+    // ✅ GET /api/appointments/get-all
     async getAll() {
         try {
             const res = await axiosInstance.get(`/appointments/get-all`);
             return { success: true, data: res.data };
-        } catch (error) {
-            console.error("[AppointmentService] getAll failed:", error.response?.data || error);
-            return { success: false, error: error.response?.data || error };
+        } catch (err) {
+            console.error("[AppointmentService] getAll:", err.response?.data || err.message);
+            return { success: false, error: err.response?.data || err };
         }
     },
 
-    // POST /api/appointments/suggest-technicians
+    // ✅ POST /api/appointments/suggest-technicians
     async suggestTechnicians(payload = {}) {
-        if (!payload.requiredSkill || !payload.workDate) {
-            return { success: false, message: "requiredSkill and workDate are required" };
-        }
+        if (!isValidString(payload.requiredSkill))
+            return { success: false, message: "requiredSkill là bắt buộc" };
+        if (!isValidString(payload.workDate))
+            return { success: false, message: "workDate là bắt buộc" };
+
         try {
             console.log("[AppointmentService] suggestTechnicians payload:", payload);
             const res = await axiosInstance.post(`/appointments/suggest-technicians`, payload);
             return { success: true, data: res.data };
-        } catch (error) {
-            console.error("[AppointmentService] suggestTechnicians failed:", error.response?.data || error);
-            return { success: false, error: error.response?.data || error };
+        } catch (err) {
+            console.error("[AppointmentService] suggestTechnicians:", err.response?.data || err.message);
+            return { success: false, error: err.response?.data || err };
         }
     },
 };
