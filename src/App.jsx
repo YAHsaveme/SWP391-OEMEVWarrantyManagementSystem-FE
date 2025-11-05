@@ -1,4 +1,4 @@
-import { BrowserRouter as Router, Routes, Route } from "react-router-dom";
+import { BrowserRouter as Router, Routes, Route, Navigate } from "react-router-dom";
 
 // Hooks
 import useAutoLogout from "./hooks/useAutoLogout";
@@ -22,7 +22,6 @@ import SCTechnicianDashboard from "./components/tech/SCTechnicianDashboard";
 
 // SC_Staff
 import StaffLayout from "./components/staff/StaffLayout";
-import StaffOverview from "./components/staff/StaffOverview";
 import Inventory from "./components/staff/Inventory";
 import VehiclesPage from "./components/staff/VehiclesPage";
 import VehicleDetailPage from "./components/staff/VehicleDetailPage";
@@ -95,7 +94,7 @@ export default function App() {
             </PrivateRoute>
           }
         >
-          <Route index element={<StaffOverview />} />
+          <Route index element={<Navigate to="/staff/vehicles" replace />} />
           <Route path="inventory" element={<Inventory />} />
           <Route path="vehicles" element={<VehiclesPage />} />
           <Route path="vehicles/:vin" element={<VehicleDetailPage />} />

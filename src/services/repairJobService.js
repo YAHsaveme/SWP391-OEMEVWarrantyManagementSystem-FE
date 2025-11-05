@@ -1,6 +1,6 @@
 import api from "./axiosInstance";
 
-const BASE_URL = "/api/repair-jobs";
+const BASE_URL = "/repair-jobs"; // axiosInstance đã có baseURL = "/api", nên không cần /api nữa
 
 const repairJobService = {
   // 📋 Lấy tất cả công việc sửa chữa (có thể lọc hoặc phân trang)

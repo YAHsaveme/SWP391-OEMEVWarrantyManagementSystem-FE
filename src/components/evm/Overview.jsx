@@ -11,6 +11,7 @@ import authService from "../../services/authService";
 import InventoryMovement from "./InventoryMovement";
 import InventoryPart from "./InventoryPart";
 import ShipmentDetailPage from "./ShipmentDetailPage";
+import EventManagement from "./EventManagement";
 
 import {
     AppBar, Toolbar, Typography, Container, Box, Avatar, Tabs, Tab,
@@ -293,6 +294,7 @@ export default function Overview() {
                             <Tab iconPosition="start" icon={<BarChartIcon />} label="Báo cáo & Phân tích" />
                             <Tab iconPosition="start" icon={<FileText />} label="Chính sách Bảo hành" />
                             <Tab iconPosition="start" icon={<CarIcon />} label="Chi tiết vận đơn" />
+                            <Tab iconPosition="start" icon={<AlertTriangle />} label="Quản lý Sự kiện" />
                         </Tabs>
 
                         <Box sx={{ p: 2.5, bgcolor: "background.paper", borderRadius: 2 }}>
@@ -305,6 +307,7 @@ export default function Overview() {
                             {tab === 6 && <Analytics />}
                             {tab === 7 && <WarrantyPolicy />}
                             {tab === 8 && <ShipmentDetailPage id={activeShipmentId} />}
+                            {tab === 9 && <EventManagement />}
                         </Box>
                     </Paper>
 

@@ -36,7 +36,7 @@ const Header = () => {
         navigate("/overview");
         break;
       case "SC_STAFF":
-        navigate("/staff");
+        navigate("/staff/vehicles");
         break;
       case "SC_TECH":
         navigate("/tech");

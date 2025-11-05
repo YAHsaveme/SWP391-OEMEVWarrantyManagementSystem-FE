@@ -104,11 +104,24 @@ const appointmentService = {
 
         try {
             console.log("[AppointmentService] create payload:", cleanPayload);
+            console.log("[AppointmentService] claimId:", cleanPayload.claimId);
+            console.log("[AppointmentService] technicianId:", cleanPayload.technicianId);
+            console.log("[AppointmentService] slotIds:", cleanPayload.slotIds);
+            console.log("[AppointmentService] slotIds type:", Array.isArray(cleanPayload.slotIds) ? "array" : typeof cleanPayload.slotIds);
+            console.log("[AppointmentService] slotIds length:", cleanPayload.slotIds?.length);
+            
             const res = await axiosInstance.post(`/appointments/create`, cleanPayload);
+            console.log("[AppointmentService] create success:", res.data);
             return { success: true, data: res.data };
         } catch (err) {
-            console.error("[AppointmentService] create:", err.response?.data || err.message);
-            return { success: false, error: err.response?.data || err };
+            console.error("[AppointmentService] create error response:", err.response);
+            console.error("[AppointmentService] create error data:", err.response?.data);
+            console.error("[AppointmentService] create error status:", err.response?.status);
+            console.error("[AppointmentService] create error message:", err.message);
+            
+            const errorData = err.response?.data;
+            const errorMessage = errorData?.message || errorData?.error || err.message || "Lỗi khi tạo lịch hẹn";
+            return { success: false, error: errorData || err, message: errorMessage };
         }
     },
 
