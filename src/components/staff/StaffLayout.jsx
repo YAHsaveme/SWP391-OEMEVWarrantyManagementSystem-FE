@@ -15,6 +15,7 @@ import GroupsIcon from "@mui/icons-material/Groups";
 import StoreMallDirectoryIcon from "@mui/icons-material/StoreMallDirectory";
 import EventIcon from "@mui/icons-material/Event";
 import authService from "../../services/authService";
+import Inventory2Icon from "@mui/icons-material/Inventory2";
 
 const drawerWidth = 260;
 
@@ -28,7 +29,7 @@ const NAV_ITEMS = [
     { label: "Dashboard", to: "/staff", icon: <DashboardIcon />, end: true },
     { label: "Vehicles", to: "/staff/vehicles", icon: <DirectionsCarIcon /> },
     { label: "Claims", to: "/staff/claims", icon: <AssignmentIcon /> },
-    { label: "Service Campaigns", to: "/staff/campaigns", icon: <CampaignIcon /> },
+    { label: "Inventory", to: "/staff/inventory", icon: <Inventory2Icon /> },
     { label: "Technicians", to: "/staff/technicians", icon: <GroupsIcon /> },
     { label: "Service Centers", to: "/staff/centers", icon: <StoreMallDirectoryIcon /> },
     { label: "Appointments", to: "/staff/appointments", icon: <EventIcon /> },
