@@ -1,70 +1,152 @@
-import api from "./axiosInstance";
+// src/services/shipmentService.js
+import axiosInstance from "./axiosInstance";
 
-const BASE_URL = "/api/shipments";
+const API_BASE = "shipments"; // giữ nguyên, vì axiosInstance đã có baseURL=/api/
 
 const shipmentService = {
-  // 🚚 Lấy tất cả các lô hàng (có thể lọc hoặc phân trang)
-  getAll: async (params = {}) => {
-    const response = await api.get(BASE_URL, { params });
-    return response.data;
+  /** 🟢 Manufacturer -> Center */
+  createFromManufacturer: async (body) => {
+    const { data } = await axiosInstance.post(
+      `${API_BASE}/create-from-manufacturer`,
+      body
+    );
+    return data;
   },
 
-  // 🔍 Lấy chi tiết 1 lô hàng theo ID
-  getById: async (shipmentId) => {
-    const response = await api.get(`${BASE_URL}/${shipmentId}`);
-    return response.data;
+  /** 🟢 Center -> Center */
+  createBetweenCenters: async (body) => {
+    const { data } = await axiosInstance.post(
+      `${API_BASE}/create-between-centers`,
+      body
+    );
+    return data;
   },
 
-  // 📦 Lấy các lô hàng theo trung tâm bảo hành (serviceCenterId)
-  getByServiceCenter: async (centerId) => {
-    const response = await api.get(`${BASE_URL}/service-center/${centerId}`);
-    return response.data;
+  /** 🚚 Dispatch (IN_TRANSIT + post tồn kho OUT nếu center->center) */
+  dispatch: async (shipmentId, trackingNo) => {
+    const { data } = await axiosInstance.post(
+      `${API_BASE}/${shipmentId}/${encodeURIComponent(trackingNo)}/dispatch`
+    );
+    return data;
   },
 
-  // 🔧 Lấy các lô hàng liên quan tới yêu cầu bảo hành (claimId)
-  getByClaim: async (claimId) => {
-    const response = await api.get(`${BASE_URL}/claim/${claimId}`);
-    return response.data;
+  /** 📦 Receive (post tồn kho IN; create/find PartLot nếu manufacturer->center) */
+  receive: async (shipmentId) => {
+    const { data } = await axiosInstance.post(
+      `${API_BASE}/${shipmentId}/receive`
+    );
+    return data;
   },
 
-  // 🔎 Tìm kiếm lô hàng theo từ khóa hoặc trạng thái
-  search: async (query, status) => {
-    const response = await api.get(`${BASE_URL}/search`, {
-      params: { q: query, status },
-    });
-    return response.data;
+  /** ✅ Close (sau khi DELIVERED / DELIVERED_WITH_ISSUE) */
+  close: async (shipmentId) => {
+    const { data } = await axiosInstance.post(
+      `${API_BASE}/${shipmentId}/close`
+    );
+    return data;
   },
 
-  // ➕ Tạo mới lô hàng
-  create: async (shipmentData) => {
-    const response = await api.post(BASE_URL, shipmentData);
-    return response.data;
+  /** 🔍 Get 1 shipment */
+  get: async (shipmentId) => {
+    const { data } = await axiosInstance.get(`${API_BASE}/${shipmentId}/get`);
+    return data;
   },
 
-  // ✏️ Cập nhật thông tin lô hàng
-  update: async (shipmentId, shipmentData) => {
-    const response = await api.put(`${BASE_URL}/${shipmentId}`, shipmentData);
-    return response.data;
+  /** 🔍 Get theo ticket */
+  getByTicketId: async (ticketId) => {
+    const { data } = await axiosInstance.get(
+      `${API_BASE}/${ticketId}/get-by-ticket-id`
+    );
+    return data;
   },
 
-  // 🔄 Cập nhật trạng thái lô hàng (VD: "IN_TRANSIT", "DELIVERED", "RETURNED")
-  updateStatus: async (shipmentId, statusData) => {
-    const response = await api.patch(`${BASE_URL}/${shipmentId}/status`, statusData);
-    return response.data;
+  /** ✅ Simple existence check for a ticket's shipment (used in list UI) */
+  existsForTicket: async (ticketId) => {
+    try {
+      const data = await shipmentService.getByTicketId(ticketId);
+      if (!data) return false;
+      // BE may return a single shipment object or array; treat both
+      if (Array.isArray(data)) return data.length > 0;
+      return !!data.id;
+    } catch (_) {
+      return false;
+    }
   },
 
-  // 📎 Upload chứng từ vận chuyển (hóa đơn, biên bản, ảnh ký nhận,...)
-  uploadAttachment: async (shipmentId, formData) => {
-    const response = await api.post(`${BASE_URL}/${shipmentId}/attachments`, formData, {
-      headers: { "Content-Type": "multipart/form-data" },
-    });
-    return response.data;
+  /** 📋 Get all */
+  getAll: async () => {
+    const { data } = await axiosInstance.get(`${API_BASE}/get-all`);
+    return data;
   },
 
-  // ❌ Xóa lô hàng
-  delete: async (shipmentId) => {
-    const response = await api.delete(`${BASE_URL}/${shipmentId}`);
-    return response.data;
+  /** ✏️ Update plan cho manufacturer -> center (khi status=REQUESTED) */
+  updateFromManufacturer: async (shipmentId, body) => {
+    const { data } = await axiosInstance.put(
+      `${API_BASE}/${shipmentId}/update-from-manufacturer`,
+      body
+    );
+    return data;
+  },
+
+  /** ✏️ Update plan cho center -> center (khi status=REQUESTED) */
+  updateBetweenCenters: async (shipmentId, body) => {
+    const { data } = await axiosInstance.put(
+      `${API_BASE}/${shipmentId}/update-between-centers`,
+      body
+    );
+    return data;
+  },
+
+  /**
+   * 🧠 Suggest Part Lots (dùng cho luồng Center -> Center)
+   * BE yêu cầu body:
+   * { centerId, partQuantities: [{ partId, quantity }] }
+   * LƯU Ý: Response KHÔNG có field `part` → chỉ dùng để gợi ý lot/availableQty.
+   */
+  suggestPartLots: async ({ centerId, partQuantities, parts }) => {
+    if (!centerId) throw new Error("centerId is required for suggestPartLots");
+
+    // Ưu tiên partQuantities nếu có, nếu không thì convert từ parts
+    let finalPartQuantities;
+    if (partQuantities && Array.isArray(partQuantities)) {
+      finalPartQuantities = partQuantities;
+    } else if (parts && Array.isArray(parts)) {
+      // Cho phép truyền: parts = ["id1","id2"] hoặc [{partId:"id", quantity:2}]
+      finalPartQuantities = parts.map((p) =>
+        typeof p === "string"
+          ? { partId: p, quantity: 1 }
+          : { partId: p.partId, quantity: Number(p.quantity) || 1 }
+      );
+    } else {
+      finalPartQuantities = [];
+    }
+
+    const payload = { centerId, partQuantities: finalPartQuantities };
+    const { data } = await axiosInstance.post(
+      `${API_BASE}/suggest-part-lots`,
+      payload
+    );
+    return data;
+  },
+
+  /**
+   * 🏢 Suggest Centers (dùng cho luồng Center -> Center)
+   * POST /api/shipments/suggest-center
+   * Body: { partIds: [...] } hoặc { partQuantities: [{ partId, quantity }] }
+   * Trả về danh sách centers có các parts đó để gửi hàng
+   */
+  suggestCenter: async ({ partIds, partQuantities }) => {
+    let payload = {};
+    if (partQuantities && Array.isArray(partQuantities)) {
+      payload = { partQuantities };
+    } else if (partIds && Array.isArray(partIds)) {
+      // Convert partIds to partQuantities with quantity=1
+      payload = { 
+        partQuantities: partIds.map(partId => ({ partId, quantity: 1 }))
+      };
+    }
+    const { data } = await axiosInstance.post(`${API_BASE}/suggest-center`, payload);
+    return data;
   },
 };
 

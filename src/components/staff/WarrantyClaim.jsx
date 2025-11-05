@@ -1,7 +1,6 @@
 // src/components/evm/WarrantyClaim.jsx
 "use client";
 import React, { useMemo, useState, useEffect } from "react";
-import axios from "axios";
 import {
   Container,
   Box,
@@ -46,13 +45,8 @@ import { uploadToCloudinary } from "../../utils/cloudinary";
 // Vehicle service — dùng để lấy thông tin khách hàng theo VIN
 const vehiclesService = {
   getByVin: async (vin) => {
-    const token =
-      localStorage.getItem("access_token") || localStorage.getItem("token");
-    const res = await axios.get(
-      `http://localhost:8080/api/vehicles/detail/${encodeURIComponent(vin)}`,
-      {
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
-      }
+    const res = await axiosInstance.get(
+      `/vehicles/detail/${encodeURIComponent(vin)}`
     );
     return res.data;
   },
@@ -139,13 +133,9 @@ export default function WarrantyClaimsPage() {
           if (c.vin) {
             try {
               console.log("🔎 Fetching VIN:", c.vin);
-              const res = await axios.get(`/api/vehicles/detail/${encodeURIComponent(c.vin)}`, {
-                headers: {
-                  Authorization: `Bearer ${token}`,
-                },
-              });
-              console.log("✅ Vehicle:", res.data);
-              names[c.vin] = res.data.intakeContactName || "Không có tên khách";
+              const vehicleData = await vehiclesService.getByVin(c.vin);
+              console.log("✅ Vehicle:", vehicleData);
+              names[c.vin] = vehicleData.intakeContactName || "Không có tên khách";
             } catch (err) {
               console.error(`❌ Lỗi lấy thông tin xe cho VIN: ${c.vin}`, err.response?.data || err.message);
             }
@@ -841,23 +831,15 @@ function ViewOnlyDialog({ open, onClose, claim }) {
 
   useEffect(() => {
     if (!open || !claim?.vin) return;
-    const token =
-      localStorage.getItem("access_token") || localStorage.getItem("token");
-    if (!token) return;
 
-    axios
-      .get(`http://localhost:8080/api/vehicles/detail/${encodeURIComponent(claim.vin)}`, {
-        headers: { Authorization: `Bearer ${token}` },
-        validateStatus: () => true,
+    vehiclesService.getByVin(claim.vin)
+      .then((data) => {
+        setVehicleInfo(data);
       })
-      .then((res) => {
-        if (res.status < 400 && res.data) {
-          setVehicleInfo(res.data);
-        } else {
-          console.warn("❌ Lỗi lấy vehicle info:", res.data);
-        }
-      })
-      .catch((err) => console.error("❌ Vehicle fetch error:", err));
+      .catch((err) => {
+        console.error("❌ Vehicle fetch error:", err);
+        setVehicleInfo(null);
+      });
   }, [open, claim?.vin]);
 
   return (

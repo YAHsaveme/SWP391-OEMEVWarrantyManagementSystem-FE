@@ -259,7 +259,28 @@ const authService = {
       throw error;
     }
   },
+  // ===== Helpers (thêm mới) =====
+  getStoredUser() {
+    try {
+      return JSON.parse(localStorage.getItem("user") || "null");
+    } catch {
+      return null;
+    }
+  },
+  getRole() {
+    const r = localStorage.getItem("role");
+    return r ? r.toUpperCase() : null; // "EVM_STAFF" | "SC_STAFF" | ...
+  },
+  isEvmStaff() {
+    return this.getRole() === "EVM_STAFF";
+  },
+  isScStaff() {
+    return this.getRole() === "SC_STAFF";
+  },
+
 };
+
+
 
 // Export mặc định toàn bộ service
 export default authService;

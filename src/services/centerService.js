@@ -1,7 +1,7 @@
 // src/services/centerService.js
 import axiosInstance from "./axiosInstance";
 
-const API_BASE = "centers";
+const API_BASE = "/centers";
 
 const centerService = {
   /** 
