@@ -4,16 +4,14 @@ import React, { useEffect, useMemo, useState, useRef } from "react";
 import {
     Box, Paper, Typography, Button, IconButton, Grid, TextField, Dialog, DialogTitle, DialogContent,
     DialogActions, Checkbox, FormControlLabel, RadioGroup, Radio, CircularProgress, Snackbar, Alert,
-    Tooltip, MenuItem, Select
+    Tooltip, MenuItem
 } from "@mui/material";
 import CloseIcon from "@mui/icons-material/Close";
 import AddIcon from "@mui/icons-material/Add";
 import EventAvailableIcon from "@mui/icons-material/EventAvailable";
-import { motion, AnimatePresence } from "framer-motion";
 import dayjs from "dayjs";
 
 import appointmentService from "../../services/appointmentService";
-import technicianService from "../../services/technicianService";
 import scheduleService from "../../services/scheduleService";
 import claimService from "../../services/claimService";
 
@@ -248,55 +246,163 @@ export default function Appointment() {
     // create appointment
     const handleCreate = async () => {
         if (!form.claimId) { showSnack("warning", "Vui lòng chọn VIN."); return; }
-        if (!form.requiredSkills.length && !chosenTechId) { showSnack("warning", "Vui lòng chọn ít nhất 1 kỹ năng hoặc 1 kỹ thuật viên."); return; }
+        if (!chosenTechId) { showSnack("warning", "Vui lòng chọn kỹ thuật viên."); return; }
         if (selectedSlotKeys.size === 0) { showSnack("warning", "Chọn ít nhất 1 slot."); return; }
 
         setFormLoading(true);
         try {
             const selected = Array.from(selectedSlotKeys);
-            const slotIds = selected.filter(k => !k.includes("|"));
-            const manual = selected.filter(k => k.includes("|")).map(k => {
-                const [d, st] = k.split("|");
-                let endTime = "";
-                if (chosenTechId) {
-                    const key = `${chosenTechId}_${calYear}_${calMonth}`;
-                    const map = monthSlotsByTech[key] || {};
-                    const s = (map[d] || []).find(x => x.startTime === st);
-                    if (s) endTime = s.endTime ?? "";
+            
+            // Collect slotIds from selected keys
+            const slotIds = [];
+            const manualSlots = [];
+            
+            selected.forEach(key => {
+                if (key.includes("|")) {
+                    // Manual format: date|startTime - need to find slotId
+                    const [d, st] = key.split("|");
+                    
+                    // First, try to find in chosen tech's cache
+                    if (chosenTechId) {
+                        const techKey = `${chosenTechId}_${calYear}_${calMonth}`;
+                        const map = monthSlotsByTech[techKey] || {};
+                        const slot = (map[d] || []).find(x => x.startTime === st);
+                        if (slot && slot.slotId) {
+                            slotIds.push(slot.slotId);
+                            return;
+                        }
+                    }
+                    
+                    // If not found in cache, try to find in suggestions
+                    let foundSlotId = null;
+                    suggestions.forEach(s => {
+                        if (foundSlotId) return;
+                        (s.availableSlots || []).forEach(as => {
+                            if (as.workDate === d && as.startTime === st && as.slotId) {
+                                foundSlotId = as.slotId;
+                            }
+                        });
+                    });
+                    
+                    if (foundSlotId) {
+                        slotIds.push(foundSlotId);
+                    } else {
+                        // Still not found - add to manual slots for later processing
+                        manualSlots.push({ slotDate: d, startTime: st, endTime: "", note: "" });
+                    }
+                } else {
+                    // Direct slotId - validate it's not empty
+                    if (key && key.trim()) {
+                        slotIds.push(key);
+                    }
                 }
-                return { slotDate: d, startTime: st, endTime, note: "" };
             });
 
-            const payload = {};
-            if (form.claimId) payload.claimId = form.claimId;
+            // Build payload - backend requires slotIds array, not slots
+            const payload = {
+                claimId: form.claimId,
+                technicianId: chosenTechId,
+            };
+            
             if (form.note) payload.note = form.note;
             if (form.requiredSkills.length) payload.requiredSkill = form.requiredSkills.join(",");
-            if (chosenTechId) payload.technicianId = chosenTechId;
-            if (slotIds.length) payload.slotIds = slotIds;
-            if (manual.length) payload.slots = manual;
+            
+            // If we still have manual slots, try one more time to find slotIds
+            if (manualSlots.length > 0) {
+                // Try from chosen tech's cache first
+                if (chosenTechId) {
+                    const techKey = `${chosenTechId}_${calYear}_${calMonth}`;
+                    const map = monthSlotsByTech[techKey] || {};
+                    manualSlots.forEach(ms => {
+                        const slot = (map[ms.slotDate] || []).find(s => s.startTime === ms.startTime);
+                        if (slot && slot.slotId && !slotIds.includes(slot.slotId)) {
+                            slotIds.push(slot.slotId);
+                        }
+                    });
+                }
+                
+                // Also try from suggestions
+                manualSlots.forEach(ms => {
+                    suggestions.forEach(s => {
+                        (s.availableSlots || []).forEach(as => {
+                            if (as.workDate === ms.slotDate && as.startTime === ms.startTime && as.slotId) {
+                                if (!slotIds.includes(as.slotId)) {
+                                    slotIds.push(as.slotId);
+                                }
+                            }
+                        });
+                    });
+                });
+            }
+            
+            if (slotIds.length === 0) {
+                showSnack("error", "Không thể xác định slot IDs. Vui lòng chọn lại slot.");
+                setFormLoading(false);
+                return;
+            }
+            
+            payload.slotIds = slotIds;
 
+            console.log("[Appointment] Final payload before create:", payload);
+            console.log("[Appointment] Slot IDs:", slotIds);
+            console.log("[Appointment] Selected slots:", Array.from(selectedSlotKeys));
+            
             const res = await appointmentService.create(payload);
 
             if (res.success) {
                 showSnack("success", "Đặt lịch hẹn thành công.");
                 // prepare a display object for card: prefer response data if provided
                 const created = res.data ?? res ?? {};
+                const selectedTech = suggestions.find(s => s.technicianId === chosenTechId);
+                const selectedClaim = claims.find(c => c.id === payload.claimId);
+                
+                // Get slot details from response or reconstruct from slotIds
+                let slotsData = [];
+                if (created.slots && Array.isArray(created.slots)) {
+                    slotsData = created.slots;
+                } else if (created.slotIds && Array.isArray(created.slotIds)) {
+                    // If we only have slotIds, try to get details from cache
+                    if (chosenTechId) {
+                        const techKey = `${chosenTechId}_${calYear}_${calMonth}`;
+                        const map = monthSlotsByTech[techKey] || {};
+                        created.slotIds.forEach(slotId => {
+                            // Search through all dates in the map
+                            Object.keys(map).forEach(date => {
+                                const daySlots = map[date] || [];
+                                const slot = daySlots.find(s => s.slotId === slotId);
+                                if (slot) {
+                                    slotsData.push({
+                                        slotId: slot.slotId,
+                                        slotDate: date,
+                                        workDate: date,
+                                        startTime: slot.startTime,
+                                        endTime: slot.endTime
+                                    });
+                                }
+                            });
+                        });
+                    }
+                    // If still no slots, create minimal entries
+                    if (slotsData.length === 0) {
+                        slotsData = created.slotIds.map(id => ({ slotId: id }));
+                    }
+                } else {
+                    // Fallback: use slotIds we sent
+                    slotsData = slotIds.map(id => ({ slotId: id }));
+                }
+                
                 // fallback construct details
                 const card = {
                     id: created.appointmentId ?? created.id ?? `local-${Date.now()}`,
-                    technicianName: created.technicianName ?? (suggestions.find(s => s.technicianId === chosenTechId)?.technicianName) ?? "—",
-                    centerName: created.centerName ?? "—",
-                    requiredSkill: payload.requiredSkill ?? "—",
+                    technicianName: created.technicianName ?? selectedTech?.technicianName ?? "—",
+                    centerName: created.centerName ?? selectedTech?.raw?.centerName ?? null,
+                    requiredSkill: payload.requiredSkill ?? (form.requiredSkills.length > 0 ? form.requiredSkills.join(",") : null),
                     status: created.status ?? "BOOKED",
-                    note: payload.note ?? "",
-                    slots: created.slotIds ? (created.slotIds.map(id => ({ slotId: id }))) : (created.slotIds || manual || []).map(x => ({
-                        slotDate: x.slotDate ?? activeDate,
-                        startTime: x.startTime ?? "—",
-                        endTime: x.endTime ?? "—",
-                    })),
+                    note: payload.note ?? form.note ?? "",
+                    slots: slotsData,
                     createdAt: created.createdAt ?? new Date().toISOString(),
-                    claimId: payload.claimId ?? form.claimId,
-                    vin: claims.find(c => c.id === payload.claimId)?.vin ?? ""
+                    claimId: payload.claimId,
+                    vin: created.vin ?? selectedClaim?.vin ?? ""
                 };
                 // show as created card
                 setCreatedAppointments(prev => [card, ...prev].slice(0, 6)); // keep last 6
@@ -308,7 +414,12 @@ export default function Appointment() {
                 setSuggestions([]);
                 setChosenTechId("");
             } else {
-                showSnack("error", res.message || "Đặt lịch thất bại.");
+                const errorData = res.error || {};
+                const errorMsg = errorData.message || res.message || errorData.error || JSON.stringify(errorData) || "Đặt lịch thất bại.";
+                showSnack("error", errorMsg);
+                console.error("[Appointment] Create failed - Full error:", res);
+                console.error("[Appointment] Error data:", errorData);
+                console.error("[Appointment] Payload that failed:", payload);
             }
         } catch (err) {
             console.error("create err", err);
@@ -320,47 +431,94 @@ export default function Appointment() {
 
     // UI renderers
     const renderCompactCalendar = () => (
-        <Paper elevation={0} sx={{ p: 1, width: 280 }}>
-            <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center", mb: 1 }}>
-                <Button size="small" onClick={() => { if (calMonth === 0) { setCalMonth(11); setCalYear(y => y - 1); } else setCalMonth(m => m - 1); }} sx={{ minWidth: 36 }}>◀</Button>
-                <Typography sx={{ fontWeight: 700, color: PRIMARY, fontSize: 13 }}>
-                    {new Date(calYear, calMonth).toLocaleString("vi-VN", { month: "short", year: "numeric" })}
+        <Paper elevation={0} sx={{ p: 2, borderRadius: 2, border: "1px solid", borderColor: "divider" }}>
+            <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center", mb: 2 }}>
+                <IconButton size="small" onClick={() => { if (calMonth === 0) { setCalMonth(11); setCalYear(y => y - 1); } else setCalMonth(m => m - 1); }}>
+                    ◀
+                </IconButton>
+                <Typography sx={{ fontWeight: 700, fontSize: "0.95rem" }}>
+                    {new Date(calYear, calMonth).toLocaleString("vi-VN", { month: "long", year: "numeric" })}
                 </Typography>
-                <Button size="small" onClick={() => { if (calMonth === 11) { setCalMonth(0); setCalYear(y => y + 1); } else setCalMonth(m => m + 1); }} sx={{ minWidth: 36 }}>▶</Button>
+                <IconButton size="small" onClick={() => { if (calMonth === 11) { setCalMonth(0); setCalYear(y => y + 1); } else setCalMonth(m => m + 1); }}>
+                    ▶
+                </IconButton>
             </Box>
 
-            <Box sx={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: 0.5, mb: 0.75 }}>
-                {["CN", "T2", "T3", "T4", "T5", "T6", "T7"].map(x => <Box key={x} sx={{ textAlign: "center", fontWeight: 700, color: PRIMARY, fontSize: 11 }}>{x}</Box>)}
+            <Box sx={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: 0.5, mb: 1.5 }}>
+                {["CN", "T2", "T3", "T4", "T5", "T6", "T7"].map(x => (
+                    <Typography 
+                        key={x} 
+                        align="center" 
+                        sx={{ 
+                            fontWeight: 700, 
+                            fontSize: "0.75rem",
+                            color: "primary.main",
+                            py: 0.5
+                        }}
+                    >
+                        {x}
+                    </Typography>
+                ))}
             </Box>
 
-            <Box sx={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: 6 }}>
+            <Box sx={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: 0.75 }}>
                 {daysArr.map((d, i) => {
                     const dStr = d ? fmtDate(d) : null;
                     const isActive = dStr && dStr === activeDate;
                     const past = d && dayjs(d).isBefore(dayjs().startOf("day"));
+                    const isToday = dStr === fmtDate(new Date());
                     const hasSlotsFromSuggestions = suggestions.some(s => (s.availableSlots || []).some(as => as.workDate === dStr));
-                    const keyMarker = hasSlotsFromSuggestions ? "●" : "";
+                    
                     return (
-                        <motion.div key={i} whileHover={{ scale: d && !past ? 1.02 : 1 }}>
-                            <Paper
-                                onClick={() => d && !past && setActiveDate(fmtDate(d))}
-                                sx={{
-                                    height: 54,
-                                    width: 44,
-                                    borderRadius: 2,
-                                    display: "flex",
-                                    alignItems: "center",
-                                    justifyContent: "center",
-                                    cursor: d && !past ? "pointer" : "default",
-                                    backgroundColor: !d ? "transparent" : past ? "#f1f5f9" : isActive ? "#e6f6ff" : "#fff",
-                                    border: isActive ? `2px solid ${PRIMARY}` : "1px solid #e5e7eb",
-                                    flexDirection: "column"
+                        <Paper
+                            key={i}
+                            onClick={() => d && !past && setActiveDate(fmtDate(d))}
+                            sx={{
+                                aspectRatio: "1",
+                                minHeight: 40,
+                                borderRadius: 1.5,
+                                display: "flex",
+                                flexDirection: "column",
+                                alignItems: "center",
+                                justifyContent: "center",
+                                cursor: d && !past ? "pointer" : "default",
+                                backgroundColor: !d ? "transparent" : past ? "action.disabledBackground" : isActive ? "action.selected" : isToday ? "action.hover" : "background.paper",
+                                border: !d ? "none" : isActive ? "2px solid" : isToday ? "2px solid" : "1px solid",
+                                borderColor: isActive ? "primary.main" : isToday ? "primary.light" : "divider",
+                                transition: "all .15s ease",
+                                position: "relative",
+                                "&:hover": d && !past ? {
+                                    bgcolor: isActive ? "action.selected" : "action.hover",
+                                    borderColor: "primary.main",
+                                    transform: "translateY(-2px)",
+                                    boxShadow: "0 2px 8px rgba(0,0,0,0.1)",
+                                    zIndex: 1
+                                } : {}
+                            }}
+                        >
+                            <Typography 
+                                sx={{ 
+                                    fontWeight: isActive ? 700 : 600, 
+                                    fontSize: "0.85rem",
+                                    color: past ? "text.disabled" : isActive ? "primary.main" : isToday ? "primary.main" : "text.primary"
                                 }}
                             >
-                                <Typography sx={{ fontWeight: 700, color: past ? "#9ca3af" : "#065f46", fontSize: 13 }}>{d ? d.getDate() : ""}</Typography>
-                                {keyMarker && <Box sx={{ fontSize: 10, color: "#6b7280" }}>{keyMarker}</Box>}
-                            </Paper>
-                        </motion.div>
+                                {d ? d.getDate() : ""}
+                            </Typography>
+                            {hasSlotsFromSuggestions && (
+                                <Box 
+                                    sx={{ 
+                                        position: "absolute",
+                                        bottom: 2,
+                                        width: 4,
+                                        height: 4,
+                                        borderRadius: "50%",
+                                        bgcolor: "primary.main",
+                                        opacity: isActive ? 1 : 0.6
+                                    }} 
+                                />
+                            )}
+                        </Paper>
                     );
                 })}
             </Box>
@@ -370,40 +528,53 @@ export default function Appointment() {
     const renderSlotsPanel = () => {
         const merged = getMergedSlotsForActiveDate();
         return (
-            <Paper elevation={0} sx={{ p: 1, width: 280 }}>
-                <Typography sx={{ fontWeight: 700, mb: 1, color: PRIMARY }}>{activeDate || "Chọn ngày"}</Typography>
+            <Paper elevation={0} sx={{ p: 2, borderRadius: 2, border: "1px solid", borderColor: "divider", width: "100%" }}>
+                <Typography sx={{ fontWeight: 700, mb: 1.5, fontSize: "0.95rem" }}>
+                    {activeDate ? dayjs(activeDate).format("DD/MM/YYYY") : "Chọn ngày"}
+                </Typography>
                 <Box sx={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 1 }}>
                     {merged.length === 0 ? (
-                        <Typography variant="body2" sx={{ color: "text.secondary", p: 2 }}>Không có slot cho ngày này.</Typography>
+                        <Box sx={{ gridColumn: "1 / -1", textAlign: "center", py: 3 }}>
+                            <Typography variant="body2" sx={{ color: "text.secondary" }}>
+                                Không có slot cho ngày này
+                            </Typography>
+                        </Box>
                     ) : merged.map((s, idx) => {
                         const key = s.slotId ?? `${activeDate}|${s.startTime}`;
                         const selected = selectedSlotKeys.has(key);
                         const disabled = s.status === "CANCELLED_BY_TECH" || s.status === "BLOCKED" || s.status === "HOLD";
                         return (
                             <Tooltip key={key} title={s.status ?? "FREE"} arrow>
-                                <motion.div whileHover={{ scale: !disabled ? 1.03 : 1 }}>
-                                    <Paper
-                                        onClick={() => !disabled && toggleSlot(s)}
-                                        sx={{
-                                            p: 1.1,
-                                            textAlign: "center",
-                                            borderRadius: 2,
-                                            cursor: !disabled ? "pointer" : "default",
-                                            backgroundColor: selected ? "#e6f6ff" : "#fff",
-                                            border: selected ? `2px solid ${PRIMARY}` : "1px solid #e5e7eb",
-                                            minHeight: 56,
-                                            display: "flex",
-                                            flexDirection: "column",
-                                            justifyContent: "center",
-                                            fontWeight: 700,
-                                            color: s.status === "BOOKED" ? "#065f46" : "#374151",
-                                            fontSize: 13
-                                        }}
-                                    >
-                                        <Typography sx={{ fontSize: 13 }}>{`Slot ${idx + 1}`}</Typography>
-                                        <Typography sx={{ fontSize: 13 }}>{`${fmtTime(s.startTime)} - ${fmtTime(s.endTime)}`}</Typography>
-                                    </Paper>
-                                </motion.div>
+                                <Paper
+                                    onClick={() => !disabled && toggleSlot(s)}
+                                    sx={{
+                                        p: 1.5,
+                                        textAlign: "center",
+                                        borderRadius: 1.5,
+                                        cursor: !disabled ? "pointer" : "default",
+                                        backgroundColor: selected ? "action.selected" : "background.paper",
+                                        border: selected ? "2px solid" : "1px solid",
+                                        borderColor: selected ? "primary.main" : "divider",
+                                        minHeight: 60,
+                                        display: "flex",
+                                        flexDirection: "column",
+                                        justifyContent: "center",
+                                        transition: "all .15s ease",
+                                        "&:hover": !disabled ? {
+                                            bgcolor: selected ? "action.selected" : "action.hover",
+                                            borderColor: "primary.main",
+                                            transform: "translateY(-2px)",
+                                            boxShadow: "0 2px 8px rgba(0,0,0,0.1)"
+                                        } : {}
+                                    }}
+                                >
+                                    <Typography sx={{ fontWeight: selected ? 700 : 600, fontSize: "0.8rem", mb: 0.5 }}>
+                                        {fmtTime(s.startTime)} - {fmtTime(s.endTime)}
+                                    </Typography>
+                                    <Typography variant="caption" sx={{ color: "text.secondary", fontSize: "0.7rem" }}>
+                                        {s.status === "BOOKED" ? "Đã đặt" : "Trống"}
+                                    </Typography>
+                                </Paper>
                             </Tooltip>
                         );
                     })}
@@ -413,101 +584,204 @@ export default function Appointment() {
     };
 
     return (
-        <Box p={3} sx={{ fontFamily: "Poppins, sans-serif" }}>
-            <Paper sx={{ p: 2, mb: 2, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
-                    <EventAvailableIcon sx={{ color: PRIMARY }} />
-                    <Typography variant="h6" fontWeight={700}>Quản lý Lịch Hẹn</Typography>
+        <Box>
+            <Paper 
+                elevation={0} 
+                sx={{ 
+                    p: 2, 
+                    mb: 2, 
+                    borderRadius: 2,
+                    border: "1px solid",
+                    borderColor: "divider",
+                    display: "flex", 
+                    justifyContent: "space-between", 
+                    alignItems: "center" 
+                }}
+            >
+                <Box sx={{ display: "flex", alignItems: "center", gap: 1.5 }}>
+                    <EventAvailableIcon sx={{ color: "primary.main" }} />
+                    <Typography variant="h6" sx={{ fontWeight: 700 }}>Quản lý Lịch Hẹn</Typography>
                 </Box>
-                <Box>
-                    <Button variant="contained" startIcon={<AddIcon />} onClick={() => setOpen(true)} sx={{ backgroundColor: PRIMARY, "&:hover": { backgroundColor: PRIMARY } }}>Tạo lịch hẹn</Button>
-                </Box>
+                <Button 
+                    variant="contained" 
+                    startIcon={<AddIcon />} 
+                    onClick={() => setOpen(true)}
+                    sx={{ textTransform: "none" }}
+                >
+                    Tạo lịch hẹn
+                </Button>
             </Paper>
 
             {/* CREATED appointment cards (display under the title) */}
             <Box sx={{ mb: 2 }}>
                 {createdAppointments.map((c) => (
-                    <motion.div key={c.id} initial={{ opacity: 0, scale: 0.98 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.35 }} >
-                        <Paper elevation={3} sx={{ p: 2, mb: 1, borderRadius: 2, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                            <Box>
-                                <Typography sx={{ fontWeight: 700 }}>{c.vin || "—"} • {c.technicianName || "—"}</Typography>
-                                <Typography variant="caption" sx={{ color: "text.secondary" }}>{c.requiredSkill || "—"} • {c.centerName || ""}</Typography>
-                                <Typography sx={{ mt: 1 }}>{(c.slots || []).map(s => `${s.slotDate} ${fmtTime(s.startTime)}-${fmtTime(s.endTime)}`).join("; ")}</Typography>
-                            </Box>
-                            <Box sx={{ textAlign: "right" }}>
-                                <Typography sx={{ fontWeight: 700, color: PRIMARY }}>{c.status || "BOOKED"}</Typography>
-                                <Typography variant="caption">{dayjs(c.createdAt).format("YYYY-MM-DD HH:mm")}</Typography>
-                            </Box>
-                        </Paper>
-                    </motion.div>
+                    <Paper 
+                        key={c.id} 
+                        elevation={0} 
+                        sx={{ 
+                            p: 2, 
+                            mb: 1, 
+                            borderRadius: 2, 
+                            border: "1px solid",
+                            borderColor: "divider",
+                            display: "flex", 
+                            justifyContent: "space-between", 
+                            alignItems: "center",
+                            transition: "all .15s ease",
+                            "&:hover": {
+                                boxShadow: "0 2px 8px rgba(0,0,0,0.1)"
+                            }
+                        }}
+                    >
+                        <Box>
+                            <Typography sx={{ fontWeight: 700, mb: 0.5 }}>
+                                {(c.vin || "—")} • {(c.technicianName || "—")}
+                            </Typography>
+                            <Typography variant="caption" sx={{ color: "text.secondary", display: "block", mb: 0.5 }}>
+                                {(c.requiredSkill || "—")} {c.centerName ? `• ${c.centerName}` : ""}
+                            </Typography>
+                            <Typography variant="body2" sx={{ color: "text.secondary" }}>
+                                {(c.slots || []).length > 0 
+                                    ? (c.slots || []).map(s => {
+                                        const date = s.slotDate || s.workDate || "";
+                                        const start = fmtTime(s.startTime);
+                                        const end = fmtTime(s.endTime);
+                                        return date ? `${date} ${start}-${end}` : `${start}-${end}`;
+                                    }).filter(Boolean).join("; ")
+                                    : "Không có thông tin slot"
+                                }
+                            </Typography>
+                        </Box>
+                        <Box sx={{ textAlign: "right" }}>
+                            <Typography sx={{ fontWeight: 700, color: "primary.main", mb: 0.5 }}>
+                                {c.status || "BOOKED"}
+                            </Typography>
+                            <Typography variant="caption" sx={{ color: "text.secondary" }}>
+                                {dayjs(c.createdAt).format("YYYY-MM-DD HH:mm")}
+                            </Typography>
+                        </Box>
+                    </Paper>
                 ))}
             </Box>
 
             {/* Create dialog */}
-            <Dialog open={open} onClose={() => setOpen(false)} fullWidth maxWidth="md">
-                <DialogTitle sx={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-                    <Box>Tạo lịch hẹn</Box>
-                    <IconButton onClick={() => setOpen(false)}><CloseIcon /></IconButton>
+            <Dialog open={open} onClose={() => setOpen(false)} fullWidth maxWidth="lg" PaperProps={{ sx: { borderRadius: 2 } }}>
+                <DialogTitle sx={{ display: "flex", alignItems: "center", justifyContent: "space-between", pb: 1.5 }}>
+                    <Box component="span" sx={{ fontWeight: 700, fontSize: "1.25rem" }}>Tạo lịch hẹn</Box>
+                    <IconButton size="small" onClick={() => setOpen(false)}><CloseIcon fontSize="small" /></IconButton>
                 </DialogTitle>
 
-                <DialogContent dividers>
+                <DialogContent dividers sx={{ pt: 2 }}>
                     <Grid container spacing={2}>
                         <Grid item xs={12} md={6}>
-                            <Typography sx={{ fontWeight: 700, mb: 1 }}>Chọn xe (VIN)</Typography>
-                            <TextField select fullWidth size="small" value={form.claimId} onChange={(e) => setForm(prev => ({ ...prev, claimId: e.target.value }))}>
-                                <MenuItem value="">Chưa chọn</MenuItem>
-                                {claims.map(c => <MenuItem key={c.id} value={c.id}>{c.vin ?? c.plate ?? c.id}</MenuItem>)}
-                            </TextField>
+                            <Box sx={{ mb: 3 }}>
+                                <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 1 }}>Chọn xe (VIN)</Typography>
+                                <TextField 
+                                    select 
+                                    fullWidth 
+                                    size="small" 
+                                    value={form.claimId} 
+                                    onChange={(e) => setForm(prev => ({ ...prev, claimId: e.target.value }))}
+                                    sx={{ borderRadius: 1 }}
+                                >
+                                    <MenuItem value="">Chưa chọn</MenuItem>
+                                    {claims.map(c => <MenuItem key={c.id} value={c.id}>{c.vin ?? c.plate ?? c.id}</MenuItem>)}
+                                </TextField>
+                            </Box>
 
-                            <Box sx={{ mt: 2 }}>
-                                <Typography sx={{ fontWeight: 700, mb: 1 }}>Kỹ năng yêu cầu</Typography>
-                                <Box sx={{ display: "flex", flexWrap: "wrap", gap: 1 }}>
+                            <Box sx={{ mb: 3 }}>
+                                <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 1.5 }}>Kỹ năng yêu cầu</Typography>
+                                <Box sx={{ display: "flex", flexWrap: "wrap", gap: 1, mb: 1 }}>
                                     {SKILLS.map(skill => (
                                         <FormControlLabel
                                             key={skill}
-                                            control={<Checkbox checked={form.requiredSkills.includes(skill)} onChange={() => toggleSkill(skill)} sx={{ color: PRIMARY }} />}
-                                            label={<Typography sx={{ fontSize: 13 }}>{skill}</Typography>}
+                                            control={
+                                                <Checkbox 
+                                                    checked={form.requiredSkills.includes(skill)} 
+                                                    onChange={() => toggleSkill(skill)} 
+                                                    size="small"
+                                                />
+                                            }
+                                            label={<Typography sx={{ fontSize: "0.875rem" }}>{skill}</Typography>}
                                         />
                                     ))}
                                 </Box>
-                                <Typography variant="caption" sx={{ color: "text.secondary" }}>Chọn 1 hoặc nhiều kỹ năng → calendar sẽ hiện bên dưới.</Typography>
+                                <Typography variant="caption" sx={{ color: "text.secondary", fontSize: "0.75rem" }}>
+                                    Chọn 1 hoặc nhiều kỹ năng → calendar sẽ hiện bên dưới.
+                                </Typography>
                             </Box>
 
-                            <Box sx={{ mt: 2 }}>
+                            <Box sx={{ mb: 3 }}>
                                 <TextField
                                     label="Ghi chú"
                                     fullWidth
                                     size="small"
                                     value={form.note}
                                     onChange={(e) => setForm(prev => ({ ...prev, note: e.target.value }))}
+                                    multiline
+                                    rows={2}
                                 />
                             </Box>
 
-                            <Box sx={{ mt: 2, display: "flex", gap: 1 }}>
+                            <Box sx={{ mb: 3, display: "flex", gap: 1 }}>
                                 <Button
-                                    variant="outlined"
+                                    variant="contained"
                                     onClick={() => suggestBySkillsDateSlots(true)}
                                     disabled={loadingSuggest || form.requiredSkills.length === 0 || !activeDate}
+                                    size="small"
+                                    sx={{ textTransform: "none" }}
                                 >
                                     {loadingSuggest ? <CircularProgress size={16} /> : "Gợi ý kỹ thuật viên tốt nhất"}
                                 </Button>
-                                <Button onClick={() => { setSuggestions([]); setChosenTechId(""); setSelectedSlotKeys(new Set()); }}>Reset gợi ý</Button>
+                                <Button 
+                                    variant="outlined"
+                                    onClick={() => { setSuggestions([]); setChosenTechId(""); setSelectedSlotKeys(new Set()); }}
+                                    size="small"
+                                    sx={{ textTransform: "none" }}
+                                >
+                                    Reset gợi ý
+                                </Button>
                             </Box>
 
-                            <Box sx={{ mt: 2 }}>
-                                <Typography sx={{ fontWeight: 700, mb: 1 }}>Gợi ý kỹ thuật viên</Typography>
+                            <Box>
+                                <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 1.5 }}>Gợi ý kỹ thuật viên</Typography>
                                 {suggestions.length === 0 ? (
-                                    <Typography variant="body2" sx={{ color: "text.secondary" }}>Chưa có gợi ý — chọn kỹ năng + ngày + slot (auto) hoặc nhấn Gợi ý.</Typography>
+                                    <Typography variant="body2" sx={{ color: "text.secondary", py: 2 }}>
+                                        Chưa có gợi ý — chọn kỹ năng + ngày + slot (auto) hoặc nhấn Gợi ý.
+                                    </Typography>
                                 ) : (
                                     <RadioGroup value={chosenTechId} onChange={(e) => chooseSuggestion(e.target.value)}>
                                         {suggestions.map(s => (
-                                            <Paper key={s.technicianId} sx={{ p: 1, mb: 1, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                                                <Box>
-                                                    <FormControlLabel value={s.technicianId} control={<Radio sx={{ color: PRIMARY, "&.Mui-checked": { color: PRIMARY } }} />} label={<Box><Typography sx={{ fontWeight: 700 }}>{s.technicianName}</Typography><Typography variant="caption">{(s.skills || []).join(", ")}</Typography></Box>} />
-                                                </Box>
-                                                <Box sx={{ textAlign: "right" }}>
-                                                    <Typography variant="caption">Available: {s.availableCount}</Typography>
-                                                </Box>
+                                            <Paper 
+                                                key={s.technicianId} 
+                                                sx={{ 
+                                                    p: 1.5, 
+                                                    mb: 1, 
+                                                    borderRadius: 1.5,
+                                                    border: "1px solid",
+                                                    borderColor: chosenTechId === s.technicianId ? "primary.main" : "divider",
+                                                    bgcolor: chosenTechId === s.technicianId ? "action.selected" : "background.paper",
+                                                    transition: "all .15s ease"
+                                                }}
+                                            >
+                                                <FormControlLabel 
+                                                    value={s.technicianId} 
+                                                    control={<Radio size="small" />} 
+                                                    label={
+                                                        <Box sx={{ flex: 1 }}>
+                                                            <Typography sx={{ fontWeight: 600, fontSize: "0.9rem" }}>
+                                                                {s.technicianName}
+                                                            </Typography>
+                                                            <Typography variant="caption" sx={{ color: "text.secondary", fontSize: "0.75rem" }}>
+                                                                {(s.skills || []).join(", ")}
+                                                            </Typography>
+                                                            <Typography variant="caption" sx={{ display: "block", mt: 0.5, color: "primary.main", fontWeight: 500 }}>
+                                                                Có {s.availableCount} slot khả dụng
+                                                            </Typography>
+                                                        </Box>
+                                                    } 
+                                                    sx={{ width: "100%", m: 0 }}
+                                                />
                                             </Paper>
                                         ))}
                                     </RadioGroup>
@@ -517,26 +791,22 @@ export default function Appointment() {
 
                         {/* Right column: stacked calendar + slots */}
                         <Grid item xs={12} md={6}>
-                            <Box sx={{ display: "flex", flexDirection: "column", gap: 1, alignItems: "center" }}>
-                                <AnimatePresence initial={false}>
-                                    {form.requiredSkills.length > 0 && (
-                                        <motion.div key="calendar" initial={{ opacity: 0, y: -8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }}>
-                                            {renderCompactCalendar()}
-                                        </motion.div>
-                                    )}
-                                </AnimatePresence>
+                            <Box sx={{ display: "flex", flexDirection: "column", gap: 2 }}>
+                                {form.requiredSkills.length > 0 && (
+                                    <Box>
+                                        {renderCompactCalendar()}
+                                    </Box>
+                                )}
 
-                                <AnimatePresence initial={false}>
-                                    {activeDate && (
-                                        <motion.div key="slots" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 8 }}>
-                                            {renderSlotsPanel()}
-                                        </motion.div>
-                                    )}
-                                </AnimatePresence>
+                                {activeDate && (
+                                    <Box>
+                                        {renderSlotsPanel()}
+                                    </Box>
+                                )}
                             </Box>
 
-                            <Box sx={{ mt: 1 }}>
-                                <Typography variant="caption" sx={{ color: "text.secondary" }}>
+                            <Box sx={{ mt: 2 }}>
+                                <Typography variant="caption" sx={{ color: "text.secondary", fontSize: "0.75rem" }}>
                                     Ghi chú: Sau khi chọn kỹ năng → chọn ngày → chọn slot, hệ thống sẽ tự động gợi ý kỹ thuật viên phù hợp. Bạn có thể chọn kỹ thuật viên (radio) rồi nhấn "Đặt lịch hẹn".
                                 </Typography>
                             </Box>
@@ -544,9 +814,14 @@ export default function Appointment() {
                     </Grid>
                 </DialogContent>
 
-                <DialogActions>
-                    <Button onClick={() => setOpen(false)}>Hủy</Button>
-                    <Button variant="contained" onClick={handleCreate} disabled={formLoading} sx={{ backgroundColor: PRIMARY, "&:hover": { backgroundColor: PRIMARY } }}>
+                <DialogActions sx={{ px: 3, py: 2 }}>
+                    <Button onClick={() => setOpen(false)} sx={{ textTransform: "none" }}>Hủy</Button>
+                    <Button 
+                        variant="contained" 
+                        onClick={handleCreate} 
+                        disabled={formLoading} 
+                        sx={{ textTransform: "none" }}
+                    >
                         {formLoading ? <CircularProgress size={16} /> : "Đặt lịch hẹn"}
                     </Button>
                 </DialogActions>

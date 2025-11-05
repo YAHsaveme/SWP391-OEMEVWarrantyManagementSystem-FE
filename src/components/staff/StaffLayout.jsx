@@ -1,48 +1,68 @@
 import React from "react";
 import PropTypes from "prop-types";
-import { Link as RouterLink, useLocation, Outlet } from "react-router-dom";
+import { useLocation, Outlet, useNavigate } from "react-router-dom";
 import {
-    AppBar, Toolbar, IconButton, Drawer, Box, List, ListItemButton, ListItemIcon,
-    ListItemText, CssBaseline, Divider, Avatar, useMediaQuery, ThemeProvider,
-    createTheme, alpha, Paper, Typography, Menu, MenuItem
+    AppBar, Toolbar, IconButton, Box, CssBaseline, Divider, Avatar,
+    Typography, Menu, MenuItem, ThemeProvider, createTheme, alpha,
+    Paper, Container, Tabs, Tab, Badge, Tooltip, useMediaQuery
 } from "@mui/material";
-import MenuIcon from "@mui/icons-material/Menu";
-import DashboardIcon from "@mui/icons-material/Dashboard";
+import useScrollTrigger from "@mui/material/useScrollTrigger";
 import DirectionsCarIcon from "@mui/icons-material/DirectionsCar";
 import AssignmentIcon from "@mui/icons-material/Assignment";
-import CampaignIcon from "@mui/icons-material/Campaign";
+import Inventory2Icon from "@mui/icons-material/Inventory2";
 import GroupsIcon from "@mui/icons-material/Groups";
 import StoreMallDirectoryIcon from "@mui/icons-material/StoreMallDirectory";
 import EventIcon from "@mui/icons-material/Event";
+import NotificationsIcon from "@mui/icons-material/Notifications";
+import Brightness4Icon from "@mui/icons-material/Brightness4";
+import Brightness7Icon from "@mui/icons-material/Brightness7";
+import AddIcon from "@mui/icons-material/AddCircle";
+import MoreVertIcon from "@mui/icons-material/MoreVert";
 import authService from "../../services/authService";
-import Inventory2Icon from "@mui/icons-material/Inventory2";
 
-const drawerWidth = 260;
+/* ===== Helper: nâng AppBar khi cuộn ===== */
+function ElevationScroll({ children }) {
+    const trigger = useScrollTrigger({ disableHysteresis: true, threshold: 6 });
+    return React.cloneElement(children, {
+        elevation: trigger ? 4 : 0,
+        sx: {
+            ...children.props.sx,
+            backgroundColor: (t) =>
+                trigger ? alpha(t.palette.background.paper, 0.9) : alpha(t.palette.background.paper, 0.7),
+            backdropFilter: "blur(10px)",
+            borderBottom: (t) => `1px solid ${alpha(t.palette.divider, trigger ? 0.85 : 0.6)}`,
+            transition: "background-color .2s ease, border-color .2s ease",
+        },
+    });
+}
 
-const theme = createTheme({
-    palette: { mode: "light", primary: { main: "#2563EB" }, background: { default: "#f7f8fa" } },
-    shape: { borderRadius: 14 },
-});
-
-// TẤT CẢ link phải nằm dưới /staff
 const NAV_ITEMS = [
-    { label: "Dashboard", to: "/staff", icon: <DashboardIcon />, end: true },
-    { label: "Vehicles", to: "/staff/vehicles", icon: <DirectionsCarIcon /> },
-    { label: "Claims", to: "/staff/claims", icon: <AssignmentIcon /> },
-    { label: "Inventory", to: "/staff/inventory", icon: <Inventory2Icon /> },
-    { label: "Technicians", to: "/staff/technicians", icon: <GroupsIcon /> },
-    { label: "Service Centers", to: "/staff/centers", icon: <StoreMallDirectoryIcon /> },
-    { label: "Appointments", to: "/staff/appointments", icon: <EventIcon /> },
+    { label: "Vehicles", path: "/staff/vehicles", icon: <DirectionsCarIcon /> },
+    { label: "Claims", path: "/staff/claims", icon: <AssignmentIcon /> },
+    { label: "Inventory", path: "/staff/inventory", icon: <Inventory2Icon /> },
+    { label: "Technicians", path: "/staff/technicians", icon: <GroupsIcon /> },
+    { label: "Service Centers", path: "/staff/centers", icon: <StoreMallDirectoryIcon /> },
+    { label: "Appointments", path: "/staff/appointments", icon: <EventIcon /> },
 ];
 
-function SidebarContent({ currentPath, onNavigate }) {
-    const [anchorEl, setAnchorEl] = React.useState(null);
+export default function StaffLayout() {
+    const location = useLocation();
+    const navigate = useNavigate();
+    const prefersDark = useMediaQuery("(prefers-color-scheme: dark)");
+    const [mode, setMode] = React.useState(
+        (typeof window !== "undefined" && localStorage.getItem("ui-mode")) || (prefersDark ? "dark" : "light")
+    );
+    const [anchorUser, setAnchorUser] = React.useState(null);
+    const [anchorMore, setAnchorMore] = React.useState(null);
     const [user, setUser] = React.useState({
         fullName: "SC Staff",
         role: "Service Center",
     });
 
-    // Lấy thông tin user từ API
+    React.useEffect(() => {
+        if (typeof window !== "undefined") localStorage.setItem("ui-mode", mode);
+    }, [mode]);
+
     React.useEffect(() => {
         (async () => {
             try {
@@ -61,219 +81,221 @@ function SidebarContent({ currentPath, onNavigate }) {
         })();
     }, []);
 
-    const handleProfile = () => {
-        setAnchorEl(null);
-        window.location.href = "/profile";
+    // Tìm tab index dựa trên pathname
+    const currentTabIndex = React.useMemo(() => {
+        const index = NAV_ITEMS.findIndex((item) => {
+            return location.pathname.startsWith(item.path);
+        });
+        return index >= 0 ? index : 0;
+    }, [location.pathname]);
+
+    const handleTabChange = (_, newValue) => {
+        const item = NAV_ITEMS[newValue];
+        if (item) {
+            navigate(item.path);
+        }
     };
 
-    const handleHome = () => {
-        setAnchorEl(null);
-        window.location.href = "/";
-    };
-
-    const handleLogout = () => {
-        setAnchorEl(null);
-        authService.logout();
-    };
-
-    return (
-        <Box sx={{ height: "100%", display: "flex", flexDirection: "column" }}>
-            {/* Brand */}
-            <Box sx={{ height: 72, display: "flex", alignItems: "center", justifyContent: "space-between", px: 2 }}>
-                <Box sx={{ display: "flex", alignItems: "center", gap: 1.5 }}>
-                    <Box sx={{
-                        width: 40, height: 40, borderRadius: 2, bgcolor: "primary.main", color: "#fff",
-                        display: "grid", placeItems: "center", boxShadow: 1
-                    }}>
-                        <svg width="20" height="20" viewBox="0 0 24 24" stroke="currentColor" fill="none">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 10V3L4 14h7v7l7-7" />
-                        </svg>
-                    </Box>
-                    <Box>
-                        <Typography fontWeight={700}>EV Warranty Management</Typography>
-                        <Typography variant="caption" color="text.secondary">Staff Portal</Typography>
-                    </Box>
-                </Box>
-            </Box>
-
-            <Divider />
-
-            {/* Nav */}
-            <Box sx={{ flex: 1, py: 2 }}>
-                <List component="nav" sx={{ px: 1 }}>
-                    {NAV_ITEMS.map((item) => {
-                        const active = item.end ? currentPath === item.to : currentPath.startsWith(item.to);
-                        return (
-                            <ListItemButton
-                                key={item.to}
-                                component={RouterLink}
-                                to={item.to}
-                                onClick={onNavigate}
-                                sx={{
-                                    mb: 0.5, borderRadius: 2,
-                                    ...(active
-                                        ? {
-                                            bgcolor: (t) => alpha(t.palette.primary.main, 0.12),
-                                            color: "primary.main",
-                                            "&:hover": { bgcolor: (t) => alpha(t.palette.primary.main, 0.18) },
-                                        }
-                                        : {}),
-                                }}
-                            >
-                                <ListItemIcon sx={{ minWidth: 40, color: active ? "primary.main" : "text.secondary" }}>
-                                    {item.icon}
-                                </ListItemIcon>
-                                <ListItemText primary={item.label} primaryTypographyProps={{ fontWeight: active ? 700 : 500 }} />
-                            </ListItemButton>
-                        );
-                    })}
-                </List>
-            </Box>
-
-            {/* User Section với Dropdown */}
-            <Divider />
-            <Box sx={{ p: 2 }}>
-                <Paper
-                    variant="outlined"
-                    sx={{
-                        p: 1.5,
-                        borderRadius: 3,
-                        display: "flex",
-                        alignItems: "center",
-                        gap: 1.5,
-                        cursor: "pointer",
-                        "&:hover": { boxShadow: 3 },
-                    }}
-                    onClick={(e) => setAnchorEl(e.currentTarget)}
-                >
-                    <Avatar
-                        sx={{
-                            width: 40,
-                            height: 40,
-                            fontWeight: 700,
-                            background: (t) =>
-                                `linear-gradient(135deg, ${t.palette.primary.main}, ${alpha(
-                                    t.palette.primary.main,
-                                    0.4
-                                )})`,
-                        }}
-                    >
-                        {user.fullName?.charAt(0).toUpperCase() || "S"}
-                    </Avatar>
-                    <Box sx={{ minWidth: 0 }}>
-                        <Typography variant="body2" fontWeight={700} noWrap>
-                            {user.fullName || "SC Staff"}
-                        </Typography>
-                        <Typography variant="caption" color="text.secondary" noWrap>
-                            {user.role || "Service Center"}
-                        </Typography>
-                    </Box>
-                </Paper>
-
-                {/* Dropdown menu */}
-                <Menu
-                    anchorEl={anchorEl}
-                    open={Boolean(anchorEl)}
-                    onClose={() => setAnchorEl(null)}
-                    PaperProps={{
-                        sx: {
-                            mt: 1,
-                            borderRadius: 2,
-                            minWidth: 200,
-                            boxShadow: "0 6px 20px rgba(0,0,0,0.15)",
-                        },
-                    }}
-                >
-                    <MenuItem onClick={handleProfile}>Hồ sơ</MenuItem>
-                    <MenuItem onClick={handleHome}>Về trang chủ</MenuItem>
-                    <Divider />
-                    <MenuItem onClick={handleLogout} sx={{ color: "error.main" }}>
-                        Đăng xuất
-                    </MenuItem>
-                </Menu>
-            </Box>
-        </Box>
+    const theme = React.useMemo(
+        () =>
+            createTheme({
+                palette: {
+                    mode,
+                    primary: { main: mode === "dark" ? "#6eb4ff" : "#1565d8" },
+                    secondary: { main: "#00bfa6" },
+                    background: {
+                        default: mode === "dark" ? "#0a0f1c" : "#f6f8fc",
+                        paper: mode === "dark" ? "#11182a" : "#ffffff",
+                    },
+                },
+                shape: { borderRadius: 16 },
+                typography: {
+                    fontFamily: "Inter, system-ui, -apple-system, Segoe UI, Roboto, sans-serif",
+                    h5: { fontWeight: 800 },
+                },
+                components: {
+                    MuiPaper: { styleOverrides: { root: { backgroundImage: "none" } } },
+                    MuiTab: { styleOverrides: { root: { textTransform: "none" } } },
+                },
+            }),
+        [mode]
     );
-}
-
-SidebarContent.propTypes = { currentPath: PropTypes.string.isRequired, onNavigate: PropTypes.func };
-
-export default function StaffLayout() {
-    const location = useLocation();
-    const [open, setOpen] = React.useState(false);
-    const lgUp = useMediaQuery("(min-width:1200px)");
-    const drawer = <SidebarContent currentPath={location.pathname} onNavigate={() => setOpen(false)} />;
 
     return (
         <ThemeProvider theme={theme}>
             <CssBaseline />
-            {/* AppBar */}
-            <AppBar
-                position="fixed"
-                elevation={0}
-                sx={{
-                    backdropFilter: "blur(10px)",
-                    bgcolor: (t) => alpha(t.palette.background.paper, 0.8),
-                    color: "text.primary",
-                    borderBottom: (t) => `1px solid ${t.palette.divider}`,
-                    width: { lg: `calc(100% - ${drawerWidth}px)` },
-                    ml: { lg: `${drawerWidth}px` },
-                }}
-            >
-                <Toolbar>
-                    {!lgUp && (
-                        <IconButton edge="start" onClick={() => setOpen(true)} sx={{ mr: 1 }}>
-                            <MenuIcon />
-                        </IconButton>
-                    )}
-                    <Box sx={{ flex: 1 }} />
-                </Toolbar>
-            </AppBar>
-
-            {/* Sidebar */}
-            <Box component="nav" sx={{ width: { lg: drawerWidth }, flexShrink: { lg: 0 } }} aria-label="sidebar">
-                {/* Mobile */}
-                <Drawer
-                    variant="temporary"
-                    open={open}
-                    onClose={() => setOpen(false)}
-                    ModalProps={{ keepMounted: true }}
-                    sx={{ display: { xs: "block", lg: "none" }, "& .MuiDrawer-paper": { width: drawerWidth } }}
-                >
-                    {drawer}
-                </Drawer>
-
-                {/* Desktop */}
-                <Drawer
-                    variant="permanent"
-                    open
-                    sx={{
-                        display: { xs: "none", lg: "block" },
-                        "& .MuiDrawer-paper": {
-                            width: drawerWidth,
-                            boxSizing: "border-box",
-                            borderRight: (t) => `1px solid ${t.palette.divider}`,
-                        },
-                    }}
-                >
-                    {drawer}
-                </Drawer>
-            </Box>
-
-            {/* Main content */}
             <Box
-                component="main"
                 sx={{
-                    flexGrow: 1,
-                    p: { xs: 2.5, sm: 3, md: 4 },
-                    width: { lg: `calc(100% - ${drawerWidth}px)` },
-                    ml: { lg: `${drawerWidth}px` },
-                    mt: 8,
-                    maxWidth: "1400px",
-                    mx: "auto",
+                    minHeight: "100vh",
+                    bgcolor: "background.default",
+                    backgroundImage: (t) =>
+                        `radial-gradient(1200px 600px at 10% -10%, ${alpha(t.palette.primary.main, 0.12)} 0, transparent 40%),
+             radial-gradient(1000px 500px at 110% 10%, ${alpha("#00bfa6", 0.10)} 0, transparent 40%)`,
                 }}
             >
-                <Outlet />
+                {/* AppBar đổi nền khi cuộn */}
+                <ElevationScroll>
+                    <AppBar position="sticky" color="transparent">
+                        <Toolbar sx={{ display: "flex", justifyContent: "space-between", gap: 2 }}>
+                            <Box sx={{ display: "flex", alignItems: "center", gap: 1.5 }}>
+                                <Avatar sx={{ bgcolor: "primary.main" }}>
+                                    <DirectionsCarIcon sx={{ color: "white" }} />
+                                </Avatar>
+                                <Box>
+                                    <Typography variant="h6" fontWeight={900} letterSpacing={0.3}>
+                                        EV Warranty Management
+                                    </Typography>
+                                    <Typography variant="caption" color="text.secondary">
+                                        Staff Portal
+                                    </Typography>
+                                </Box>
+                            </Box>
+
+                            <Box sx={{ display: "flex", alignItems: "center", gap: 0.5 }}>
+                                <Tooltip title="Thông báo">
+                                    <IconButton>
+                                        <Badge color="secondary" variant="dot" overlap="circular">
+                                            <NotificationsIcon />
+                                        </Badge>
+                                    </IconButton>
+                                </Tooltip>
+                                <Tooltip title="Chuyển giao diện">
+                                    <IconButton onClick={() => setMode((m) => (m === "light" ? "dark" : "light"))}>
+                                        {mode === "light" ? <Brightness4Icon /> : <Brightness7Icon />}
+                                    </IconButton>
+                                </Tooltip>
+                                <Tooltip title="Thêm mới nhanh">
+                                    <IconButton onClick={() => navigate("/staff/claims")}>
+                                        <AddIcon />
+                                    </IconButton>
+                                </Tooltip>
+                                <IconButton onClick={(e) => setAnchorMore(e.currentTarget)}>
+                                    <MoreVertIcon />
+                                </IconButton>
+                                <Menu anchorEl={anchorMore} open={Boolean(anchorMore)} onClose={() => setAnchorMore(null)}>
+                                    <MenuItem onClick={() => setAnchorMore(null)}>Nhập dữ liệu CSV</MenuItem>
+                                    <MenuItem onClick={() => setAnchorMore(null)}>Xuất báo cáo PDF</MenuItem>
+                                </Menu>
+
+                                {/* Avatar người dùng (có dropdown) */}
+                                <Avatar
+                                    sx={{
+                                        bgcolor: "primary.main",
+                                        fontWeight: "bold",
+                                        cursor: "pointer",
+                                        width: 42,
+                                        height: 42,
+                                    }}
+                                    onClick={(e) => setAnchorUser(e.currentTarget)}
+                                >
+                                    {user.fullName ? user.fullName.charAt(0).toUpperCase() : "S"}
+                                </Avatar>
+
+                                <Menu
+                                    anchorEl={anchorUser}
+                                    open={Boolean(anchorUser)}
+                                    onClose={() => setAnchorUser(null)}
+                                    PaperProps={{
+                                        sx: {
+                                            mt: 1,
+                                            borderRadius: 2,
+                                            minWidth: 220,
+                                            boxShadow: "0 6px 20px rgba(0,0,0,0.15)",
+                                        },
+                                    }}
+                                >
+                                    <Box sx={{ px: 2, py: 1.5 }}>
+                                        <Typography variant="subtitle1" fontWeight={700} noWrap>
+                                            {user.fullName}
+                                        </Typography>
+                                        <Typography variant="body2" color="text.secondary" noWrap>
+                                            {user.role}
+                                        </Typography>
+                                    </Box>
+                                    <Divider />
+                                    <MenuItem onClick={() => (window.location.href = "/profile")}>
+                                        Hồ sơ cá nhân
+                                    </MenuItem>
+                                    <MenuItem onClick={() => (window.location.href = "/")}>Về trang chủ</MenuItem>
+                                    <Divider />
+                                    <MenuItem
+                                        onClick={() => {
+                                            authService.logout();
+                                            setAnchorUser(null);
+                                        }}
+                                        sx={{ color: "error.main" }}
+                                    >
+                                        Đăng xuất
+                                    </MenuItem>
+                                </Menu>
+                            </Box>
+                        </Toolbar>
+                    </AppBar>
+                </ElevationScroll>
+
+                {/* Nội dung chính */}
+                <Container maxWidth="lg" sx={{ py: 4 }}>
+                    <Paper
+                        elevation={0}
+                        sx={{
+                            borderRadius: 3,
+                            overflow: "hidden",
+                            p: 1.25,
+                            pt: 0.75,
+                            border: (t) => `1px solid ${alpha(t.palette.divider, 0.7)}`,
+                            background: (t) =>
+                                `linear-gradient(180deg, ${alpha(t.palette.background.paper, 1)}, ${alpha(t.palette.primary.main, 0.05)})`,
+                        }}
+                    >
+                        <Tabs
+                            value={currentTabIndex}
+                            onChange={handleTabChange}
+                            variant="fullWidth"
+                            TabIndicatorProps={{ style: { display: "none" } }}
+                            sx={{
+                                px: 0.5,
+                                mb: 1,
+                                "& .MuiTab-root": {
+                                    fontWeight: 600,
+                                    fontSize: 14,
+                                    minHeight: 40,
+                                    flex: 1,
+                                    px: 1.5,
+                                    py: 0.5,
+                                    color: "text.secondary",
+                                    borderRadius: 999,
+                                    transition: "all .18s ease",
+                                    textTransform: "none",
+                                },
+                                "& .MuiTab-root.Mui-selected": {
+                                    fontWeight: 700,
+                                    bgcolor: (t) => alpha(t.palette.primary.main, t.palette.mode === "dark" ? 0.2 : 0.12),
+                                    color: "primary.main",
+                                    boxShadow: (t) => `0 6px 16px ${alpha(t.palette.primary.main, 0.22)}`,
+                                },
+                            }}
+                        >
+                            {NAV_ITEMS.map((item) => (
+                                <Tab
+                                    key={item.path}
+                                    iconPosition="start"
+                                    icon={item.icon}
+                                    label={item.label}
+                                />
+                            ))}
+                        </Tabs>
+
+                        <Box sx={{ p: 2.5, bgcolor: "background.paper", borderRadius: 2 }}>
+                            <Outlet />
+                        </Box>
+                    </Paper>
+
+                    <Box sx={{ py: 4, textAlign: "center", color: "text.secondary" }}>
+                        <Typography variant="caption">
+                            © {new Date().getFullYear()} EV Warranty Management · Built with MUI
+                        </Typography>
+                    </Box>
+                </Container>
             </Box>
         </ThemeProvider>
     );
