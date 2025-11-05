@@ -7,10 +7,12 @@ import {
     FormControlLabel, Switch
 } from "@mui/material";
 import { Add, FilterList, Search } from "@mui/icons-material";
+import { MenuItem, Select, FormControl, InputLabel } from "@mui/material";
 
 /* ================== API ================== */
 const API_BASE = "http://localhost:8080";
 const GET_ALL_MODELS = `${API_BASE}/api/ev-models/get-all`;
+const SEARCH_MODELS = `${API_BASE}/api/ev-models/search`;
 const CREATE_MODEL = `${API_BASE}/api/ev-models/create`;
 const UPDATE_MODEL = (modelCode) =>
     `${API_BASE}/api/ev-models/update/${encodeURIComponent(modelCode)}`;
@@ -28,14 +30,18 @@ export default function EvModelsManagement() {
     const [loading, setLoading] = useState(false);
     const [q, setQ] = useState("");
     const [error, setError] = useState("");
+    const [statusFilter, setStatusFilter] = useState("all"); // all | active | deleted
     const [open, setOpen] = useState(false);
     const [mode, setMode] = useState("create"); // 'create' | 'edit'
     const [form, setForm] = useState({
-        modelCode: "", model: "", battery_kWh: "", motor_kW: "",
+        modelCode: "", model: "", vds: "", battery_kWh: "", motor_kW: "",
         range_km: "", top_speed_kmh: "", abs: true,
     });
     const [busy, setBusy] = useState(false);
     const [toast, setToast] = useState({ open: false, type: "success", msg: "" });
+    // Confirm delete dialog
+    const [confirmOpen, setConfirmOpen] = useState(false);
+    const [modelToDelete, setModelToDelete] = useState(null);
 
     const token = localStorage.getItem("token") || "";
 
@@ -54,15 +60,52 @@ export default function EvModelsManagement() {
         }
     };
 
+    const searchModels = async (keyword) => {
+        const qStr = (keyword ?? q).trim();
+        if (!qStr) { await fetchData(); return; }
+        try {
+            setLoading(true);
+            const res = await axios.get(SEARCH_MODELS, {
+                headers: { Authorization: `Bearer ${token}` },
+                params: { q: qStr },
+            });
+            setModels(Array.isArray(res.data) ? res.data : (res.data?.content || []));
+            setError("");
+        } catch (e) {
+            setError(e?.response?.data?.message || e.message || "Lỗi tìm kiếm EV models");
+        } finally {
+            setLoading(false);
+        }
+    };
+
     useEffect(() => { fetchData(); }, []);
 
     const filtered = useMemo(() => {
         const key = q.trim().toLowerCase();
-        if (!key) return models;
-        return models.filter(m =>
-            [m.modelCode, m.model].some(v => String(v || "").toLowerCase().includes(key))
-        );
-    }, [models, q]);
+        let list = models;
+        if (key) {
+            list = list.filter(m => [m.modelCode, m.model].some(v => String(v || "").toLowerCase().includes(key)));
+        }
+        // Filter theo trạng thái
+        list = list.filter(m => {
+            if (statusFilter === "active") return !m.delete;
+            if (statusFilter === "deleted") return !!m.delete;
+            return true;
+        });
+        // Sort: createdAt mới nhất trước, sau đó ưu tiên trạng thái hoạt động
+        const toTime = (d) => {
+            const t = d ? new Date(d).getTime() : 0;
+            return Number.isNaN(t) ? 0 : t;
+        };
+        return [...list].sort((a, b) => {
+            const ta = toTime(a.createdAt);
+            const tb = toTime(b.createdAt);
+            if (tb !== ta) return tb - ta; // mới nhất trước
+            // cùng thời điểm: hoạt động trước đã xoá
+            if (!!a.delete === !!b.delete) return 0;
+            return a.delete ? 1 : -1;
+        });
+    }, [models, q, statusFilter]);
 
     const stats = useMemo(() => ({
         total: models.length,
@@ -84,6 +127,7 @@ export default function EvModelsManagement() {
         setForm({
             modelCode: m.modelCode || "",
             model: m.model || "",
+            vds: m.vds || "",
             battery_kWh: m.battery_kWh ?? "",
             motor_kW: m.motor_kW ?? "",
             range_km: m.range_km ?? "",
@@ -100,12 +144,13 @@ export default function EvModelsManagement() {
         setForm((s) => ({ ...s, [key]: value }));
     };
 
+    const toNum = (val) => Number(String(val ?? "").replace(",", "."));
     const validate = () => {
-        if (!form.modelCode.trim()) return "Vui lòng nhập MÃ MODEL";
+        if (mode === "create" && !form.modelCode.trim()) return "Vui lòng nhập MÃ MODEL";
         if (!form.model.trim()) return "Vui lòng nhập TÊN MODEL";
         const numbers = ["battery_kWh", "motor_kW", "range_km", "top_speed_kmh"];
         for (const k of numbers) {
-            const v = Number(form[k]);
+            const v = toNum(form[k]);
             if (Number.isNaN(v) || v < 0) return `Trường ${k} phải là số không âm`;
         }
         return "";
@@ -123,10 +168,11 @@ export default function EvModelsManagement() {
                 await axios.post(CREATE_MODEL, {
                     modelCode: form.modelCode.trim(),
                     model: form.model.trim(),
-                    battery_kWh: Number(form.battery_kWh),
-                    motor_kW: Number(form.motor_kW),
-                    range_km: Number(form.range_km),
-                    top_speed_kmh: Number(form.top_speed_kmh),
+                    vds: form.vds?.trim() || null,
+                    battery_kWh: toNum(form.battery_kWh),
+                    motor_kW: toNum(form.motor_kW),
+                    range_km: toNum(form.range_km),
+                    top_speed_kmh: toNum(form.top_speed_kmh),
                     abs: !!form.abs,
                 }, { headers: { Authorization: `Bearer ${token}` } });
                 setToast({ open: true, type: "success", msg: "Tạo model thành công" });
@@ -135,10 +181,11 @@ export default function EvModelsManagement() {
                 await axios.put(UPDATE_MODEL(form.modelCode.trim()), {
                     modelCode: form.modelCode.trim(),
                     model: form.model.trim(),
-                    battery_kWh: Number(form.battery_kWh),
-                    motor_kW: Number(form.motor_kW),
-                    range_km: Number(form.range_km),
-                    top_speed_kmh: Number(form.top_speed_kmh),
+                    vds: form.vds?.trim() || null,
+                    battery_kWh: toNum(form.battery_kWh),
+                    motor_kW: toNum(form.motor_kW),
+                    range_km: toNum(form.range_km),
+                    top_speed_kmh: toNum(form.top_speed_kmh),
                     abs: !!form.abs,
                 }, { headers: { Authorization: `Bearer ${token}` } });
                 setToast({ open: true, type: "success", msg: "Cập nhật model thành công" });
@@ -153,12 +200,16 @@ export default function EvModelsManagement() {
     };
 
     // ======= Delete (soft delete) =======
-    const handleDelete = async (m) => {
-        const ok = window.confirm(`Xoá model "${m.model}" (${m.modelCode})?`);
-        if (!ok) return;
+    const askDelete = (m) => {
+        setModelToDelete(m);
+        setConfirmOpen(true);
+    };
+
+    const confirmDelete = async () => {
+        if (!modelToDelete) return;
         try {
             setBusy(true);
-            await axios.delete(DELETE_MODEL(m.modelCode), {
+            await axios.delete(DELETE_MODEL(modelToDelete.modelCode), {
                 headers: { Authorization: `Bearer ${token}` }
             });
             setToast({ open: true, type: "success", msg: "Đã xoá model" });
@@ -167,6 +218,8 @@ export default function EvModelsManagement() {
             setToast({ open: true, type: "error", msg: e?.response?.data?.message || e.message });
         } finally {
             setBusy(false);
+            setConfirmOpen(false);
+            setModelToDelete(null);
         }
     };
 
@@ -187,16 +240,24 @@ export default function EvModelsManagement() {
     };
 
     return (
-        <Container sx={{ py: 4 }}>
-            <Paper elevation={0} sx={{ p: 2.5, mb: 3, borderRadius: 3 }}>
-                <Grid container spacing={2} alignItems="center">
+        <Container sx={{
+            py: 4,
+            userSelect: "none", // Không cho bôi đen nội dung không phải form nhập
+            "& input, & textarea, & .MuiInputBase-root": { userSelect: "text" }, // Cho phép chọn trong ô nhập
+        }}>
+            <Paper elevation={0} sx={{ p: 2, mb: 2, borderRadius: 3 }}>
+                <Grid container spacing={1.5} alignItems="center">
                     <Grid item xs={12} md={6}>
                         <Typography variant="h5" fontWeight={700} gutterBottom>
                             Quản lý EV Models
                         </Typography>
-                        <Typography variant="body2" color="text.secondary">
-                            Lấy dữ liệu từ <code>/api/ev-models/get-all</code>
-                        </Typography>
+                        <Stack direction="row" spacing={1} sx={{ mt: 0.5 }}>
+                            <Chip label={`Tổng: ${stats.total}`} color="primary" variant="outlined" size="small" />
+                            <Chip label={`Hoạt động: ${stats.active}`} color="success" variant="outlined" size="small" />
+                            <Chip label={`Đã xoá: ${stats.deleted}`} variant="outlined" size="small" />
+                            {loading && <Chip label="Đang tải…" color="info" variant="outlined" size="small" />}
+                            {error && <Chip label={error} color="error" size="small" />}
+                        </Stack>
                     </Grid>
                     <Grid item xs={12} md={6}>
                         <Stack direction={{ xs: "column", sm: "row" }} gap={1.5} justifyContent={{ md: "flex-end" }}>
@@ -205,6 +266,11 @@ export default function EvModelsManagement() {
                                 size="small"
                                 value={q}
                                 onChange={(e) => setQ(e.target.value)}
+                                onKeyDown={(e) => {
+                                    if (e.key === 'Enter') {
+                                        searchModels(e.currentTarget.value);
+                                    }
+                                }}
                                 InputProps={{
                                     startAdornment: (
                                         <InputAdornment position="start">
@@ -213,23 +279,25 @@ export default function EvModelsManagement() {
                                     ),
                                 }}
                             />
-                            <Button variant="outlined" startIcon={<FilterList />} sx={{ borderRadius: 2 }}>
-                                Lọc
-                            </Button>
-                            <Button variant="contained" startIcon={<Add />} sx={{ borderRadius: 2 }} onClick={openCreate}>
-                                Thêm model
+                            <FormControl size="small" sx={{ minWidth: 150 }}>
+                                <InputLabel>Trạng thái</InputLabel>
+                                <Select
+                                    label="Trạng thái"
+                                    value={statusFilter}
+                                    onChange={(e) => setStatusFilter(e.target.value)}
+                                >
+                                    <MenuItem value="all">Tất cả</MenuItem>
+                                    <MenuItem value="active">Hoạt động</MenuItem>
+                                    <MenuItem value="deleted">Đã xoá</MenuItem>
+                                </Select>
+                            </FormControl>
+                            <Button variant="contained" size="small" startIcon={<Add />} sx={{ borderRadius: 2, height: 34 }} onClick={openCreate}>
+                                Thêm
                             </Button>
                         </Stack>
                     </Grid>
                 </Grid>
 
-                <Stack direction={{ xs: "column", sm: "row" }} gap={1} mt={2}>
-                    <Chip label={`Tổng: ${stats.total}`} color="primary" variant="outlined" />
-                    <Chip label={`Hoạt động: ${stats.active}`} color="success" variant="outlined" />
-                    <Chip label={`Đã xoá: ${stats.deleted}`} variant="outlined" />
-                    {loading && <Chip label="Đang tải…" color="info" variant="outlined" />}
-                    {error && <Chip label={error} color="error" />}
-                </Stack>
             </Paper>
 
             {/* BẢNG EV MODELS */}
@@ -277,7 +345,7 @@ export default function EvModelsManagement() {
                                                 {!m.delete && (
                                                     <>
                                                         <Button size="small" variant="outlined" onClick={() => openEdit(m)}>Sửa</Button>
-                                                        <Button size="small" variant="outlined" color="error" onClick={() => handleDelete(m)}>
+                                                        <Button size="small" variant="outlined" color="error" onClick={() => askDelete(m)}>
                                                             Xoá
                                                         </Button>
                                                     </>
@@ -303,13 +371,16 @@ export default function EvModelsManagement() {
                 <DialogContent dividers>
                     <Stack spacing={2}>
                         <TextField
-                            label="Mã model (modelCode)"
+                            label="Mã model"
                             value={form.modelCode}
                             onChange={onChange("modelCode")}
                             InputProps={{ readOnly: mode === "edit" }}
-                            required
+                            required={mode === "create"}
+                            helperText={mode === "edit" ? "Không thể đổi mã khi chỉnh sửa" : "Bắt buộc khi tạo mới"}
+                            sx={mode === "edit" ? { "& .MuiInputBase-root": { cursor: "default" } } : undefined}
                         />
                         <TextField label="Tên model" value={form.model} onChange={onChange("model")} required />
+                        <TextField label="VDS" value={form.vds} onChange={onChange("vds")} placeholder="Tuỳ chọn" />
                         <Stack direction={{ xs: "column", sm: "row" }} gap={2}>
                             <TextField label="Pin (kWh)" type="number" value={form.battery_kWh} onChange={onChange("battery_kWh")} />
                             <TextField label="Motor (kW)" type="number" value={form.motor_kW} onChange={onChange("motor_kW")} />
@@ -326,6 +397,18 @@ export default function EvModelsManagement() {
                     <Button onClick={submit} disabled={busy} variant="contained">
                         {mode === "create" ? "Tạo model" : "Lưu thay đổi"}
                     </Button>
+                </DialogActions>
+            </Dialog>
+
+            {/* Confirm Delete Dialog */}
+            <Dialog open={confirmOpen} onClose={() => { if (!busy) { setConfirmOpen(false); setModelToDelete(null); } }}>
+                <DialogTitle>Xoá model</DialogTitle>
+                <DialogContent>
+                    <Typography>Bạn có chắc muốn xoá model "{modelToDelete?.model}" ({modelToDelete?.modelCode})?</Typography>
+                </DialogContent>
+                <DialogActions>
+                    <Button onClick={() => { setConfirmOpen(false); setModelToDelete(null); }} disabled={busy}>Hủy</Button>
+                    <Button onClick={confirmDelete} color="error" variant="contained" disabled={busy}>Xoá</Button>
                 </DialogActions>
             </Dialog>
 
