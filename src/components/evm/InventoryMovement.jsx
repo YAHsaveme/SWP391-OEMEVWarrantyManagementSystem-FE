@@ -116,28 +116,28 @@ export default function InventoryMovement() {
     // Candidate endpoints to find "claims / appointments" list.
     // The component will try each in order until it finds data.
     const candidateClaimEndpoints = [
-        "/api/warranty-claims/get-all",
-        "/api/warranty-claims",
-        "/api/appointments/get-all",
-        "/api/appointments",
-        "/api/appointments/search",
-        "/api/warranty-claims/search",
+        "warranty-claims/get-all",
+        "warranty-claims",
+        "appointments/get-all",
+        "appointments",
+        "appointments/search",
+        "warranty-claims/search",
     ];
 
     // Candidate endpoints to get parts for appointment/claim
     // try: /api/appointments/{id}/parts, /api/warranty-claims/{id}/parts
     const candidatePartsEndpoints = [
-        "/api/appointments/{id}/parts",
-        "/api/appointments/{id}/parts/get",
-        "/api/warranty-claims/{id}/parts",
-        "/api/warranty-claims/{id}/appointment-parts",
-        "/api/appointments/{id}/parts/list",
+        "appointments/{id}/parts",
+        "appointments/{id}/parts/get",
+        "warranty-claims/{id}/parts",
+        "warranty-claims/{id}/appointment-parts",
+        "appointments/{id}/parts/list",
     ];
 
     // Candidate endpoints to get appointment details (if needed)
     const candidateAppointmentDetailEndpoints = [
-        "/api/appointments/{id}/get",
-        "/api/warranty-claims/{id}/get",
+        "appointments/{id}/get",
+        "warranty-claims/{id}/get",
     ];
 
     useEffect(() => {
