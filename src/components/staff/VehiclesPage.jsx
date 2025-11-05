@@ -261,6 +261,10 @@ export default function VehiclesPage() {
                     severity: "success",
                 });
                 await fetchVehicles();
+                // Dispatch event để các component khác (như WarrantyClaim dialog) biết và reload
+                window.dispatchEvent(new CustomEvent("warranty-activated", {
+                    detail: { vin: targetVehicle.vin }
+                }));
             }
         } catch (e) {
             console.error(e);

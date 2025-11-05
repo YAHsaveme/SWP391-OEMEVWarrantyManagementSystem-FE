@@ -7,7 +7,7 @@ const evModelService = {
   // 🧾 Lấy danh sách tất cả EV Models
   async getAll() {
     try {
-      const res = await axiosInstance.get(EV_MODEL_API);
+      const res = await axiosInstance.get(`${EV_MODEL_API}/get-all`);
       return res.data;
     } catch (error) {
       console.error("Get all EV Models failed:", error.response?.data || error.message);

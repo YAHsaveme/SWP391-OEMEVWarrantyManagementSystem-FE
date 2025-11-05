@@ -60,22 +60,30 @@ const claimService = {
 
     const draft = {
       vin: String(payload.vin).trim(),
-      claimType: String(payload.claimType).trim(), // NORMAL/GOODWILL/...
+      claimType: String(payload.claimType).trim(), // NORMAL/GOODWILL/RECALL/...
+      coverageType: payload.coverageType?.toString().trim(),
       errorDate: new Date(payload.errorDate).toISOString(),
       odometerKm:
         payload.odometerKm != null ? Number(payload.odometerKm) : undefined,
       summary: payload.summary?.toString().trim(),
+      intakeContactName: payload.intakeContactName?.toString().trim(),
       attachmentUrls: Array.isArray(payload.attachmentUrls)
         ? payload.attachmentUrls.filter(Boolean)
         : undefined,
       exclusion: payload.exclusion?.toString().trim(),
     };
 
-    // bỏ các key undefined/null trước khi gửi để tránh 400
+    // bỏ các key undefined/null/empty string trước khi gửi để tránh 400
     const cleanPayload = Object.fromEntries(
-      Object.entries(draft).filter(([, v]) => v !== undefined && v !== null)
+      Object.entries(draft).filter(([, v]) => {
+        if (v === undefined || v === null) return false;
+        if (typeof v === "string" && v.trim() === "") return false;
+        if (Array.isArray(v) && v.length === 0) return false;
+        return true;
+      })
     );
 
+    console.log("[ClaimService] create payload:", cleanPayload);
     return unwrap(axiosInstance.post(`${BASE}/create`, cleanPayload));
   },
 

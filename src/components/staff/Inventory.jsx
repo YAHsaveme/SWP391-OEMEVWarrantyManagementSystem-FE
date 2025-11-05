@@ -1,6 +1,6 @@
 import React, { useMemo, useState, useEffect } from "react";
 import {
-    Container, Box, Grid, Card, CardContent, Typography, TextField,
+    Box, Grid, Card, CardContent, Typography, TextField,
     Button, Stack, Paper, InputAdornment, FormControl, Select, MenuItem,
     IconButton, Snackbar, Alert, Dialog, DialogTitle, DialogContent,
     DialogActions, Chip, Badge, CircularProgress
@@ -144,6 +144,19 @@ export default function Inventory() {
                     s?.destination?.id;
                 return String(toId) === String(centerId);
             });
+            
+            // Sort: IN_TRANSIT → DELIVERED/RECEIVED → CLOSED/COMPLETED, sau đó mới nhất trước
+            const statusOrder = { "IN_TRANSIT": 1, "DELIVERED": 2, "RECEIVED": 2, "REQUESTED": 3, "CLOSED": 4, "COMPLETED": 4 };
+            mine.sort((a, b) => {
+                const statusA = statusOrder[a?.status] || 99;
+                const statusB = statusOrder[b?.status] || 99;
+                if (statusA !== statusB) return statusA - statusB;
+                // Nếu cùng status, sort theo createdAt (mới nhất trước)
+                const dateA = new Date(a?.createdAt || a?.created_at || 0).getTime();
+                const dateB = new Date(b?.createdAt || b?.created_at || 0).getTime();
+                return dateB - dateA;
+            });
+            
             setShipRows(mine);
         } catch {
             setMsg("Tải shipments thất bại.");
@@ -156,11 +169,33 @@ export default function Inventory() {
         if (shipOpen) loadShipments();
     }, [shipOpen, centerId]);
 
+    // Listen for shipment-close event từ EVM
+    useEffect(() => {
+        const handleShipmentClose = () => {
+            // Reload shipments khi EVM close shipment (kể cả khi dialog đóng, sẽ reload khi mở lại)
+            // Reload ngay lập tức nếu dialog đang mở
+            if (shipOpen) {
+                loadShipments();
+            }
+            // Nếu dialog đóng, khi mở lại sẽ tự động reload (useEffect [shipOpen])
+        };
+        
+        window.addEventListener("shipment-close", handleShipmentClose);
+        return () => {
+            window.removeEventListener("shipment-close", handleShipmentClose);
+        };
+    }, [shipOpen]);
+
     // === HANDLE RECEIVE – QUAN TRỌNG NHẤT ===
     async function handleReceive(id) {
         try {
             await axiosInstance.post(`shipments/${id}/receive`);
             setMsg("Đã nhận hàng vào kho.");
+
+            // Dispatch event để notify EVM
+            window.dispatchEvent(new CustomEvent("shipment-received", {
+                detail: { shipmentId: id, centerId: centerId }
+            }));
 
             // Refetch shipments
             await loadShipments();
@@ -272,7 +307,7 @@ export default function Inventory() {
 
     // === RENDER ===
     return (
-        <Container maxWidth="lg" sx={{ py: 4 }}>
+        <Box>
             <Grid container spacing={2}>
                 {/* LEFT: LIST */}
                 <Grid item xs={12} md={7}>
@@ -401,25 +436,47 @@ export default function Inventory() {
                     ) : shipRows.length === 0 ? (
                         <Typography color="text.secondary">Không có shipment đang về.</Typography>
                     ) : (
-                        <Stack spacing={1.2}>
+                        <Stack spacing={1}>
                             {shipRows.map(s => (
-                                <Paper key={s.id} variant="outlined" sx={{ p: 1.2, borderRadius: 2 }}>
-                                    <Stack direction="row" alignItems="center" spacing={1.5}>
-                                        <Box sx={{ flex: 1, minWidth: 0 }}>
-                                            <Typography sx={{ fontWeight: 600 }}>{s.code || `Shipment #${s.id}`}</Typography>
+                                <Paper 
+                                    key={s.id} 
+                                    variant="outlined" 
+                                    sx={{ 
+                                        p: 2, 
+                                        borderRadius: 1,
+                                        "&:hover": { bgcolor: "action.hover" }
+                                    }}
+                                >
+                                    <Stack direction="row" justifyContent="space-between" alignItems="center">
+                                        <Box sx={{ flex: 1 }}>
+                                            <Typography sx={{ fontWeight: 600 }}>
+                                                Từ: {s.sourceCenter?.name || s.fromCenter?.name || "Manufacturer"}
+                                            </Typography>
                                             <Typography variant="caption" color="text.secondary">
-                                                From: {s.sourceCenter?.name || "—"} • To: {s.destinationCenter?.name || "—"} • Tracking: {s.trackingNo || "—"}
+                                                {s.trackingNo ? `Tracking: ${s.trackingNo}` : "Chưa có tracking number"}
                                             </Typography>
                                         </Box>
-                                        <Chip size="small" label={s.status}
-                                            color={s.status === "IN_TRANSIT" ? "warning" : s.status === "RECEIVED" ? "success" : "default"}
-                                        />
-                                        {s.status === "IN_TRANSIT" && (
-                                            <Button size="small" variant="contained" onClick={() => handleReceive(s.id)}>Receive</Button>
-                                        )}
-                                        {s.status === "RECEIVED" && (
-                                            <Button size="small" variant="outlined" onClick={() => handleClose(s.id)}>Close</Button>
-                                        )}
+                                        <Stack direction="row" spacing={1} alignItems="center">
+                                            {/* Chỉ hiển thị status chip nếu không phải CLOSED/COMPLETED */}
+                                            {s.status !== "CLOSED" && s.status !== "COMPLETED" && (
+                                                <Chip size="small" label={s.status}
+                                                    color={
+                                                        s.status === "IN_TRANSIT" ? "warning" : 
+                                                        s.status === "RECEIVED" || s.status === "DELIVERED" ? "success" : 
+                                                        "default"
+                                                    }
+                                                />
+                                            )}
+                                            {s.status === "IN_TRANSIT" && (
+                                                <Button size="small" variant="contained" onClick={() => handleReceive(s.id)}>Receive</Button>
+                                            )}
+                                            {(s.status === "CLOSED" || s.status === "COMPLETED") && (
+                                                <Chip size="small" label="Hoàn thành" color="success" />
+                                            )}
+                                            <Typography variant="caption" color="text.secondary">
+                                                {s.createdAt || s.created_at ? new Date(s.createdAt || s.created_at).toLocaleDateString() : ""}
+                                            </Typography>
+                                        </Stack>
                                     </Stack>
                                 </Paper>
                             ))}
@@ -432,6 +489,6 @@ export default function Inventory() {
             <Snackbar open={!!msg} autoHideDuration={2500} onClose={() => setMsg("")}>
                 <Alert severity="info" onClose={() => setMsg("")} sx={{ userSelect: "none", cursor: "default" }}>{msg}</Alert>
             </Snackbar>
-        </Container>
+        </Box>
     );
 }

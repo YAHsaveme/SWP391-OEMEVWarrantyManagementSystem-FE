@@ -6,7 +6,6 @@ import {
   Alert, Typography, Dialog, DialogTitle, DialogContent, DialogActions,
   IconButton, Tooltip
 } from "@mui/material";
-import { motion, AnimatePresence } from "framer-motion";
 import { format, startOfMonth, endOfMonth } from "date-fns";
 import SearchIcon from "@mui/icons-material/Search";
 import AddCircleOutlineIcon from "@mui/icons-material/AddCircleOutline";
@@ -384,54 +383,112 @@ export default function TechniciansPage() {
   useEffect(() => setSelectedSlots(new Set()), [activeDay]);
 
   return (
-    <Box sx={{ p: 4, fontFamily: "Poppins, sans-serif", backgroundColor: "#f8fafc", minHeight: "100vh" }}>
-      <Typography variant="h4" sx={{ fontWeight: 800, mb: 1, color: "#065f46" }}>Quản lý lịch kỹ thuật viên</Typography>
-      <Typography variant="body2" sx={{ mb: 3, color: "text.secondary" }}>Chọn kỹ thuật viên → Chọn ngày → Chọn slot → Hành động (Đặt lịch làm / Hủy / Khôi phục)</Typography>
+    <Box>
+      <Box sx={{ mb: 3 }}>
+        <Typography variant="h6" sx={{ fontWeight: 700, mb: 0.5 }}>Quản lý lịch kỹ thuật viên</Typography>
+        <Typography variant="caption" sx={{ color: "text.secondary" }}>
+          Chọn kỹ thuật viên → Chọn ngày → Chọn slot → Hành động
+        </Typography>
+      </Box>
 
-      <Grid container spacing={3}>
+      <Grid container spacing={2}>
         {/* Left: technicians (show center name) */}
         <Grid item xs={12} md={3}>
-          <Paper elevation={6} sx={{ p: 2, borderRadius: 3 }}>
-            <TextField fullWidth size="small" placeholder="Tìm kỹ thuật viên..." value={query}
-              onChange={(e) => setQuery(e.target.value)} InputProps={{ startAdornment: <SearchIcon sx={{ mr: 1 }} /> }} />
-            <Box sx={{ mt: 2, maxHeight: 520, overflowY: "auto" }}>
-              {filtered.map(t => (
-                <motion.div key={t.id} whileHover={{ scale: 1.02 }}>
-                  <Paper onClick={() => handleTechSelect(t)} sx={{
-                    p: 2, mb: 1, cursor: "pointer", borderRadius: 2,
-                    border: selectedTech?.id === t.id ? "2px solid #34d399" : "1px solid #e0e0e0",
-                    boxShadow: selectedTech?.id === t.id ? "0 6px 18px rgba(52,211,153,0.12)" : "none"
-                  }}>
-                    <Typography sx={{ fontWeight: 600 }}>{t.name}</Typography>
-                    <Typography variant="caption" sx={{ color: "text.secondary" }}>
+          <Paper elevation={0} sx={{ p: 2, borderRadius: 2, border: "1px solid", borderColor: "divider" }}>
+            <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 1.5 }}>Danh sách kỹ thuật viên</Typography>
+            <TextField 
+              fullWidth 
+              size="small" 
+              placeholder="Tìm kỹ thuật viên..." 
+              value={query}
+              onChange={(e) => setQuery(e.target.value)} 
+              InputProps={{ 
+                startAdornment: <SearchIcon sx={{ mr: 1, color: "text.secondary", fontSize: 18 }} /> 
+              }} 
+              sx={{ mb: 2 }}
+            />
+            <Box sx={{ maxHeight: 580, overflowY: "auto", "&::-webkit-scrollbar": { width: 6 }, "&::-webkit-scrollbar-thumb": { bgcolor: "divider", borderRadius: 3 } }}>
+              {filtered.length === 0 ? (
+                <Typography variant="body2" sx={{ textAlign: "center", py: 4, color: "text.secondary" }}>
+                  Không tìm thấy kỹ thuật viên
+                </Typography>
+              ) : (
+                filtered.map(t => (
+                  <Paper 
+                    key={t.id}
+                    onClick={() => handleTechSelect(t)} 
+                    sx={{
+                      p: 1.5, 
+                      mb: 1, 
+                      cursor: "pointer", 
+                      borderRadius: 1.5,
+                      border: selectedTech?.id === t.id ? "2px solid" : "1px solid",
+                      borderColor: selectedTech?.id === t.id ? "primary.main" : "divider",
+                      bgcolor: selectedTech?.id === t.id ? "action.selected" : "background.paper",
+                      boxShadow: selectedTech?.id === t.id ? "0 2px 8px rgba(0,0,0,0.1)" : "none",
+                      transition: "all .15s ease",
+                      "&:hover": {
+                        borderColor: "primary.main",
+                        bgcolor: selectedTech?.id === t.id ? "action.selected" : "action.hover",
+                        boxShadow: "0 2px 8px rgba(0,0,0,0.08)"
+                      }
+                    }}
+                  >
+                    <Typography sx={{ fontWeight: selectedTech?.id === t.id ? 700 : 600, fontSize: "0.95rem", mb: 0.5 }}>
+                      {t.name}
+                    </Typography>
+                    <Typography variant="caption" sx={{ color: "text.secondary", fontSize: "0.75rem" }}>
                       {t.centerId ? (centersMap[t.centerId]?.name ?? "Trung tâm: ...") : "Chưa gán trung tâm"}
                     </Typography>
                   </Paper>
-                </motion.div>
-              ))}
+                ))
+              )}
             </Box>
           </Paper>
         </Grid>
 
         {/* Center: calendar (with Generate button) */}
         <Grid item xs={12} md={6}>
-          <Paper elevation={6} sx={{ p: 3, borderRadius: 3 }}>
-            <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center", mb: 2 }}>
-              <Button variant="outlined" startIcon={<ArrowBackIosNewIcon />} onClick={() => {
-                if (month === 0) { setMonth(11); setYear(y => y - 1); } else setMonth(m => m - 1);
-              }}>Tháng trước</Button>
+          <Paper elevation={0} sx={{ p: 2.5, borderRadius: 2, border: "1px solid", borderColor: "divider" }}>
+            <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center", mb: 2.5 }}>
+              <Button 
+                variant="outlined" 
+                size="small"
+                startIcon={<ArrowBackIosNewIcon fontSize="small" />} 
+                onClick={() => {
+                  if (month === 0) { setMonth(11); setYear(y => y - 1); } else setMonth(m => m - 1);
+                }}
+                sx={{ textTransform: "none" }}
+              >
+                Tháng trước
+              </Button>
 
-              <Typography variant="h6" sx={{ fontWeight: 700 }}>{new Date(year, month).toLocaleString("vi-VN", { month: "long", year: "numeric" })}</Typography>
+              <Typography variant="h6" sx={{ fontWeight: 700, fontSize: "1.1rem" }}>
+                {new Date(year, month).toLocaleString("vi-VN", { month: "long", year: "numeric" })}
+              </Typography>
 
-              <Button variant="outlined" endIcon={<ArrowForwardIosIcon />} onClick={() => {
-                if (month === 11) { setMonth(0); setYear(y => y + 1); } else setMonth(m => m + 1);
-              }}>Tháng sau</Button>
+              <Button 
+                variant="outlined" 
+                size="small"
+                endIcon={<ArrowForwardIosIcon fontSize="small" />} 
+                onClick={() => {
+                  if (month === 11) { setMonth(0); setYear(y => y + 1); } else setMonth(m => m + 1);
+                }}
+                sx={{ textTransform: "none" }}
+              >
+                Tháng sau
+              </Button>
             </Box>
 
-            <Box sx={{ textAlign: "center", mb: 2 }}>
-              <Button variant="contained" startIcon={<AutoFixHighIcon />} onClick={handleGenerateMonth}
-                sx={{ borderRadius: "12px", background: "linear-gradient(90deg,#34d399,#059669)", boxShadow: "0 6px 18px rgba(52,211,153,0.18)" }}
-                disabled={btnLoading.generate}>
+            <Box sx={{ textAlign: "center", mb: 2.5 }}>
+              <Button 
+                variant="contained" 
+                startIcon={<AutoFixHighIcon />} 
+                onClick={handleGenerateMonth}
+                disabled={btnLoading.generate || !selectedTech}
+                size="small"
+                sx={{ minWidth: 160, textTransform: "none" }}
+              >
                 {btnLoading.generate ? <CircularProgress size={18} /> : "Tạo lịch tháng"}
               </Button>
             </Box>
@@ -440,28 +497,81 @@ export default function TechniciansPage() {
               <Typography align="center" sx={{ color: "text.secondary", py: 10 }}>Chọn kỹ thuật viên để xem lịch.</Typography>
             ) : (
               <>
-                <Box sx={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: 1, mb: 1 }}>
-                  {["CN", "T2", "T3", "T4", "T5", "T6", "T7"].map(d => (<Typography key={d} align="center" sx={{ fontWeight: 700, color: "#34d399" }}>{d}</Typography>))}
+                <Box sx={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: 0.5, mb: 1.5, px: 0.5 }}>
+                  {["CN", "T2", "T3", "T4", "T5", "T6", "T7"].map(d => (
+                    <Typography 
+                      key={d} 
+                      align="center" 
+                      sx={{ 
+                        fontWeight: 700, 
+                        fontSize: "0.8rem",
+                        color: "primary.main",
+                        py: 0.75
+                      }}
+                    >
+                      {d}
+                    </Typography>
+                  ))}
                 </Box>
 
-                <Box sx={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: 2 }}>
+                <Box sx={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: 0.75 }}>
                   {days.map((d, i) => {
                     const dateStr = d ? fmt(d) : null;
                     const selected = dateStr && dateStr === activeDay;
                     const past = d && isPast(d);
                     const count = dateStr ? (slotsByDate[dateStr]?.length ?? 0) : 0;
+                    const isToday = d && fmt(d) === fmt(new Date());
+                    
                     return (
-                      <motion.div key={i} whileHover={{ scale: d && !past ? 1.03 : 1 }}>
-                        <Paper onClick={() => d && !past && handleDayClick(d)} sx={{
-                          height: 90, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center",
-                          borderRadius: 2, cursor: d && !past ? "pointer" : "default",
-                          backgroundColor: !d ? "transparent" : past ? "#f1f5f9" : selected ? "#d1fae5" : "white",
-                          border: selected ? "2px solid #34d399" : "1px solid #e5e7eb"
-                        }}>
-                          <Typography sx={{ fontWeight: 700, color: past ? "#9ca3af" : "#065f46" }}>{d ? d.getDate() : ""}</Typography>
-                          {count > 0 && <Typography variant="caption" sx={{ color: "#6b7280" }}>{count} slot</Typography>}
-                        </Paper>
-                      </motion.div>
+                      <Paper 
+                        key={i}
+                        onClick={() => d && !past && handleDayClick(d)} 
+                        sx={{
+                          aspectRatio: "1",
+                          minHeight: 68,
+                          display: "flex", 
+                          flexDirection: "column", 
+                          alignItems: "center", 
+                          justifyContent: "center",
+                          borderRadius: 1.5, 
+                          cursor: d && !past ? "pointer" : "default",
+                          backgroundColor: !d ? "transparent" : past ? "action.disabledBackground" : selected ? "action.selected" : isToday ? "action.hover" : "background.paper",
+                          border: !d ? "none" : selected ? "2px solid" : isToday ? "2px solid" : "1px solid",
+                          borderColor: selected ? "primary.main" : isToday ? "primary.light" : "divider",
+                          transition: "all .2s ease",
+                          position: "relative",
+                          "&:hover": d && !past ? { 
+                            bgcolor: selected ? "action.selected" : "action.hover",
+                            borderColor: "primary.main",
+                            transform: "translateY(-2px)",
+                            boxShadow: "0 4px 12px rgba(0,0,0,0.15)",
+                            zIndex: 1
+                          } : {}
+                        }}
+                      >
+                        <Typography 
+                          sx={{ 
+                            fontWeight: selected ? 700 : 600, 
+                            fontSize: "0.95rem",
+                            color: past ? "text.disabled" : selected ? "primary.main" : isToday ? "primary.main" : "text.primary"
+                          }}
+                        >
+                          {d ? d.getDate() : ""}
+                        </Typography>
+                        {count > 0 && (
+                          <Typography 
+                            variant="caption" 
+                            sx={{ 
+                              color: past ? "text.disabled" : selected ? "primary.main" : "text.secondary", 
+                              fontSize: "0.7rem",
+                              mt: 0.25,
+                              fontWeight: 500
+                            }}
+                          >
+                            {count} slot
+                          </Typography>
+                        )}
+                      </Paper>
                     );
                   })}
                 </Box>
@@ -472,24 +582,30 @@ export default function TechniciansPage() {
 
         {/* Right: slot list + actions */}
         <Grid item xs={12} md={3}>
-          <AnimatePresence>
-            {activeDay && (
-              <motion.div initial={{ opacity: 0, x: 30 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: 30 }} transition={{ duration: 0.3 }}>
-                <Paper elevation={6} sx={{ p: 2, borderRadius: 3 }}>
-                  <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center", mb: 1 }}>
-                    <Typography variant="h6" sx={{ fontWeight: 700, color: "#047857" }}>Slots {activeDay}</Typography>
-                    <IconButton onClick={() => { setActiveDay(null); setSelectedSlots(new Set()); }}><CloseIcon /></IconButton>
+          {activeDay && (
+            <Paper elevation={0} sx={{ p: 2, borderRadius: 2, border: "1px solid", borderColor: "divider" }}>
+                  <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center", mb: 2 }}>
+                    <Box>
+                      <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 0.25 }}>Slots</Typography>
+                      <Typography variant="caption" sx={{ color: "text.secondary", fontSize: "0.75rem" }}>
+                        {activeDay}
+                      </Typography>
+                    </Box>
+                    <IconButton size="small" onClick={() => { setActiveDay(null); setSelectedSlots(new Set()); }}>
+                      <CloseIcon fontSize="small" />
+                    </IconButton>
                   </Box>
 
                   {loading ? (
                     <Box sx={{ display: "flex", justifyContent: "center", py: 6 }}><CircularProgress size={24} /></Box>
                   ) : (
                     <>
-                      <Box sx={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 1 }}>
+                      <Box sx={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 1, mb: 2 }}>
                         {(slotsByDate[activeDay] || []).map((s, idx) => {
                           const ui = uiFor(s.status);
                           const key = s.startTime;
                           const selected = selectedSlots.has(key);
+                          const canSelect = s.status === "FREE" || s.status === "BOOKED";
 
                           const formatTime = (time) => {
                             if (!time) return "—";
@@ -504,44 +620,92 @@ export default function TechniciansPage() {
 
                           return (
                             <Tooltip key={idx} title={ui.label} arrow placement="top">
-                              <motion.div whileHover={{ scale: (s.status === "FREE" || s.status === "BOOKED") ? 1.03 : 1 }}>
                                 <Paper
-                                  onClick={() => toggleSelect(key)}
-                                  sx={{
-                                    p: 1.25, textAlign: "center", borderRadius: 2,
-                                    cursor: (s.status === "FREE" || s.status === "BOOKED") ? "pointer" : "default",
-                                    backgroundColor: selected ? "#d1fae5" : ui.bg,
-                                    border: selected ? "2px solid #34d399" : `1px solid ${ui.border}`,
-                                    color: ui.color, fontWeight: 700
-                                  }}
-                                >
-                                  {`Slot ${idx + 1}: ${start} - ${end}`}
-                                </Paper>
-                              </motion.div>
+                                onClick={() => toggleSelect(key)}
+                                sx={{
+                                  p: 1.5, 
+                                  textAlign: "center", 
+                                  borderRadius: 1.5,
+                                  cursor: canSelect ? "pointer" : "default",
+                                  backgroundColor: selected ? "action.selected" : ui.bg,
+                                  border: selected ? "2px solid" : "1px solid",
+                                  borderColor: selected ? "primary.main" : ui.border,
+                                  color: ui.color, 
+                                  fontWeight: selected ? 700 : 600,
+                                  fontSize: "0.85rem",
+                                  transition: "all .2s ease",
+                                  "&:hover": canSelect ? { 
+                                    bgcolor: selected ? "action.selected" : "action.hover",
+                                    borderColor: "primary.main",
+                                    transform: "translateY(-2px)",
+                                    boxShadow: "0 4px 12px rgba(0,0,0,0.15)"
+                                  } : {}
+                                }}
+                              >
+                                {`${start} - ${end}`}
+                              </Paper>
                             </Tooltip>
                           );
                         })}
 
                         {(!slotsByDate[activeDay] || slotsByDate[activeDay].length === 0) && (
-                          <Typography variant="body2" sx={{ color: "text.secondary", textAlign: "center", py: 6 }}>Không có slot cho ngày này.</Typography>
+                          <Box sx={{ gridColumn: "1 / -1", textAlign: "center", py: 4 }}>
+                            <Typography variant="body2" sx={{ color: "text.secondary" }}>
+                              Không có slot cho ngày này
+                            </Typography>
+                          </Box>
                         )}
                       </Box>
 
-                      <Paper elevation={3} sx={{ mt: 2, p: 2, borderRadius: 2, display: "flex", flexDirection: "column", gap: 1 }}>
-                        <Typography sx={{ fontWeight: 700 }}>Hành động</Typography>
-                        <Typography variant="caption" sx={{ color: "text.secondary" }}>Chú ý: Chọn slot Trống để Đặt lịch làm; chọn slot Đã đặt để Hủy; Khôi phục sẽ bật lại tất cả slot đã hủy.</Typography>
+                      <Paper 
+                        elevation={0} 
+                        variant="outlined"
+                        sx={{ 
+                          mt: 2, 
+                          p: 2, 
+                          borderRadius: 2, 
+                          display: "flex", 
+                          flexDirection: "column", 
+                          gap: 1.5 
+                        }}
+                      >
+                        <Typography variant="subtitle2" sx={{ fontWeight: 700 }}>Hành động</Typography>
+                        <Typography variant="caption" sx={{ color: "text.secondary", fontSize: "0.75rem" }}>
+                          Chú ý: Chọn slot Trống để Đặt lịch làm; chọn slot Đã đặt để Hủy; Khôi phục sẽ bật lại tất cả slot đã hủy.
+                        </Typography>
 
-                        <Box sx={{ display: "flex", gap: 1, mt: 1 }}>
-                          <Button variant="contained" color="success" startIcon={<AddCircleOutlineIcon />} onClick={handleSave} disabled={btnLoading.save}>
+                        <Box sx={{ display: "flex", flexDirection: "column", gap: 1, mt: 1 }}>
+                          <Button 
+                            variant="contained" 
+                            color="primary" 
+                            startIcon={<AddCircleOutlineIcon />} 
+                            onClick={handleSave} 
+                            disabled={btnLoading.save}
+                            size="small"
+                            fullWidth
+                          >
                             {btnLoading.save ? <CircularProgress size={18} /> : "Đặt lịch làm"}
                           </Button>
-                          <Button variant="outlined" color="error" startIcon={<DeleteOutlineIcon />} onClick={handleCancel} disabled={btnLoading.cancel}>
+                          <Button 
+                            variant="outlined" 
+                            color="error" 
+                            startIcon={<DeleteOutlineIcon />} 
+                            onClick={handleCancel} 
+                            disabled={btnLoading.cancel}
+                            size="small"
+                            fullWidth
+                          >
                             {btnLoading.cancel ? <CircularProgress size={18} /> : "Hủy slot"}
                           </Button>
-                        </Box>
-
-                        <Box sx={{ display: "flex", gap: 1, mt: 1 }}>
-                          <Button variant="outlined" color="info" startIcon={<RestoreIcon />} onClick={handleRestore} disabled={btnLoading.restore}>
+                          <Button 
+                            variant="outlined" 
+                            color="info" 
+                            startIcon={<RestoreIcon />} 
+                            onClick={handleRestore} 
+                            disabled={btnLoading.restore}
+                            size="small"
+                            fullWidth
+                          >
                             {btnLoading.restore ? <CircularProgress size={18} /> : "Khôi phục slot đã hủy"}
                           </Button>
                         </Box>
@@ -549,9 +713,7 @@ export default function TechniciansPage() {
                     </>
                   )}
                 </Paper>
-              </motion.div>
-            )}
-          </AnimatePresence>
+          )}
         </Grid>
       </Grid>
 
