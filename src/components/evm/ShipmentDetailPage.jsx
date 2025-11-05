@@ -5,8 +5,9 @@ import React, { useEffect, useState } from "react";
 import {
     Box, Paper, Stack, Typography, Chip, TextField, Button,
     CircularProgress, Divider, Table, TableHead, TableRow, TableCell, TableBody,
-    Snackbar, Alert, Tooltip
+    Snackbar, Alert, Tooltip, IconButton
 } from "@mui/material";
+import { Refresh } from "@mui/icons-material";
 import { useParams, useSearchParams, useNavigate } from "react-router-dom"; // ← thêm useNavigate
 import shipmentService from "../../services/shipmentService";
 import centerService from "../../services/centerService";
@@ -106,14 +107,40 @@ export default function ShipmentDetailPage({ id: idProp }) {
     }, [rawId]);
 
     // === LOAD DANH SÁCH PENDING SHIPMENTS ===
-    useEffect(() => {
-        const loadPendingShipments = async () => {
+    const loadPendingShipments = async () => {
+        try {
+            // Load TẤT CẢ shipments từ backend và lọc ra những shipments chưa close
+            const allShipments = await shipmentService.getAll();
+            const pendingList = [];
+            
+                if (Array.isArray(allShipments)) {
+                    for (const s of allShipments) {
+                        const status = s?.status || s?.shipmentStatus || s?.state;
+                        // Lọc ra shipments chưa close (REQUESTED, IN_TRANSIT, DELIVERED, DELIVERED_WITH_ISSUE)
+                        if (status && !["CLOSED", "COMPLETED"].includes(status.toUpperCase())) {
+                            pendingList.push({
+                                id: s?.id || s?.shipmentId || s?.uuid || "",
+                                status: status,
+                                ticketId: s?.ticketId || s?.ticket?.id || "",
+                                createdAt: s?.createdAt || s?.created_at || s?.createdDate || "",
+                                fromCenterId: s?.fromCenterId || s?.fromCenter?.id || null,
+                                toCenterId: s?.toCenterId || s?.toCenter?.id || null,
+                                trackingNo: s?.trackingNo || s?.tracking || "",
+                            });
+                        }
+                    }
+                }
+            
+            // Cập nhật localStorage với danh sách hợp lệ
+            const validIds = pendingList.map(s => s.id).filter(Boolean);
+            localStorage.setItem(PENDING_SHIPMENTS_KEY, JSON.stringify(validIds));
+            setPendingShipments(pendingList);
+        } catch (e) {
+            console.error("Load pending shipments failed:", e);
+            // Fallback: thử load từ localStorage nếu backend fail
             try {
-                // Load danh sách shipments chưa close từ localStorage
                 const saved = localStorage.getItem(PENDING_SHIPMENTS_KEY);
                 const savedIds = saved ? JSON.parse(saved) : [];
-                
-                // Lọc ra các shipments thực sự chưa close
                 const validPending = [];
                 for (const sid of savedIds) {
                     try {
@@ -125,24 +152,41 @@ export default function ShipmentDetailPage({ id: idProp }) {
                                 status: status,
                                 ticketId: s?.ticketId || s?.ticket?.id || "",
                                 createdAt: s?.createdAt || s?.created_at || "",
+                                fromCenterId: s?.fromCenterId || s?.fromCenter?.id || null,
+                                toCenterId: s?.toCenterId || s?.toCenter?.id || null,
+                                trackingNo: s?.trackingNo || s?.tracking || "",
                             });
                         }
                     } catch (_) {
                         // Ignore nếu không load được
                     }
                 }
-                
-                // Cập nhật localStorage với danh sách hợp lệ
-                const validIds = validPending.map(s => s.id);
-                localStorage.setItem(PENDING_SHIPMENTS_KEY, JSON.stringify(validIds));
                 setPendingShipments(validPending);
-            } catch (e) {
-                console.error("Load pending shipments failed:", e);
+            } catch (fallbackErr) {
+                console.error("Fallback load failed:", fallbackErr);
             }
+        }
+    };
+
+    useEffect(() => {
+        loadPendingShipments();
+        
+        // Listen for events từ bên ngoài (ví dụ: khi SC-STAFF receive)
+        const handleShipmentUpdate = () => {
+            loadPendingShipments();
+            if (id) reload(); // Reload current shipment nếu có
         };
         
-        loadPendingShipments();
-    }, []);
+        window.addEventListener("shipment-received", handleShipmentUpdate);
+        window.addEventListener("shipment-dispatch", handleShipmentUpdate);
+        window.addEventListener("shipment-close", handleShipmentUpdate);
+        
+        return () => {
+            window.removeEventListener("shipment-received", handleShipmentUpdate);
+            window.removeEventListener("shipment-dispatch", handleShipmentUpdate);
+            window.removeEventListener("shipment-close", handleShipmentUpdate);
+        };
+    }, [id]);
 
     // === LOAD SHIPMENT ===
     async function reload() {
@@ -261,6 +305,8 @@ export default function ShipmentDetailPage({ id: idProp }) {
             await shipmentService.dispatch(id, trackingNo.trim());
             setSnack({ open: true, sev: "success", msg: "Đã Dispatch (bắt đầu vận chuyển)" });
             await reload();
+            await loadPendingShipments(); // Reload pending list
+            window.dispatchEvent(new CustomEvent("shipment-dispatch", { detail: { id } }));
         } catch (e) {
             setSnack({ open: true, sev: "error", msg: e?.response?.data?.message || e.message || "Dispatch failed" });
         } finally {
@@ -274,13 +320,9 @@ export default function ShipmentDetailPage({ id: idProp }) {
         try {
             await shipmentService.close(id);
             setSnack({ open: true, sev: "success", msg: "Đã Close shipment" });
-            // Xóa khỏi danh sách pending shipments
-            const saved = localStorage.getItem(PENDING_SHIPMENTS_KEY);
-            const savedIds = saved ? JSON.parse(saved) : [];
-            const filtered = savedIds.filter(sid => sid !== id);
-            localStorage.setItem(PENDING_SHIPMENTS_KEY, JSON.stringify(filtered));
-            setPendingShipments(prev => prev.filter(s => s.id !== id));
             await reload();
+            await loadPendingShipments(); // Reload pending list để cập nhật
+            window.dispatchEvent(new CustomEvent("shipment-close", { detail: { id } }));
         } catch (e) {
             setSnack({ open: true, sev: "error", msg: e?.response?.data?.message || e.message || "Close failed" });
         } finally {
@@ -294,9 +336,16 @@ export default function ShipmentDetailPage({ id: idProp }) {
         if (pendingShipments.length > 0) {
             return (
                 <Box sx={{ p: 3 }}>
-                    <Typography variant="h6" sx={{ mb: 2 }}>
-                        Chọn shipment để xem chi tiết:
-                    </Typography>
+                    <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 2 }}>
+                        <Typography variant="h6">
+                            Chọn shipment để xem chi tiết:
+                        </Typography>
+                        <Tooltip title="Tải lại danh sách">
+                            <IconButton onClick={loadPendingShipments} size="small">
+                                <Refresh />
+                            </IconButton>
+                        </Tooltip>
+                    </Stack>
                     <Stack spacing={1}>
                         {pendingShipments.map((s) => (
                             <Paper
@@ -307,15 +356,21 @@ export default function ShipmentDetailPage({ id: idProp }) {
                                     cursor: "pointer",
                                     "&:hover": { bgcolor: "action.hover" },
                                 }}
-                                onClick={() => navigate(`/shipments/${s.id}`)}
+                                onClick={() => {
+                                    // Chỉ update id và reload, không navigate
+                                    setId(s.id);
+                                    localStorage.setItem(LAST_SHIPMENT_KEY, s.id);
+                                }}
                             >
                                 <Stack direction="row" justifyContent="space-between" alignItems="center">
-                                    <Typography fontWeight={600}>
-                                        Shipment #{s.id}
-                                        {s.ticketId && <Typography component="span" color="text.secondary" sx={{ ml: 1, fontSize: "0.9em" }}>
-                                            (Ticket: {s.ticketId})
-                                        </Typography>}
-                                    </Typography>
+                                    <Box sx={{ flex: 1 }}>
+                                        <Typography fontWeight={600}>
+                                            {s.fromCenterId ? (centerMap[s.fromCenterId] || "Manufacturer") : "Manufacturer"} → {s.toCenterId ? (centerMap[s.toCenterId] || "—") : "—"}
+                                        </Typography>
+                                        <Typography variant="caption" color="text.secondary">
+                                            {s.trackingNo ? `Tracking: ${s.trackingNo}` : "Chưa có tracking number"}
+                                        </Typography>
+                                    </Box>
                                     <Stack direction="row" spacing={1} alignItems="center">
                                         {statusChip(s.status)}
                                         <Typography variant="caption" color="text.secondary">
@@ -361,26 +416,51 @@ export default function ShipmentDetailPage({ id: idProp }) {
                     Shipment
                 </Typography>
                 <Stack direction="row" spacing={2} alignItems="center">
+                    <Tooltip title="Tải lại">
+                        <IconButton onClick={async () => { await reload(); await loadPendingShipments(); }} size="small">
+                            <Refresh />
+                        </IconButton>
+                    </Tooltip>
                     {statusChip(data.status)}
                 </Stack>
             </Stack>
             
             {/* Danh sách shipments chưa close */}
-            {pendingShipments.length > 1 && (
+            {pendingShipments.length > 0 && (
                 <Paper variant="outlined" sx={{ p: 1.5, mb: 2, bgcolor: "action.hover" }}>
-                    <Typography variant="caption" color="text.secondary" sx={{ mb: 1, display: "block" }}>Danh sách shipments chưa close</Typography>
+                    <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 1 }}>
+                        <Typography variant="caption" color="text.secondary">
+                            Danh sách shipments chưa close ({pendingShipments.length})
+                        </Typography>
+                        <Tooltip title="Tải lại danh sách">
+                            <IconButton onClick={loadPendingShipments} size="small">
+                                <Refresh fontSize="small" />
+                            </IconButton>
+                        </Tooltip>
+                    </Stack>
                     <Stack direction="row" spacing={1} flexWrap="wrap" gap={1}>
-                        {pendingShipments.map((s) => (
-                            <Chip
-                                key={s.id}
-                                label={`${s.status}${s.createdAt ? ` · ${new Date(s.createdAt).toLocaleDateString()}` : ""}`}
-                                onClick={() => navigate(`/shipments/${s.id}`)}
-                                color={s.id === id ? "primary" : "default"}
-                                variant={s.id === id ? "filled" : "outlined"}
-                                size="small"
-                                sx={{ cursor: "pointer" }}
-                            />
-                        ))}
+                        {pendingShipments.map((s) => {
+                            // Load center names từ centerMap
+                            const fromName = s.fromCenterId ? (centerMap[s.fromCenterId] || "Manufacturer") : "Manufacturer";
+                            const toName = s.toCenterId ? (centerMap[s.toCenterId] || "—") : "—";
+                            const label = `${fromName} → ${toName}${s.trackingNo ? ` (${s.trackingNo})` : ""}`;
+                            
+                            return (
+                                <Chip
+                                    key={s.id}
+                                    label={label}
+                                    onClick={() => {
+                                        // Chỉ update id và reload, không navigate
+                                        setId(s.id);
+                                        localStorage.setItem(LAST_SHIPMENT_KEY, s.id);
+                                    }}
+                                    color={s.id === id ? "primary" : "default"}
+                                    variant={s.id === id ? "filled" : "outlined"}
+                                    size="small"
+                                    sx={{ cursor: "pointer" }}
+                                />
+                            );
+                        })}
                     </Stack>
                 </Paper>
             )}
