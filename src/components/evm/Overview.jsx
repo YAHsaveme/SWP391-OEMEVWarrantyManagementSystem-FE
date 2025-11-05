@@ -10,6 +10,7 @@ import ServiceCenters from "./ServiceCenters";
 import authService from "../../services/authService";
 import InventoryMovement from "./InventoryMovement";
 import InventoryPart from "./InventoryPart";
+import ShipmentDetailPage from "./ShipmentDetailPage";
 
 import {
     AppBar, Toolbar, Typography, Container, Box, Avatar, Tabs, Tab,
@@ -58,6 +59,7 @@ export default function Overview() {
         (typeof window !== "undefined" && localStorage.getItem("ui-mode")) || (prefersDark ? "dark" : "light")
     );
     const [tab, setTab] = React.useState(0);
+    const [activeShipmentId, setActiveShipmentId] = React.useState(null);
     const [anchorUser, setAnchorUser] = React.useState(null);
     const [anchorMore, setAnchorMore] = React.useState(null);
 
@@ -111,6 +113,19 @@ export default function Overview() {
                 console.warn("Không thể tải thông tin người dùng:", err);
             }
         })();
+    }, []);
+
+    // Listen for "open-shipment" events fired from inner pages (e.g., after create)
+    React.useEffect(() => {
+        const handler = (e) => {
+            const id = e?.detail?.id;
+            if (id) {
+                setActiveShipmentId(id);
+                setTab(8); // switch to Chi tiết vận đơn tab
+            }
+        };
+        window.addEventListener("open-shipment", handler);
+        return () => window.removeEventListener("open-shipment", handler);
     }, []);
 
     return (
@@ -272,11 +287,12 @@ export default function Overview() {
                             <Tab iconPosition="start" icon={<AlertTriangle />} label="Quản lý phụ tùng" />
                             <Tab iconPosition="start" icon={<PackageIcon />} label="Quản lý mẫu xe" />
                             <Tab iconPosition="start" icon={<BarChartIcon />} label="Kho phụ tùng" />
-                            <Tab iconPosition="start" icon={<FileText />} label="Yêu cầu Bảo hành" />
+                            <Tab iconPosition="start" icon={<FileText />} label="Yêu cầu" />
                             <Tab iconPosition="start" icon={<CompareArrowsIcon />} label="Luân chuyển kho" />
                             <Tab iconPosition="start" icon={<CarIcon />} label="Trung tâm Dịch vụ" />
                             <Tab iconPosition="start" icon={<BarChartIcon />} label="Báo cáo & Phân tích" />
                             <Tab iconPosition="start" icon={<FileText />} label="Chính sách Bảo hành" />
+                            <Tab iconPosition="start" icon={<CarIcon />} label="Chi tiết vận đơn" />
                         </Tabs>
 
                         <Box sx={{ p: 2.5, bgcolor: "background.paper", borderRadius: 2 }}>
@@ -288,7 +304,7 @@ export default function Overview() {
                             {tab === 5 && <ServiceCenters />}
                             {tab === 6 && <Analytics />}
                             {tab === 7 && <WarrantyPolicy />}
-
+                            {tab === 8 && <ShipmentDetailPage id={activeShipmentId} />}
                         </Box>
                     </Paper>
 
