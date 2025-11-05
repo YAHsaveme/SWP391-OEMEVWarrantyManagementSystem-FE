@@ -15,6 +15,7 @@ import NotFound from "./pages/NotFound";
 // Admin & EVM
 import Dashboard from "./components/admin/DashBoard";
 import Overview from "./components/evm/Overview";
+import ShipmentDetailPage from "./components/evm/ShipmentDetailPage";
 
 // Technician
 import SCTechnicianDashboard from "./components/tech/SCTechnicianDashboard";
@@ -22,7 +23,7 @@ import SCTechnicianDashboard from "./components/tech/SCTechnicianDashboard";
 // SC_Staff
 import StaffLayout from "./components/staff/StaffLayout";
 import StaffOverview from "./components/staff/StaffOverview";
-import CampaignsPage from "./components/staff/CampaignsPage";
+import Inventory from "./components/staff/Inventory";
 import VehiclesPage from "./components/staff/VehiclesPage";
 import VehicleDetailPage from "./components/staff/VehicleDetailPage";
 import WarrantyClaimsPage from "./components/staff/WarrantyClaim";
@@ -66,6 +67,14 @@ export default function App() {
             </PrivateRoute>
           }
         />
+        <Route
+          path="/shipments/:id"
+          element={
+            <PrivateRoute roles={["EVM_STAFF", "SC_STAFF"]}>
+              <ShipmentDetailPage />
+            </PrivateRoute>
+          }
+        />
 
         {/* ===== SC TECHNICIAN ===== */}
         <Route
@@ -87,7 +96,7 @@ export default function App() {
           }
         >
           <Route index element={<StaffOverview />} />
-          <Route path="campaigns" element={<CampaignsPage />} />
+          <Route path="inventory" element={<Inventory />} />
           <Route path="vehicles" element={<VehiclesPage />} />
           <Route path="vehicles/:vin" element={<VehicleDetailPage />} />
           <Route path="claims" element={<WarrantyClaimsPage />} />
