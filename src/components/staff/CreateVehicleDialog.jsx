@@ -5,6 +5,7 @@ import {
     Snackbar, Alert, CircularProgress, InputAdornment
 } from "@mui/material";
 import Box from "@mui/material/Box";
+import Autocomplete from "@mui/material/Autocomplete";
 
 import axios from "axios";
 import { AdapterDateFns } from "@mui/x-date-pickers/AdapterDateFns";
@@ -83,10 +84,6 @@ export default function CreateVehicleDialog({ open, onClose, onCreated }) {
     const [evModels, setEvModels] = useState([]);
     const [modelsLoading, setModelsLoading] = useState(false);
 
-    // ✅ Trạng thái “Lấy mẫu xe” & khóa trường
-    const [loadingModel, setLoadingModel] = useState(false);
-    const [modelLocked, setModelLocked] = useState(false);
-
     useEffect(() => {
         if (!open) return;
         (async () => {
@@ -104,7 +101,7 @@ export default function CreateVehicleDialog({ open, onClose, onCreated }) {
                     throw new Error(res.data?.message || "Không tải được danh sách model.");
                 }
                 setEvModels(res.data);
-            } catch {
+            } catch (e) {
                 setEvModels([]);
             } finally {
                 setModelsLoading(false);
@@ -129,7 +126,6 @@ export default function CreateVehicleDialog({ open, onClose, onCreated }) {
     };
 
     const handleModelCodeSelect = (_, option) => {
-        if (modelLocked) return; // ⚠️ đã khóa thì không cho đổi
         const code = option?.modelCode || "";
         const name = option?.modelName || option?.name || option?.model || "";
         setFormData((s) => ({ ...s, modelCode: code, model: name || findModelName(code) }));
@@ -142,41 +138,6 @@ export default function CreateVehicleDialog({ open, onClose, onCreated }) {
         }
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [evModels]);
-
-    /* ✅ Lấy mẫu xe theo VIN */
-    const handleFetchModelByVin = async () => {
-        const vin = (formData.vin || "").trim();
-        if (!vin) {
-            setToast({ open: true, message: "Vui lòng nhập VIN trước khi lấy mẫu xe.", severity: "warning" });
-            return;
-        }
-        try {
-            setLoadingModel(true);
-            const token = getToken();
-            const res = await axios.get(`${API_BASE}/api/vehicles/ev-model-by-vin`, {
-                params: { vin },
-                headers: {
-                    Authorization: token ? `Bearer ${token}` : undefined,
-                    Accept: "application/json",
-                },
-                validateStatus: () => true,
-            });
-            if (res.status !== 200 || !res.data) {
-                throw new Error(res.data?.message || "Không tìm thấy mẫu xe cho VIN này.");
-            }
-            const code = res.data.modelCode || "";
-            const name = res.data.model || findModelName(res.data.modelCode) || "";
-            if (!code) throw new Error("API không trả về modelCode hợp lệ.");
-
-            setFormData((s) => ({ ...s, modelCode: code, model: name }));
-            setModelLocked(true); // 🔒 khóa cứng
-            setToast({ open: true, message: "✅ Đã tự động điền mẫu xe.", severity: "success" });
-        } catch (err) {
-            setToast({ open: true, message: err.message || "Lỗi khi lấy mẫu xe.", severity: "error" });
-        } finally {
-            setLoadingModel(false);
-        }
-    };
 
     const validate = () => {
         const f = formData;
@@ -256,7 +217,6 @@ export default function CreateVehicleDialog({ open, onClose, onCreated }) {
                 intakeContactName: "",
                 intakeContactPhone: "",
             });
-            setModelLocked(false); // mở khóa lại khi reset
         } catch {
             setToast({ open: true, message: "Failed to create vehicle.", severity: "error" });
         } finally {
@@ -272,88 +232,99 @@ export default function CreateVehicleDialog({ open, onClose, onCreated }) {
         <>
             <Dialog open={open} onClose={onClose} fullWidth maxWidth="sm">
                 <form onSubmit={handleSubmit} noValidate>
-                    <DialogTitle
-                        component="h2"
-                        contentEditable={false}                // ✅ không cho edit
-                        tabIndex={-1}                          // ✅ không thể focus bằng phím tab
-                        onFocus={(e) => e.currentTarget.blur()}// ✅ lỡ focus thì blur ngay
-                        sx={{
-                            userSelect: "none",                  // ✅ không cho bôi đen/chọn
-                            caretColor: "transparent",           // ✅ ẩn caret (dấu nháy)
-                            "&:focus": { outline: "none" },      // ✅ ẩn viền focus
-                        }}
-                    >
-                        Đăng kí VIN xe điện mới vào hệ thống.
-                    </DialogTitle>
+                    <DialogTitle>Đăng kí VIN xe điện mới vào hệ thống.</DialogTitle>
 
+                    {/* ✅ BỔ SUNG DialogContent */}
                     <DialogContent dividers>
                         <LocalizationProvider dateAdapter={AdapterDateFns} adapterLocale={vi}>
                             <Stack spacing={2.25}>
+                                {/* VIN */}
+                                <TextField
+                                    label="VIN (Vehicle Identification Number)"
+                                    placeholder="1HGBH41JXMN109186"
+                                    value={formData.vin}
+                                    onChange={onChange("vin")}
+                                    inputProps={{ style: { fontFamily: "monospace" } }}
+                                    required
+                                    fullWidth
+                                    size="small"
+                                    sx={FIELD_SX}
+                                    InputLabelProps={COMMON_LABEL}
+                                />
 
-                                {/* VIN + nút Lấy mẫu xe */}
-                                <Stack direction="row" spacing={1.5} alignItems="center">
-                                    <TextField
-                                        label="VIN (Vehicle Identification Number)"
-                                        placeholder="1HGBH41JXMN109186"
-                                        value={formData.vin}
-                                        onChange={onChange("vin")}
-                                        inputProps={{ style: { fontFamily: "monospace" } }}
-                                        required
-                                        size="small"
-                                        sx={{ ...FIELD_SX, flex: 1 }}
-                                        InputLabelProps={COMMON_LABEL}
-                                    />
-                                    <Button
-                                        variant="outlined"
-                                        onClick={handleFetchModelByVin}
-                                        disabled={loadingModel}
-                                        sx={{ minWidth: 130, height: 44, whiteSpace: "nowrap" }}
-                                    >
-                                        {loadingModel ? "Đang lấy..." : "Lấy mẫu xe"}
-                                    </Button>
-                                </Stack>
-
-                                {/* Nội dung dưới: kéo trái */}
+                                {/* CÁC PHẦN DƯỚI: KÉO SANG TRÁI */}
                                 <Box sx={{ ml: { xs: 0, sm: -1.5 } }}>
-                                    {/* Model + Model Code (đã khóa hoàn toàn, chỉ điền bằng nút Lấy mẫu xe) */}
-                                    <Grid container rowSpacing={{ xs: 2, sm: 2.5 }} columnSpacing={{ xs: 1.5, sm: 2 }} alignItems="stretch">
-                                        {/* Model */}
+                                    {/* Model + Model Code */}
+                                    <Grid
+                                        container
+                                        rowSpacing={{ xs: 2, sm: 2.5 }}
+                                        columnSpacing={{ xs: 1.5, sm: 2 }}
+                                        alignItems="stretch"
+                                    >
                                         <Grid item xs={12} sm={6}>
                                             <TextField
                                                 label="Model"
                                                 value={formData.model}
-                                                disabled                                   // 🔒 khóa hẳn, không chọn tay
                                                 fullWidth
                                                 required
                                                 size="small"
-                                                sx={{ ...FIELD_SX, "& input": { caretColor: "transparent" } }}
+                                                sx={FIELD_SX}
                                                 InputLabelProps={COMMON_LABEL}
-                                                inputProps={{ tabIndex: -1 }}              // ngăn focus => không có caret chớp
-                                                onFocus={(e) => e.target.blur()}
-                                                placeholder="Ấn ‘Lấy mẫu xe’ để tự điền"
+                                                InputProps={{ readOnly: true }}
+                                                placeholder="Tự động điền từ Model Code"
                                             />
                                         </Grid>
 
-                                        {/* Model Code */}
                                         <Grid item xs={12} sm={6}>
-                                            <TextField
-                                                label="Model Code"
-                                                value={formData.modelCode}
-                                                disabled                                   // 🔒 khóa hẳn, không mở dropdown nữa
-                                                fullWidth
-                                                required
-                                                size="small"
-                                                sx={{ ...FIELD_SX, "& input": { caretColor: "transparent" } }}
-                                                InputLabelProps={COMMON_LABEL}
-                                                inputProps={{ tabIndex: -1 }}
-                                                onFocus={(e) => e.target.blur()}
-                                                placeholder="Ấn ‘Lấy mẫu xe’ để tự điền"
+                                            <Autocomplete
+                                                options={evModels}
+                                                getOptionLabel={(o) => o?.modelCode || ""}
+                                                isOptionEqualToValue={(o, v) => o.modelCode === v.modelCode}
+                                                onChange={handleModelCodeSelect}
+                                                loading={modelsLoading}
+                                                disableClearable
+                                                value={
+                                                    evModels.find(
+                                                        (m) => m.modelCode?.toLowerCase() === formData.modelCode.toLowerCase()
+                                                    ) || null
+                                                }
+                                                renderOption={(props, option) => (
+                                                    <li {...props} key={option.modelCode}>{option.modelCode}</li>
+                                                )}
+                                                renderInput={(params) => (
+                                                    <TextField
+                                                        {...params}
+                                                        label="Model Code"
+                                                        required
+                                                        fullWidth
+                                                        size="small"
+                                                        sx={FIELD_SX}
+                                                        InputLabelProps={COMMON_LABEL}
+                                                        placeholder="Chọn mã model"
+                                                        InputProps={{
+                                                            ...params.InputProps,
+                                                            readOnly: true,
+                                                            endAdornment: (
+                                                                <InputAdornment position="end">
+                                                                    {modelsLoading ? <CircularProgress size={18} /> : null}
+                                                                    {params.InputProps.endAdornment}
+                                                                </InputAdornment>
+                                                            ),
+                                                        }}
+                                                    />
+                                                )}
                                             />
                                         </Grid>
                                     </Grid>
 
                                     {/* Dates */}
-                                    <Grid container rowSpacing={{ xs: 2, sm: 2.5 }} columnSpacing={{ xs: 1.5, sm: 2 }} alignItems="stretch" sx={{ mt: { xs: 0.75, sm: 1 } }}>
+                                    <Grid
+                                        container
+                                        rowSpacing={{ xs: 2, sm: 2.5 }}
+                                        columnSpacing={{ xs: 1.5, sm: 2 }}
+                                        alignItems="stretch"
+                                        sx={{ mt: { xs: 0.75, sm: 1 } }}
+                                    >
                                         <Grid item xs={12} sm={6}>
                                             <DateTimePicker
                                                 ampm={false}
@@ -391,7 +362,13 @@ export default function CreateVehicleDialog({ open, onClose, onCreated }) {
                                     </Grid>
 
                                     {/* Contacts */}
-                                    <Grid container rowSpacing={{ xs: 2, sm: 2.5 }} columnSpacing={{ xs: 1.5, sm: 2 }} alignItems="stretch" sx={{ mt: { xs: 0.75, sm: 1 } }}>
+                                    <Grid
+                                        container
+                                        rowSpacing={{ xs: 2, sm: 2.5 }}
+                                        columnSpacing={{ xs: 1.5, sm: 2 }}
+                                        alignItems="stretch"
+                                        sx={{ mt: { xs: 0.75, sm: 1 } }}
+                                    >
                                         <Grid item xs={12} sm={6}>
                                             <TextField
                                                 label="Intake Contact Name"
