@@ -102,6 +102,42 @@ const inventoryMovementService = {
     search: (params = {}) => {
         return axiosInstance.get(`${BASE_URL}/search`, { params });
     },
+
+    /**
+     * ======================================================
+     * 🔎 GET /api/inventory-movements/traceability/{vin}/parts
+     * ======================================================
+     * Truy xuất nguồn gốc phụ tùng theo VIN
+     * Hiển thị lịch sử đầy đủ: Ngày sản xuất, Nhà cung cấp, Lần thay thế trước, Xe liên kết
+     *
+     * @param {string} vin - Vehicle Identification Number
+     * @returns {Promise<AxiosResponse>}
+     * Response: Array of parts with traceability info
+     * {
+     *   partId: string,
+     *   partName: string,
+     *   partNo: string,
+     *   serialNo?: string,
+     *   batchNo?: string,
+     *   productionDate?: string,
+     *   supplier?: string,
+     *   previousReplacement?: {
+     *     date: string,
+     *     vin: string,
+     *     reason: string
+     *   },
+     *   linkedVehicles: Array<{ vin: string, installedDate: string }>,
+     *   movements: Array<{
+     *     date: string,
+     *     direction: "IN" | "OUT",
+     *     reason: string,
+     *     centerName: string
+     *   }>
+     * }
+     */
+    traceabilityByVin: (vin) => {
+        return axiosInstance.get(`${BASE_URL}/traceability/${vin}/parts`);
+    },
 };
 
 export default inventoryMovementService;

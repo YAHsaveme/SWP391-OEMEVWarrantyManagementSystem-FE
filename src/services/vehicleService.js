@@ -59,6 +59,12 @@ const vehicleService = {
     return response.data;
   },
 
+  // Lấy EV Model từ VIN (theo BE: extract VDS từ VIN → tìm model theo VDS)
+  findEvModelByVin: async (vin) => {
+    const response = await api.get(`${BASE_URL}/find-ev-model-by-vin/${encodeURIComponent(vin)}`);
+    return response.data;
+  },
+
   // Lấy danh sách vehicles để hiển thị trong form tạo claim
   // Lưu ý: Backend hiện tại không có endpoint bulk để lấy vehicles đã kích hoạt bảo hành
   // Vehicle Warranties API chỉ hỗ trợ: GET /api/vehicle-warranties/{vin}/get (theo từng VIN)

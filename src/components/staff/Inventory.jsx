@@ -362,7 +362,7 @@ export default function Inventory() {
                                             <Box sx={{ flex: 1, minWidth: 0, ...noSelect }}>
                                                 <Typography sx={{ fontWeight: 600, lineHeight: 1.2, ...noSelect }}>{p.partName}</Typography>
                                                 <Typography variant="caption" color={p.isShort ? "error.main" : "text.secondary"} sx={noSelect}>
-                                                    Tối đa: {p.maxQty} — {p.isShort ? "Thiếu" : "Đủ"}
+                                                    Tối đa: {p.maxQty} — Tối thiểu: {p.minQty} — {p.isShort ? "Thiếu" : "Đủ"}
                                                 </Typography>
                                             </Box>
                                             <Typography sx={{ width: 70, textAlign: "right", fontWeight: 600, ...noSelect }}>{p.quantity}</Typography>

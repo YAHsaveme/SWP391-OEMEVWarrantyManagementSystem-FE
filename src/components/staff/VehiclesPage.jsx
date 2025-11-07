@@ -9,11 +9,13 @@ import AddIcon from "@mui/icons-material/Add";
 import SearchIcon from "@mui/icons-material/Search";
 import VerifiedUserIcon from "@mui/icons-material/VerifiedUser";
 import EditOutlinedIcon from "@mui/icons-material/EditOutlined";
+import ReportProblemIcon from "@mui/icons-material/ReportProblem";
 import ChevronLeftIcon from "@mui/icons-material/ChevronLeft";
 import ChevronRightIcon from "@mui/icons-material/ChevronRight";
 
 import CreateVehicleDialog from "./CreateVehicleDialog.jsx";
 import UpdateVehicleDialog from "./UpdateVehicleDialog.jsx";
+import eventService from "../../services/eventService";
 
 /* ================== API BASE ================== */
 const API_BASE = "http://localhost:8080";
@@ -117,6 +119,8 @@ export default function VehiclesPage() {
     const [activating, setActivating] = useState(false);
     const [targetVehicle, setTargetVehicle] = useState(null);
     const [snack, setSnack] = useState({ open: false, message: "", severity: "info" });
+    const [checkingRecall, setCheckingRecall] = useState(false);
+    const [recallDialog, setRecallDialog] = useState({ open: false, vin: "", data: null });
 
     /* ===== Fetch ===== */
     const fetchVehicles = useCallback(async () => {
@@ -222,6 +226,49 @@ export default function VehiclesPage() {
         }
         setTargetVehicle(vehicle);
         setConfirmOpen(true);
+    }
+
+    /* ===== Recall check ===== */
+    async function onCheckRecall(vehicle) {
+        if (!vehicle?.vin) {
+            setSnack({ open: true, message: "Không có VIN để kiểm tra recall.", severity: "warning" });
+            return;
+        }
+        try {
+            setCheckingRecall(true);
+            
+            // Log vehicle data để debug
+            console.log("🔍 Check Recall by VIN - Vehicle data:", {
+                vin: vehicle.vin,
+                modelCode: vehicle.modelCode,
+                productionDate: vehicle.productionDate,
+                productionDateRaw: vehicle.productionDate,
+                productionDateParsed: vehicle.productionDate ? new Date(vehicle.productionDate) : null
+            });
+            
+            const res = await eventService.checkRecallByVin(vehicle.vin);
+            console.log("📋 Raw recall check response:", res);
+            
+            const data = Array.isArray(res) ? res : (res?.data || res);
+            
+            console.log("📋 Recall check result (processed):", data);
+            console.log("📋 Has recall:", data?.hasRecall);
+            console.log("📋 Events:", data?.events);
+            
+            if (!data || (Array.isArray(data) && data.length === 0)) {
+                setSnack({ open: true, message: `VIN ${vehicle.vin}: Không thuộc chiến dịch recall nào.`, severity: "success" });
+            } else {
+                const events = Array.isArray(data?.events) ? data.events : (Array.isArray(data) ? data : [data]);
+                console.log("✅ Found recall events:", events);
+                setRecallDialog({ open: true, vin: vehicle.vin, data });
+            }
+        } catch (err) {
+            console.error("Check recall failed:", err);
+            const msg = err?.response?.data?.message || err?.message || "Lỗi kiểm tra recall";
+            setSnack({ open: true, message: msg, severity: "error" });
+        } finally {
+            setCheckingRecall(false);
+        }
     }
 
     async function doActivate() {
@@ -385,6 +432,15 @@ export default function VehiclesPage() {
                                             </IconButton>
                                             <IconButton
                                                 size="small"
+                                                color="warning"
+                                                onClick={() => onCheckRecall(v)}
+                                                disabled={!v.vin || checkingRecall}
+                                                title="Kiểm tra Recall theo VIN"
+                                            >
+                                                {checkingRecall ? <CircularProgress size={16} /> : <ReportProblemIcon fontSize="small" />}
+                                            </IconButton>
+                                            <IconButton
+                                                size="small"
                                                 color="inherit"
                                                 onClick={() => { setSelectedVehicle(v); setUpdateOpen(true); }}
                                                 title="Chỉnh sửa"
@@ -448,6 +504,31 @@ export default function VehiclesPage() {
                     >
                         {activating ? "Đang kích hoạt..." : "Kích hoạt"}
                     </Button>
+                </DialogActions>
+            </Dialog>
+
+            {/* Recall result dialog */}
+            <Dialog open={recallDialog.open} onClose={() => setRecallDialog({ open: false, vin: "", data: null })} fullWidth maxWidth="sm">
+                <DialogTitle>Recall Check — VIN {recallDialog.vin}</DialogTitle>
+                <DialogContent dividers>
+                    {Array.isArray(recallDialog.data) ? (
+                        recallDialog.data.map((ev, idx) => (
+                            <Box key={idx} sx={{ mb: 1.5 }}>
+                                <Typography variant="subtitle2" fontWeight={700}>{ev.title || ev.name || ev.code || `Event #${idx+1}`}</Typography>
+                                <Typography variant="body2" color="text.secondary">
+                                    {ev.description || ev.desc || "Thuộc chiến dịch recall."}
+                                </Typography>
+                                {ev.modelCode && (
+                                    <Typography variant="caption" color="text.secondary">Model: {ev.modelCode}</Typography>
+                                )}
+                            </Box>
+                        ))
+                    ) : (
+                        <Typography>VIN thuộc chiến dịch recall.</Typography>
+                    )}
+                </DialogContent>
+                <DialogActions>
+                    <Button onClick={() => setRecallDialog({ open: false, vin: "", data: null })}>Đóng</Button>
                 </DialogActions>
             </Dialog>
 
