@@ -1,6 +1,8 @@
-// src/components/evm/WarrantyClaim.jsx
+// src/components/staff/WarrantyClaim.jsx
+// Component cho SC-STAFF: Tạo và quản lý Warranty Claims
+// Có tích hợp auto-check Recall khi nhập VIN
 "use client";
-import React, { useMemo, useState, useEffect } from "react";
+import React, { useMemo, useState, useEffect, useCallback } from "react";
 import {
   Container,
   Box,
@@ -40,6 +42,9 @@ import axiosInstance from "../../services/axiosInstance";
 import claimService, { CLAIM_STATUS } from "../../services/claimService";
 import centerService from "../../services/centerService";
 import estimatesService from "../../services/estimatesService";
+import eventService from "../../services/eventService";
+import vehicleService from "../../services/vehicleService";
+import vehicleWarrantyService from "../../services/vehicleWarrantyService";
 import { uploadToCloudinary } from "../../utils/cloudinary";
 
 // Vehicle service — dùng để lấy thông tin khách hàng theo VIN
@@ -430,8 +435,21 @@ export default function WarrantyClaimsPage() {
             setSnack({ open: true, message: "Claim created successfully", severity: "success" });
           } catch (err) {
             console.error("Create claim failed:", err);
-            const message =
-              err.response?.data || "Tạo claim thất bại, vui lòng thử lại sau!";
+            const errorData = err.response?.data;
+            let message = "Tạo claim thất bại, vui lòng thử lại sau!";
+            if (errorData) {
+              if (typeof errorData === "string") {
+                message = errorData;
+              } else if (errorData.message) {
+                message = errorData.message;
+              } else if (errorData.error) {
+                message = errorData.error;
+              } else {
+                message = JSON.stringify(errorData);
+              }
+            } else if (err.message) {
+              message = err.message;
+            }
             setSnack({ open: true, message, severity: "error" });
           } finally {
             setLoading(false);
@@ -461,8 +479,19 @@ export default function WarrantyClaimsPage() {
             setSnack({ open: true, message: "Claim status updated", severity: "success" });
           } catch (err) {
             console.error("Update status failed:", err);
-            const message =
-              err.response?.data || "Cập nhật trạng thái claim thất bại!";
+            const errorData = err.response?.data;
+            let message = "Cập nhật trạng thái claim thất bại!";
+            if (errorData) {
+              if (typeof errorData === "string") {
+                message = errorData;
+              } else if (errorData.message) {
+                message = errorData.message;
+              } else if (errorData.error) {
+                message = errorData.error;
+              }
+            } else if (err.message) {
+              message = err.message;
+            }
             setSnack({ open: true, message, severity: "error" });
           } finally {
             setLoading(false);
@@ -563,6 +592,117 @@ function CreateClaimDialog({ open, onClose, onCreate, setSnack }) {
 
   // File upload state
   const [files, setFiles] = useState([]);
+  // Recall check state
+  const [recallCheck, setRecallCheck] = useState({ checking: false, hasRecall: false, events: [] });
+  
+  // Warranty check state
+  const [warrantyCheck, setWarrantyCheck] = useState({ checking: false, isActivated: null });
+  
+  // Danh sách vehicles đã kích hoạt bảo hành
+  const [vehiclesWithWarranty, setVehiclesWithWarranty] = useState([]);
+  const [loadingVehicles, setLoadingVehicles] = useState(false);
+
+  // Load danh sách vehicles đã kích hoạt bảo hành
+  const loadVehicles = useCallback(async () => {
+    setLoadingVehicles(true);
+    try {
+      // Thử lấy vehicles đã có warranty
+      const data = await vehicleService.getWithWarranty();
+      const vehicles = Array.isArray(data) ? data : (data?.data || data?.vehicles || []);
+      setVehiclesWithWarranty(vehicles);
+    } catch (err) {
+      console.error("Load vehicles with warranty failed:", err);
+      // Fallback: lấy tất cả vehicles
+      try {
+        const allData = await vehicleService.getAll();
+        const allVehicles = Array.isArray(allData) ? allData : (allData?.data || []);
+        setVehiclesWithWarranty(allVehicles);
+      } catch (err2) {
+        console.error("Load all vehicles failed:", err2);
+        setVehiclesWithWarranty([]);
+      }
+    } finally {
+      setLoadingVehicles(false);
+    }
+  }, []);
+
+  // Load danh sách vehicles khi dialog mở
+  useEffect(() => {
+    if (!open) return;
+    loadVehicles();
+  }, [open, loadVehicles]);
+
+  // Listen event "warranty-activated" để reload vehicles list khi có warranty mới được kích hoạt
+  useEffect(() => {
+    const handleWarrantyActivated = () => {
+      // Reload vehicles list khi có warranty được kích hoạt
+      if (open) {
+        console.log("Warranty activated, reloading vehicles list...");
+        loadVehicles();
+      }
+    };
+
+    window.addEventListener("warranty-activated", handleWarrantyActivated);
+    return () => {
+      window.removeEventListener("warranty-activated", handleWarrantyActivated);
+    };
+  }, [open, loadVehicles]);
+
+  // Kiểm tra warranty khi VIN thay đổi
+  useEffect(() => {
+    const checkWarranty = async () => {
+      if (!vin?.trim() || vin.trim().length < 17) {
+        setWarrantyCheck({ checking: false, isActivated: null });
+        return;
+      }
+
+      try {
+        setWarrantyCheck({ checking: true, isActivated: null });
+        const isActivated = await vehicleWarrantyService.checkActivated(vin.trim());
+        setWarrantyCheck({ checking: false, isActivated });
+      } catch (err) {
+        console.error("Check warranty failed:", err);
+        setWarrantyCheck({ checking: false, isActivated: null });
+      }
+    };
+
+    checkWarranty();
+  }, [vin]);
+
+  // Auto-check recall khi VIN thay đổi
+  useEffect(() => {
+    const checkRecall = async () => {
+      if (!vin?.trim() || vin.trim().length < 17) {
+        setRecallCheck({ checking: false, hasRecall: false, events: [] });
+        return;
+      }
+
+      try {
+        setRecallCheck(prev => ({ ...prev, checking: true }));
+        const result = await eventService.checkRecallByVin(vin.trim());
+        setRecallCheck({
+          checking: false,
+          hasRecall: result.hasRecall || false,
+          events: result.events || []
+        });
+        
+        // Auto-suggest set claimType = RECALL nếu có recall
+        if (result.hasRecall && claimType !== "RECALL") {
+          // Chỉ suggest, không auto-set để user có thể quyết định
+        }
+      } catch (err) {
+        console.error("Check recall failed:", err);
+        setRecallCheck({ checking: false, hasRecall: false, events: [] });
+      }
+    };
+
+    // Debounce để tránh gọi API quá nhiều
+    const timer = setTimeout(() => {
+      checkRecall();
+    }, 500);
+
+    return () => clearTimeout(timer);
+  }, [vin]);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -624,8 +764,109 @@ function CreateClaimDialog({ open, onClose, onCreate, setSnack }) {
         <DialogContent dividers>
           <Grid container spacing={2}>
             <Grid item xs={12} md={6}>
-              <TextField label="VIN" value={vin} onChange={(e) => setVin(e.target.value)} fullWidth required />
+              <Autocomplete
+                options={vehiclesWithWarranty}
+                getOptionLabel={(option) => {
+                  if (typeof option === "string") return option;
+                  const vinStr = option.vin || option.id || "";
+                  const modelCode = option.modelCode ? ` (${option.modelCode})` : "";
+                  return vinStr + modelCode;
+                }}
+                value={vehiclesWithWarranty.find(v => (v.vin || v.id) === vin) || null}
+                onChange={(_, newValue) => {
+                  const selectedVin = newValue ? (typeof newValue === "string" ? newValue : (newValue.vin || newValue.id)) : "";
+                  setVin(selectedVin);
+                  // Auto-fill intakeContactName nếu có
+                  if (newValue && typeof newValue === "object" && newValue.intakeContactName) {
+                    setIntakeContactName(newValue.intakeContactName);
+                  }
+                }}
+                loading={loadingVehicles}
+                renderInput={(params) => (
+                  <TextField
+                    {...params}
+                    label="VIN"
+                    required
+                    helperText="Chọn VIN từ xe đã kích hoạt bảo hành (chỉ được tạo claim cho xe đã kích hoạt)"
+                    InputProps={{
+                      ...params.InputProps,
+                      endAdornment: (
+                        <>
+                          {warrantyCheck.checking && <CircularProgress size={20} sx={{ mr: 1 }} />}
+                          {recallCheck.checking && <CircularProgress size={20} sx={{ mr: 1 }} />}
+                          {loadingVehicles ? <CircularProgress size={20} sx={{ mr: 1 }} /> : null}
+                          {params.InputProps.endAdornment}
+                        </>
+                      ),
+                    }}
+                    error={!!(vin && warrantyCheck.isActivated === false)}
+                  />
+                )}
+                filterOptions={(options, { inputValue }) => {
+                  if (!inputValue) return options;
+                  const searchLower = inputValue.toLowerCase();
+                  return options.filter(option => {
+                    const vinStr = typeof option === "string" ? option : (option.vin || option.id || "");
+                    const modelCode = typeof option === "object" ? (option.modelCode || "").toLowerCase() : "";
+                    return vinStr.toLowerCase().includes(searchLower) || modelCode.includes(searchLower);
+                  });
+                }}
+                renderOption={(props, option) => {
+                  const vinStr = typeof option === "string" ? option : (option.vin || option.id || "");
+                  const modelCode = typeof option === "object" ? option.modelCode : "";
+                  return (
+                    <Box component="li" {...props} key={vinStr}>
+                      <Box>
+                        <Typography variant="body2" sx={{ fontWeight: 600 }}>
+                          {vinStr}
+                        </Typography>
+                        {modelCode && (
+                          <Typography variant="caption" color="text.secondary">
+                            Model: {modelCode}
+                          </Typography>
+                        )}
+                      </Box>
+                    </Box>
+                  );
+                }}
+              />
+              {vehiclesWithWarranty.length === 0 && !loadingVehicles && (
+                <Typography variant="caption" color="text.secondary" sx={{ mt: 0.5, display: "block" }}>
+                  Đang tải danh sách vehicles...
+                </Typography>
+              )}
+              {vin && warrantyCheck.isActivated === false && (
+                <Alert severity="warning" sx={{ mt: 1, width: "100%" }}>
+                  VIN này chưa kích hoạt bảo hành. Vui lòng kích hoạt bảo hành trước khi tạo claim.
+                </Alert>
+              )}
+              {vin && warrantyCheck.isActivated === true && (
+                <Alert severity="success" sx={{ mt: 1, width: "100%" }}>
+                  VIN đã kích hoạt bảo hành. Có thể tạo claim.
+                </Alert>
+              )}
             </Grid>
+            
+            {/* Recall Check Result */}
+            {recallCheck.hasRecall && recallCheck.events.length > 0 && (
+              <Grid item xs={12}>
+                <Alert severity="warning" sx={{ mb: 1 }}>
+                  <Typography variant="subtitle2" fontWeight={700} gutterBottom>
+                    ⚠️ Xe này bị ảnh hưởng bởi {recallCheck.events.length} sự kiện Recall:
+                  </Typography>
+                  <Stack spacing={0.5} sx={{ mt: 1 }}>
+                    {recallCheck.events.map((event, idx) => (
+                      <Typography key={event.id} variant="body2">
+                        • {event.name} {event.reason ? `- ${event.reason}` : ""}
+                      </Typography>
+                    ))}
+                  </Stack>
+                  <Typography variant="body2" sx={{ mt: 1, fontStyle: "italic" }}>
+                    Vui lòng chọn Claim Type = "RECALL" để xử lý đúng loại claim này.
+                  </Typography>
+                </Alert>
+              </Grid>
+            )}
 
             <Grid item xs={12} md={6}>
               <TextField
@@ -1541,32 +1782,103 @@ function EstimatesDialog({ open, onClose, claim, setSnack }) {
   // Build payload for create/update: backend expects itemsJson: [{partId, quantity}]
   const buildPayloadForApi = (overrideForm = null) => {
     const use = overrideForm || form;
-    const itemsJson = (use.items || []).map((it) => ({ partId: it.partId || null, quantity: Number(it.quantity || 0) }));
-    return {
-      claim_id: claim?.id || claim?.claimId || null,
-      itemsJson,
-      laborSlots: Number(use.laborSlots || 0),
-      laborRateVND: Number(use.laborRateVND || 0),
-      note: use.note || "",
+    const itemsJson = (use.items || []).map((it) => ({ 
+      partId: it.partId || null, 
+      quantity: Number(it.quantity || 0) 
+    })).filter(it => it.partId != null); // Remove items without partId
+    
+    const claimId = claim?.id || claim?.claimId;
+    if (!claimId) {
+      console.warn("[BuildPayload] No claim ID found!", { claim });
+    }
+    
+    // Backend expect snake_case: claim_id, itemsJson (chỉ cần partId và quantity)
+    // Backend sẽ tự động hydrate với unitPrice từ Part repository
+    // Backend sẽ tự động:
+    // - Lấy unitPrice từ Part repository
+    // - Tính totals (partsSubtotal, laborSubtotal, grandTotal)
+    // - Set versionNo (auto increment)
+    // - Update claim status (RECALL → APPROVED, NORMAL → UNDER_REVIEW)
+    const payload = {
+      claim_id: claimId, // Backend expect snake_case (UUID)
+      itemsJson: itemsJson.length > 0 ? itemsJson : [], // [{partId: UUID, quantity: number}] - backend tự lấy unitPrice
+      laborSlots: Number(use.laborSlots || 0) >= 0 ? Number(use.laborSlots || 0) : 0,
+      laborRateVND: Number(use.laborRateVND || 0) >= 0 ? Number(use.laborRateVND || 0) : 0,
+      note: (use.note || "").trim() || null,
+      // createdAt: optional, backend sẽ dùng new Date() nếu không có
     };
+    
+    // Backend có thể expect tất cả fields, không bỏ undefined
+    
+    // Backend expect tất cả fields theo EstimateRequests.CreateEstimateRequest
+    // Backend sẽ validate:
+    // - itemsJson: mỗi item phải có quantity > 0
+    // - laborSlots >= 0
+    // - laborRateVND >= 0
+    // - claim_id: UUID hợp lệ
+    const cleanPayload = {
+      claim_id: payload.claim_id, // UUID - required
+      itemsJson: payload.itemsJson, // List<ItemRequest> - required, ít nhất 1 item
+      laborSlots: payload.laborSlots, // int >= 0 - required
+      laborRateVND: payload.laborRateVND, // long >= 0 - required
+      note: payload.note || null, // String - optional
+      // createdAt: optional, nếu không có backend sẽ dùng new Date()
+    };
+    
+    // Backend không cần createdAt, sẽ tự set
+    // Backend sẽ tự hydrate unitPrice cho items
+    // Backend sẽ tự tính totals và payment split
+    
+    return cleanPayload;
   };
 
-  // validation: ensure each item has partId
+  // Validation theo backend logic (EstimateService.validateBusiness + validateClaimForEstimate)
   const validateFormBeforeSend = () => {
+    // [Backend Check 1] Claim status phải = ESTIMATING
+    if (claim?.status !== "ESTIMATING") {
+      setSnack?.({ 
+        open: true, 
+        message: `⚠️ Claim phải ở trạng thái ESTIMATING để tạo estimate.\nTrạng thái hiện tại: ${claim?.status || "N/A"}.\nVui lòng chuyển claim sang ESTIMATING trước.`, 
+        severity: "error" 
+      });
+      return false;
+    }
+    
+    // [Backend Check 2] Claim phải có diagnostics (backend sẽ check, nhưng ta warning trước)
+    // Note: Frontend không có API để check diagnostics trước, backend sẽ validate
+    
+    // [Backend Check 3] Items validation (validateBusiness)
     if (!form.items.length) {
       setSnack?.({ open: true, message: "Cần ít nhất 1 phụ tùng (item) trong estimate", severity: "warning" });
       return false;
     }
+    
     for (const it of form.items) {
+      // Backend: Mỗi item phải có partId hợp lệ
       if (!it.partId) {
         setSnack?.({ open: true, message: `Một item chưa chọn phụ tùng hợp lệ: "${it.partName || ''}"`, severity: "warning" });
         return false;
       }
+      // Backend: quantity > 0 (không phải >= 0)
       if (!it.quantity || Number(it.quantity) <= 0) {
-        setSnack?.({ open: true, message: `Số lượng phải lớn hơn 0 cho "${it.partName}"`, severity: "warning" });
+        setSnack?.({ open: true, message: `Số lượng phải lớn hơn 0 cho "${it.partName}". Backend yêu cầu quantity > 0.`, severity: "warning" });
         return false;
       }
     }
+    
+    // [Backend Check 4] Labor validation (validateBusiness)
+    // laborSlots >= 0 (đã check trong payload, nhưng đảm bảo)
+    if (Number(form.laborSlots || 0) < 0) {
+      setSnack?.({ open: true, message: "Labor slots phải >= 0", severity: "warning" });
+      return false;
+    }
+    
+    // laborRateVND >= 0
+    if (Number(form.laborRateVND || 0) < 0) {
+      setSnack?.({ open: true, message: "Labor rate (VND) phải >= 0", severity: "warning" });
+      return false;
+    }
+    
     return true;
   };
 
@@ -1575,6 +1887,16 @@ function EstimatesDialog({ open, onClose, claim, setSnack }) {
     try {
       setLoadingLocal(true);
       const payload = buildPayloadForApi();
+      console.log("[CreateEstimate] Payload:", JSON.stringify(payload, null, 2));
+      console.log("[CreateEstimate] Claim object:", claim);
+      console.log("[CreateEstimate] Claim ID:", claim?.id || claim?.claimId);
+      console.log("[CreateEstimate] Claim status:", claim?.status, "(Required: ESTIMATING)");
+      console.log("[CreateEstimate] Claim centerId:", claim?.centerId);
+      console.log("[CreateEstimate] Claim openedBy:", claim?.openedBy);
+      console.log("[CreateEstimate] Current user role:", localStorage.getItem("role"));
+      console.log("[CreateEstimate] Current user ID:", localStorage.getItem("userId") || localStorage.getItem("id"));
+      console.log("[CreateEstimate] Token exists:", !!localStorage.getItem("token"));
+      console.log("[CreateEstimate] Form data:", form);
       const created = await estimatesService.create(payload);
       setList((prev) => [created, ...prev]);
       setSnack?.({ open: true, message: "Tạo estimate thành công", severity: "success" });
@@ -1583,13 +1905,53 @@ function EstimatesDialog({ open, onClose, claim, setSnack }) {
       window.dispatchEvent(new CustomEvent("claim-updated", { detail: { ...claim, lastEstimate: created } }));
     } catch (err) {
       console.error("Create estimate error:", err);
-      const msg = err?.response?.data;
+      console.error("Create estimate error response:", err.response);
+      console.error("Create estimate error data:", err.response?.data);
+      console.error("Create estimate error details:", err.response?.data?.details);
+      console.error("Create estimate error status:", err.response?.status);
+      
+      const errorData = err?.response?.data;
+      
+      // Extract detailed validation errors from details array
+      let validationErrors = [];
+      if (errorData?.details && Array.isArray(errorData.details)) {
+        validationErrors = errorData.details.map((detail) => {
+          if (typeof detail === "string") return detail;
+          return detail.message || detail.field || JSON.stringify(detail);
+        });
+        console.error("Validation errors:", validationErrors);
+      }
+      
+      // Convert error data to string for comparison
+      const msg = typeof errorData === "string" 
+        ? errorData 
+        : (errorData?.message || errorData?.error || JSON.stringify(errorData) || "");
+      
       let friendlyMessage = "Tạo estimate thất bại";
 
-      if (msg?.includes("phải có trạng thái ESTIMATING")) {
-        friendlyMessage = "⚠️ Chưa có Diagnostics hoặc claim chưa chuyển sang giai đoạn lập báo giá (ESTIMATING).";
-      } else if (msg?.includes("Không tìm thấy claim")) {
+      if (validationErrors.length > 0) {
+        // Nếu có validation errors chi tiết, hiển thị chúng
+        friendlyMessage = `⚠️ Dữ liệu không hợp lệ:\n${validationErrors.join("\n")}`;
+      } else if (errorData?.error === "UNEXPECTED_ERROR" && errorData?.message === "Access Denied") {
+        const currentRole = localStorage.getItem("role");
+        friendlyMessage = `⚠️ Không có quyền tạo estimate!\n\n` +
+          `Role hiện tại của bạn: ${currentRole || "N/A"}\n\n`;                          
+      } else if (msg && msg.includes("phải có trạng thái ESTIMATING")) {
+        friendlyMessage = "⚠️ Claim phải ở trạng thái ESTIMATING để tạo estimate. Vui lòng chuyển claim sang ESTIMATING trước.";
+      } else if (msg && msg.includes("phải có diagnostics")) {
+        friendlyMessage = "⚠️ Claim phải có diagnostics trước khi tạo estimate. Vui lòng tạo diagnostics trước.";
+      } else if (msg && msg.includes("Không tìm thấy claim")) {
         friendlyMessage = "Claim không tồn tại hoặc đã bị xoá.";
+      } else if (msg && msg.includes("qty phải > 0")) {
+        friendlyMessage = "⚠️ Số lượng (quantity) phải lớn hơn 0 cho tất cả items.";
+      } else if (msg && msg.includes("laborSlots phải >= 0") || msg.includes("laborRateVND phải >= 0")) {
+        friendlyMessage = "⚠️ Labor slots và labor rate phải >= 0.";
+      } else if (msg && msg.trim() !== "") {
+        // Nếu có message từ backend, dùng nó
+        friendlyMessage = msg;
+      } else {
+        // Nếu không có message, hiển thị error data
+        friendlyMessage = errorData ? JSON.stringify(errorData) : "Tạo estimate thất bại. Vui lòng kiểm tra lại dữ liệu.";
       }
 
       setSnack?.({
@@ -1830,4 +2192,5 @@ async function handleNewFromLatest(list, setForm, setSnack) {
     setSnack?.({ open: true, message: "Không tải được estimate mẫu", severity: "warning" });
   }
 }
+// ------------------ end EstimatesDialog ------------------
 // ------------------ end EstimatesDialog ------------------
