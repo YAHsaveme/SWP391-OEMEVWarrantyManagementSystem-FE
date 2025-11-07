@@ -1,7 +1,6 @@
 "use client";
 
 import React from "react";
-import Analytics from "./Analytics";
 import PartManagement from "./PartManagement";
 import ProductManagement from "./ProductManagement";
 import WarrantyRequests from "./WarrantyRequests";
@@ -12,6 +11,8 @@ import InventoryMovement from "./InventoryMovement";
 import InventoryPart from "./InventoryPart";
 import ShipmentDetailPage from "./ShipmentDetailPage";
 import EventManagement from "./EventManagement";
+import Dashboard from "./Dashboard";
+import PartTraceability from "./PartTraceability";
 
 import {
     AppBar, Toolbar, Typography, Container, Box, Avatar, Tabs, Tab,
@@ -30,6 +31,7 @@ import {
     Notifications as NotificationsIcon,
     MoreVert as MoreIcon,
     AddCircle as AddIcon,
+    Build as BuildIcon,
 } from "@mui/icons-material";
 import { alpha, createTheme } from "@mui/material/styles";
 import { ThemeProvider, useTheme } from "@mui/material/styles";
@@ -285,29 +287,31 @@ export default function Overview() {
                                 },
                             }}
                         >
+                            <Tab iconPosition="start" icon={<BarChartIcon />} label="Dashboard" />
                             <Tab iconPosition="start" icon={<AlertTriangle />} label="Quản lý phụ tùng" />
                             <Tab iconPosition="start" icon={<PackageIcon />} label="Quản lý mẫu xe" />
                             <Tab iconPosition="start" icon={<BarChartIcon />} label="Kho phụ tùng" />
                             <Tab iconPosition="start" icon={<FileText />} label="Yêu cầu" />
                             <Tab iconPosition="start" icon={<CompareArrowsIcon />} label="Luân chuyển kho" />
                             <Tab iconPosition="start" icon={<CarIcon />} label="Trung tâm Dịch vụ" />
-                            <Tab iconPosition="start" icon={<BarChartIcon />} label="Báo cáo & Phân tích" />
                             <Tab iconPosition="start" icon={<FileText />} label="Chính sách Bảo hành" />
                             <Tab iconPosition="start" icon={<CarIcon />} label="Chi tiết vận đơn" />
                             <Tab iconPosition="start" icon={<AlertTriangle />} label="Quản lý Sự kiện" />
+                            <Tab iconPosition="start" icon={<BuildIcon />} label="Truy xuất nguồn gốc" />
                         </Tabs>
 
                         <Box sx={{ p: 2.5, bgcolor: "background.paper", borderRadius: 2 }}>
-                            {tab === 0 && <PartManagement />}
-                            {tab === 1 && <ProductManagement />}
-                            {tab === 2 && <InventoryPart />}
-                            {tab === 3 && <WarrantyRequests />}
-                            {tab === 4 && <InventoryMovement />}
-                            {tab === 5 && <ServiceCenters />}
-                            {tab === 6 && <Analytics />}
+                            {tab === 0 && <Dashboard />}
+                            {tab === 1 && <PartManagement />}
+                            {tab === 2 && <ProductManagement />}
+                            {tab === 3 && <InventoryPart />}
+                            {tab === 4 && <WarrantyRequests />}
+                            {tab === 5 && <InventoryMovement />}
+                            {tab === 6 && <ServiceCenters />}
                             {tab === 7 && <WarrantyPolicy />}
                             {tab === 8 && <ShipmentDetailPage id={activeShipmentId} />}
                             {tab === 9 && <EventManagement />}
+                            {tab === 10 && <PartTraceability />}
                         </Box>
                     </Paper>
 

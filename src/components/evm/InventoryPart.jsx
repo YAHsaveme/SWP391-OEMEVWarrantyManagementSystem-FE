@@ -613,6 +613,7 @@ function InventoryLotView({ onSwitch }) {
         partLotId: "",
         quantity: "",
     });
+    const [selectedPartLot, setSelectedPartLot] = useState(null); // Lưu thông tin PartLot đã chọn để check serialized
     const [partLotOptions, setPartLotOptions] = useState([]);
     const [partLotLoading, setPartLotLoading] = useState(false);
     const [editForm, setEditForm] = useState({});
@@ -698,12 +699,20 @@ function InventoryLotView({ onSwitch }) {
     // search API không sử dụng cho Lots (theo BE hiện tại)
 
     const openCreateDialog = async () => {
-        setCreateForm((f) => ({ ...f, centerId: centerId || "" }));
+        setCreateForm((f) => ({ ...f, centerId: centerId || "", partLotId: "", quantity: "" }));
+        setSelectedPartLot(null);
         try {
             setPartLotLoading(true);
             const res = await axiosInstance.get("/part-lots/get-active");
             const list = Array.isArray(res?.data) ? res.data : (res?.data?.content || []);
-            const opts = list.map(l => ({ id: l.id, serialNo: l.serialNo, batchNo: l.batchNo, partName: l.partName }));
+            const opts = list.map(l => ({ 
+                id: l.id, 
+                serialNo: l.serialNo, 
+                batchNo: l.batchNo, 
+                partName: l.partName,
+                partId: l.partId,
+                isSerialized: !!l.serialNo // PartLot có serialNo = serialized
+            }));
             setPartLotOptions(opts);
         } catch (e) {
             console.error(e);
@@ -715,21 +724,72 @@ function InventoryLotView({ onSwitch }) {
 
     const handleCreate = async () => {
         try {
-            if (!createForm.centerId || !createForm.partLotId || Number(createForm.quantity) <= 0) {
-                return notify("Hãy chọn Center, nhập partLotId và quantity > 0", "warning");
+            const finalCenterId = createForm.centerId || centerId;
+            const finalPartLotId = createForm.partLotId;
+            const finalQuantity = Number(String(createForm.quantity).trim() || 0);
+            
+            if (!finalCenterId) {
+                return notify("Hãy chọn trung tâm", "warning");
             }
+            if (!finalPartLotId) {
+                return notify("Hãy chọn Part Lot", "warning");
+            }
+            
+            // Kiểm tra serialized/non-serialized
+            const partLot = selectedPartLot || partLotOptions.find(p => p.id === finalPartLotId);
+            const isSerialized = partLot?.isSerialized ?? !!partLot?.serialNo;
+            
+            if (isSerialized) {
+                // Serialized: quantity phải = 1
+                if (finalQuantity !== 1) {
+                    return notify("Phụ tùng serialized chỉ có thể tạo với quantity = 1. Mỗi serial number là 1 đơn vị.", "warning");
+                }
+            } else {
+                // Non-serialized: quantity phải > 0
+                if (finalQuantity <= 0) {
+                    return notify("Quantity phải lớn hơn 0", "warning");
+                }
+            }
+            
             const body = {
-                centerId: createForm.centerId,
-                partLotId: createForm.partLotId,
-                quantity: Number(createForm.quantity || 0),
+                centerId: finalCenterId,
+                partLotId: finalPartLotId,
+                quantity: finalQuantity,
             };
-            await inventoryLotService.create(body);
+            
+            console.log("📦 Creating Inventory Lot:");
+            console.log("  - Form State:", createForm);
+            console.log("  - CenterId State:", centerId);
+            console.log("  - Final Payload:", body);
+            
+            const result = await inventoryLotService.create(body);
+            console.log("✅ Create success:", result);
             notify("Tạo lô tồn kho thành công", "success");
             setOpenCreate(false);
+            setCreateForm({ centerId: "", partLotId: "", quantity: "" });
+            setSelectedPartLot(null);
             loadByCenter();
         } catch (e) {
-            console.error(e);
-            notify("Lỗi khi tạo lô tồn kho", "error");
+            console.error("❌ Create Inventory Lot Error:", e);
+            console.error("❌ Error Response:", e?.response?.data);
+            console.error("❌ Error Status:", e?.response?.status);
+            console.error("❌ Error Details:", e?.response?.data?.details);
+            
+            let errorMsg = "Lỗi khi tạo lô tồn kho";
+            if (e?.response?.data) {
+                const errorData = e.response.data;
+                if (errorData.message) {
+                    errorMsg = errorData.message;
+                } else if (errorData.error) {
+                    errorMsg = errorData.error;
+                } else if (Array.isArray(errorData.details) && errorData.details.length > 0) {
+                    errorMsg = errorData.details.map(d => d.message || d).join(", ");
+                }
+            } else if (e?.message) {
+                errorMsg = e.message;
+            }
+            
+            notify(errorMsg, "error");
         }
     };
 
@@ -827,10 +887,32 @@ function InventoryLotView({ onSwitch }) {
                 <Grid item xs="auto">
                     <Button variant="outlined" onClick={async () => {
                         if (!centerId) return notify("Hãy chọn trung tâm", "warning");
-                        try { setLoading(true); const data = await inventoryLotService.summaryByCenter(centerId);
-                            const list = Array.isArray(data) ? data : (data?.data || data?.content || []);
-                            setSummaryItems(list); setSummaryMode(true);
-                        } catch (e) { console.error(e); notify("Lỗi tải tổng hợp tồn kho", "error"); } finally { setLoading(false); }
+                        try { 
+                            setLoading(true); 
+                            const data = await inventoryLotService.summaryByCenter(centerId);
+                            console.log("📊 Summary Data:", data);
+                            const raw = Array.isArray(data) ? data : (data?.data || data?.content || []);
+                            console.log("📊 Summary Items Raw:", raw);
+                            
+                            // Normalize data: handle both camelCase and snake_case
+                            const list = raw.map(item => ({
+                                partName: item.partName || item.part_name || item.part?.name || "—",
+                                partNumber: item.partNumber || item.part_number || item.partNo || item.part?.partNo || "—",
+                                partCategory: item.partCategory || item.part_category || item.part?.category || item.category || "—",
+                                totalQuantity: item.totalQuantity ?? item.total_quantity ?? 0,
+                                availableLots: item.availableLots ?? item.available_lots ?? 0,
+                            }));
+                            
+                            console.log("📊 Summary Items Normalized:", list);
+                            setSummaryItems(list); 
+                            setSummaryMode(true);
+                            notify(`Đã tải tổng hợp: ${list.length} items`, "success");
+                        } catch (e) { 
+                            console.error("Error loading summary:", e); 
+                            notify("Lỗi tải tổng hợp tồn kho", "error"); 
+                        } finally { 
+                            setLoading(false); 
+                        }
                     }}>Tổng hợp theo Center</Button>
                 </Grid>
                 <Grid item xs="auto">
@@ -879,30 +961,62 @@ function InventoryLotView({ onSwitch }) {
                         </TableHead>
                         <TableBody>
                             {summaryMode ? (
-                                summaryItems.map((s, idx) => (
-                                    <TableRow key={idx}>
-                                        <TableCell>{s.partName}</TableCell>
-                                        <TableCell>{s.partNumber}</TableCell>
-                                        <TableCell>{s.partCategory}</TableCell>
-                                        <TableCell align="right">{s.totalQuantity}</TableCell>
-                                        <TableCell align="right">{s.availableLots}</TableCell>
+                                summaryItems.length > 0 ? (
+                                    summaryItems.map((s, idx) => (
+                                        <TableRow key={idx}>
+                                            <TableCell>{s.partName || s.part_name || "—"}</TableCell>
+                                            <TableCell>{s.partNumber || s.part_number || s.partNo || "—"}</TableCell>
+                                            <TableCell>{s.partCategory || s.part_category || s.category || "—"}</TableCell>
+                                            <TableCell align="right">{s.totalQuantity ?? s.total_quantity ?? 0}</TableCell>
+                                            <TableCell align="right">{s.availableLots ?? s.available_lots ?? 0}</TableCell>
+                                        </TableRow>
+                                    ))
+                                ) : (
+                                    <TableRow>
+                                        <TableCell colSpan={5} align="center">Chưa có dữ liệu</TableCell>
                                     </TableRow>
-                                ))
+                                )
                             ) : (
-                                items.map((row) => (
-                                    <TableRow key={row.id} hover>
-                                        {columns.map((c) => (
-                                            <TableCell key={c}>
-                                                {typeof row[c] === "object" ? JSON.stringify(row[c]) : String(row[c] ?? "")}
+                                items.map((row) => {
+                                    // Xác định serialized vs non-serialized
+                                    const hasSerialNo = row.serialNo || row.partLotSerialNo || row.partLot?.serialNo;
+                                    const hasBatchNo = row.batchNo || row.partLotBatchNo || row.partLot?.batchNo;
+                                    const isSerialized = !!hasSerialNo;
+                                    
+                                    return (
+                                        <TableRow key={row.id} hover>
+                                            {columns.map((c) => {
+                                                let displayValue = "";
+                                                if (typeof row[c] === "object") {
+                                                    displayValue = JSON.stringify(row[c]);
+                                                } else {
+                                                    const rawValue = row[c];
+                                                    // Xử lý đặc biệt cho serialNo
+                                                    if ((c === "serialNo" || c === "partLotSerialNo") && (!rawValue || rawValue === "null" || rawValue === null)) {
+                                                        displayValue = isSerialized ? "—" : "N/A (Non-serialized)";
+                                                    }
+                                                    // Xử lý đặc biệt cho batchNo
+                                                    else if ((c === "batchNo" || c === "partLotBatchNo") && (!rawValue || rawValue === "null" || rawValue === null)) {
+                                                        displayValue = "—";
+                                                    }
+                                                    else {
+                                                        displayValue = String(rawValue ?? "");
+                                                    }
+                                                }
+                                                return (
+                                                    <TableCell key={c}>
+                                                        {displayValue}
+                                                    </TableCell>
+                                                );
+                                            })}
+                                            <TableCell align="center" sx={{ whiteSpace: "nowrap" }}>
+                                                <Tooltip title="Chi tiết / Sửa">
+                                                    <IconButton onClick={() => openEditDialog(row)}><EditIcon /></IconButton>
+                                                </Tooltip>
                                             </TableCell>
-                                        ))}
-                                        <TableCell align="center" sx={{ whiteSpace: "nowrap" }}>
-                                            <Tooltip title="Chi tiết / Sửa">
-                                                <IconButton onClick={() => openEditDialog(row)}><EditIcon /></IconButton>
-                                            </Tooltip>
-                                        </TableCell>
-                                    </TableRow>
-                                ))
+                                        </TableRow>
+                                    );
+                                })
                             )}
                             {!loading && items.length === 0 && (
                                 <TableRow><TableCell colSpan={columns.length + 1} align="center">Chưa có dữ liệu</TableCell></TableRow>
@@ -945,8 +1059,11 @@ function InventoryLotView({ onSwitch }) {
                                 select
                                 fullWidth
                                 label="Trung tâm"
-                                value={createForm.centerId || centerId}
-                                onChange={(e) => setCreateForm({ ...createForm, centerId: e.target.value })}
+                                value={createForm.centerId || centerId || ""}
+                                onChange={(e) => {
+                                    const val = e.target.value;
+                                    setCreateForm({ ...createForm, centerId: val || "" });
+                                }}
                             >
                                 <MenuItem value="">-- Chọn trung tâm --</MenuItem>
                                 {centers.map((c) => (
@@ -960,8 +1077,23 @@ function InventoryLotView({ onSwitch }) {
                             <Autocomplete
                                 options={partLotOptions}
                                 loading={partLotLoading}
-                                getOptionLabel={(o) => `${o.serialNo ? `SN:${o.serialNo}` : (o.batchNo ? `BN:${o.batchNo}` : "Lot")} — ${o.partName || ""}`}
-                                onChange={(e, v) => setCreateForm({ ...createForm, partLotId: v?.id || "" })}
+                                getOptionLabel={(o) => {
+                                    if (!o || !o.id) return "";
+                                    const typeLabel = o.serialNo ? "Serialized" : (o.batchNo ? "Non-serialized" : "Lot");
+                                    return `${o.serialNo ? `SN:${o.serialNo}` : (o.batchNo ? `BN:${o.batchNo}` : "Lot")} — ${o.partName || ""} (${typeLabel})`;
+                                }}
+                                value={partLotOptions.find(o => o.id === createForm.partLotId) || null}
+                                onChange={(e, v) => {
+                                    console.log("🔍 Part Lot Selected:", v);
+                                    const isSerialized = v?.isSerialized ?? !!v?.serialNo;
+                                    setSelectedPartLot(v);
+                                    setCreateForm({ 
+                                        ...createForm, 
+                                        partLotId: v?.id || "",
+                                        // Auto-set quantity = 1 nếu là serialized
+                                        quantity: isSerialized ? "1" : createForm.quantity
+                                    });
+                                }}
                                 renderInput={(params) => (
                                     <TextField {...params} label="Chọn Part Lot" placeholder="SN/Batch — PartName" />
                                 )}
@@ -975,7 +1107,23 @@ function InventoryLotView({ onSwitch }) {
                                 type="text"
                                 label="Quantity"
                                 value={createForm.quantity}
-                                onChange={(e) => setCreateForm({ ...createForm, quantity: (String(e.target.value).replace(/[^0-9]/g, "").replace(/^0+(?=\d)/, "")) })}
+                                onChange={(e) => {
+                                    const val = String(e.target.value).replace(/[^0-9]/g, "").replace(/^0+(?=\d)/, "");
+                                    const isSerialized = selectedPartLot?.isSerialized ?? !!selectedPartLot?.serialNo;
+                                    // Nếu serialized, chỉ cho phép nhập 1
+                                    if (isSerialized && val !== "" && val !== "1") {
+                                        return; // Không cho phép nhập giá trị khác 1
+                                    }
+                                    setCreateForm({ ...createForm, quantity: val });
+                                }}
+                                disabled={selectedPartLot?.isSerialized ?? !!selectedPartLot?.serialNo}
+                                helperText={
+                                    selectedPartLot 
+                                        ? (selectedPartLot.isSerialized ?? !!selectedPartLot.serialNo 
+                                            ? "⚠️ Serialized: quantity phải = 1 (mỗi serial number là 1 đơn vị)" 
+                                            : "Non-serialized: có thể nhập quantity > 1")
+                                        : "Chọn Part Lot trước"
+                                }
                             />
                         </Grid>
                     </Grid>
