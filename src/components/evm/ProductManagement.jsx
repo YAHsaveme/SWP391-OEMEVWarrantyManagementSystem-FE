@@ -51,7 +51,57 @@ export default function EvModelsManagement() {
             const res = await axios.get(GET_ALL_MODELS, {
                 headers: { Authorization: `Bearer ${token}` }
             });
-            setModels(Array.isArray(res.data) ? res.data : []);
+            console.log("API Response (raw):", res.data);
+            // Normalize data để đảm bảo field name nhất quán
+            const normalized = Array.isArray(res.data) ? res.data.map(m => {
+                // Debug: log tất cả keys của object để xem field name thực tế
+                console.log(`Model ${m.modelCode || m.model || 'unknown'}:`, {
+                    allKeys: Object.keys(m),
+                    battery_kWh: m.battery_kWh,
+                    battery_kwh: m.battery_kwh,
+                    battery_k_wh: m.battery_k_wh,
+                    rawData: m
+                });
+                
+                // Xử lý battery_kWh: kiểm tra cả 3 format và lấy giá trị đầu tiên không null/undefined
+                // Ưu tiên: battery_kWh > battery_kwh > battery_k_wh
+                let batteryValue = null;
+                if (m.battery_kWh != null) {
+                    batteryValue = m.battery_kWh;
+                    console.log(`  → Using battery_kWh: ${batteryValue}`);
+                } else if (m.battery_kwh != null) {
+                    batteryValue = m.battery_kwh;
+                    console.log(`  → Using battery_kwh: ${batteryValue}`);
+                } else if (m.battery_k_wh != null) {
+                    batteryValue = m.battery_k_wh;
+                    console.log(`  → Using battery_k_wh: ${batteryValue}`);
+                } else {
+                    console.log(`  → All battery fields are null/undefined`);
+                }
+                
+                const normalizedModel = {
+                    ...m,
+                    // Set battery_kWh với giá trị đã normalize
+                    battery_kWh: batteryValue,
+                    // Xóa các field cũ để tránh confusion
+                    battery_kwh: undefined,
+                    battery_k_wh: undefined,
+                    motor_kW: m.motor_kW,
+                    range_km: m.range_km,
+                    top_speed_kmh: m.top_speed_kmh,
+                };
+                
+                console.log(`Normalized ${normalizedModel.modelCode || normalizedModel.model || 'unknown'}:`, {
+                    battery_kWh: normalizedModel.battery_kWh,
+                    motor_kW: normalizedModel.motor_kW,
+                    range_km: normalizedModel.range_km,
+                    top_speed_kmh: normalizedModel.top_speed_kmh
+                });
+                
+                return normalizedModel;
+            }) : [];
+            console.log("Final normalized data:", normalized);
+            setModels(normalized);
             setError("");
         } catch (e) {
             setError(e?.response?.data?.message || e.message || "Lỗi tải dữ liệu EV models");
@@ -69,7 +119,31 @@ export default function EvModelsManagement() {
                 headers: { Authorization: `Bearer ${token}` },
                 params: { q: qStr },
             });
-            setModels(Array.isArray(res.data) ? res.data : (res.data?.content || []));
+            const data = Array.isArray(res.data) ? res.data : (res.data?.content || []);
+            // Normalize data để đảm bảo field name nhất quán
+            // Xử lý cả battery_kWh, battery_kwh, và battery_k_wh
+            const normalized = data.map(m => {
+                // Xử lý battery_kWh: kiểm tra cả 3 format
+                let batteryValue = null;
+                if (m.battery_kWh != null) {
+                    batteryValue = m.battery_kWh;
+                } else if (m.battery_kwh != null) {
+                    batteryValue = m.battery_kwh;
+                } else if (m.battery_k_wh != null) {
+                    batteryValue = m.battery_k_wh;
+                }
+                
+                return {
+                    ...m,
+                    battery_kWh: batteryValue,
+                    battery_kwh: undefined,
+                    battery_k_wh: undefined,
+                    motor_kW: m.motor_kW,
+                    range_km: m.range_km,
+                    top_speed_kmh: m.top_speed_kmh,
+                };
+            });
+            setModels(normalized);
             setError("");
         } catch (e) {
             setError(e?.response?.data?.message || e.message || "Lỗi tìm kiếm EV models");
@@ -116,7 +190,7 @@ export default function EvModelsManagement() {
     const openCreate = () => {
         setMode("create");
         setForm({
-            modelCode: "", model: "", battery_kWh: "", motor_kW: "",
+            modelCode: "", model: "", vds: "", battery_kWh: "", motor_kW: "",
             range_km: "", top_speed_kmh: "", abs: true,
         });
         setOpen(true);
@@ -144,15 +218,41 @@ export default function EvModelsManagement() {
         setForm((s) => ({ ...s, [key]: value }));
     };
 
-    const toNum = (val) => Number(String(val ?? "").replace(",", "."));
+    const toNum = (val) => {
+        if (!val || val === "") return 0;
+        // Xử lý dấu phẩy và dấu chấm: thay tất cả dấu phẩy thành dấu chấm, loại bỏ khoảng trắng
+        const cleaned = String(val).replace(/,/g, ".").replace(/\s/g, "");
+        const num = Number(cleaned);
+        return Number.isNaN(num) ? 0 : num;
+    };
     const validate = () => {
         if (mode === "create" && !form.modelCode.trim()) return "Vui lòng nhập MÃ MODEL";
         if (!form.model.trim()) return "Vui lòng nhập TÊN MODEL";
-        const numbers = ["battery_kWh", "motor_kW", "range_km", "top_speed_kmh"];
-        for (const k of numbers) {
-            const v = toNum(form[k]);
-            if (Number.isNaN(v) || v < 0) return `Trường ${k} phải là số không âm`;
+        
+        // Validate Pin (kWh) - phải > 0
+        const battery_kWh = toNum(form.battery_kWh);
+        if (Number.isNaN(battery_kWh) || battery_kWh <= 0) {
+            return "Pin (kWh) phải là số dương (> 0)";
         }
+        
+        // Validate Motor (kW) - phải > 0
+        const motor_kW = toNum(form.motor_kW);
+        if (Number.isNaN(motor_kW) || motor_kW <= 0) {
+            return "Motor (kW) phải là số dương (> 0)";
+        }
+        
+        // Validate Range (km) - phải > 0
+        const range_km = toNum(form.range_km);
+        if (Number.isNaN(range_km) || range_km <= 0) {
+            return "Range (km) phải là số dương (> 0)";
+        }
+        
+        // Validate Tốc độ tối đa - phải > 0
+        const top_speed_kmh = toNum(form.top_speed_kmh);
+        if (Number.isNaN(top_speed_kmh) || top_speed_kmh <= 0) {
+            return "Tốc độ tối đa (km/h) phải là số dương (> 0)";
+        }
+        
         return "";
     };
 
@@ -165,35 +265,55 @@ export default function EvModelsManagement() {
         try {
             setBusy(true);
             if (mode === "create") {
-                await axios.post(CREATE_MODEL, {
+                const createPayload = {
                     modelCode: form.modelCode.trim(),
                     model: form.model.trim(),
                     vds: form.vds?.trim() || null,
-                    battery_kWh: toNum(form.battery_kWh),
-                    motor_kW: toNum(form.motor_kW),
-                    range_km: toNum(form.range_km),
-                    top_speed_kmh: toNum(form.top_speed_kmh),
+                    battery_kwh: toNum(form.battery_kWh) || 0,
+                    motor_kW: toNum(form.motor_kW) || 0,
+                    range_km: toNum(form.range_km) || 0,
+                    top_speed_kmh: toNum(form.top_speed_kmh) || 0,
                     abs: !!form.abs,
-                }, { headers: { Authorization: `Bearer ${token}` } });
+                };
+                console.log("Create payload:", JSON.stringify(createPayload, null, 2));
+                await axios.post(CREATE_MODEL, createPayload, { headers: { Authorization: `Bearer ${token}` } });
                 setToast({ open: true, type: "success", msg: "Tạo model thành công" });
             } else {
-                // Update: gửi kèm modelCode trong body
-                await axios.put(UPDATE_MODEL(form.modelCode.trim()), {
+                // Update: Backend yêu cầu modelCode trong body (theo Swagger)
+                const vdsValue = form.vds?.trim();
+                const updatePayload = {
                     modelCode: form.modelCode.trim(),
                     model: form.model.trim(),
-                    vds: form.vds?.trim() || null,
-                    battery_kWh: toNum(form.battery_kWh),
-                    motor_kW: toNum(form.motor_kW),
-                    range_km: toNum(form.range_km),
-                    top_speed_kmh: toNum(form.top_speed_kmh),
+                    vds: vdsValue && vdsValue.length > 0 ? vdsValue : null,
+                    battery_kwh: toNum(form.battery_kWh) || 0,
+                    motor_kW: toNum(form.motor_kW) || 0,
+                    range_km: toNum(form.range_km) || 0,
+                    top_speed_kmh: toNum(form.top_speed_kmh) || 0,
                     abs: !!form.abs,
-                }, { headers: { Authorization: `Bearer ${token}` } });
+                };
+                console.log("Update payload:", JSON.stringify(updatePayload, null, 2));
+                await axios.put(UPDATE_MODEL(form.modelCode.trim()), updatePayload, { headers: { Authorization: `Bearer ${token}` } });
                 setToast({ open: true, type: "success", msg: "Cập nhật model thành công" });
             }
             closeDialog();
             await fetchData();
         } catch (e) {
-            setToast({ open: true, type: "error", msg: e?.response?.data?.message || e.message });
+            // Xử lý error message từ backend
+            let errorMsg = "Lỗi không xác định";
+            if (e?.response?.data) {
+                const data = e.response.data;
+                // Nếu có details (validation errors), hiển thị chi tiết
+                if (data.details && Array.isArray(data.details) && data.details.length > 0) {
+                    const detailMessages = data.details.map(d => d.message || d).join(", ");
+                    errorMsg = `${data.message || "Dữ liệu không hợp lệ"}: ${detailMessages}`;
+                } else {
+                    errorMsg = data.message || data.error || JSON.stringify(data);
+                }
+            } else if (e?.message) {
+                errorMsg = e.message;
+            }
+            console.error("Error updating EV model:", e?.response?.data || e);
+            setToast({ open: true, type: "error", msg: errorMsg });
         } finally {
             setBusy(false);
         }
@@ -329,10 +449,10 @@ export default function EvModelsManagement() {
                                     <TableRow key={m.modelCode} hover>
                                         <TableCell sx={{ fontFamily: "monospace" }}>{m.modelCode}</TableCell>
                                         <TableCell>{m.model}</TableCell>
-                                        <TableCell>{m.battery_kWh}</TableCell>
-                                        <TableCell>{m.motor_kW}</TableCell>
-                                        <TableCell>{m.range_km}</TableCell>
-                                        <TableCell>{m.top_speed_kmh}</TableCell>
+                                        <TableCell>{m.battery_kWh != null ? m.battery_kWh : "—"}</TableCell>
+                                        <TableCell>{m.motor_kW != null ? m.motor_kW : "—"}</TableCell>
+                                        <TableCell>{m.range_km != null ? m.range_km : "—"}</TableCell>
+                                        <TableCell>{m.top_speed_kmh != null ? m.top_speed_kmh : "—"}</TableCell>
                                         <TableCell>
                                             <Chip size="small" label={m.abs ? "Có" : "Không"} color={m.abs ? "success" : "default"} />
                                         </TableCell>
@@ -382,12 +502,44 @@ export default function EvModelsManagement() {
                         <TextField label="Tên model" value={form.model} onChange={onChange("model")} required />
                         <TextField label="VDS" value={form.vds} onChange={onChange("vds")} placeholder="Tuỳ chọn" />
                         <Stack direction={{ xs: "column", sm: "row" }} gap={2}>
-                            <TextField label="Pin (kWh)" type="number" value={form.battery_kWh} onChange={onChange("battery_kWh")} />
-                            <TextField label="Motor (kW)" type="number" value={form.motor_kW} onChange={onChange("motor_kW")} />
+                            <TextField 
+                                label="Pin (kWh)" 
+                                type="number" 
+                                value={form.battery_kWh} 
+                                onChange={onChange("battery_kWh")}
+                                inputProps={{ min: 0.1, step: 0.1 }}
+                                helperText="Giá trị phải > 0 (bắt buộc)"
+                                required
+                            />
+                            <TextField 
+                                label="Motor (kW)" 
+                                type="number" 
+                                value={form.motor_kW} 
+                                onChange={onChange("motor_kW")}
+                                inputProps={{ min: 0.1, step: 0.1 }}
+                                helperText="Giá trị phải > 0 (bắt buộc)"
+                                required
+                            />
                         </Stack>
                         <Stack direction={{ xs: "column", sm: "row" }} gap={2}>
-                            <TextField label="Range (km)" type="number" value={form.range_km} onChange={onChange("range_km")} />
-                            <TextField label="Tốc độ tối đa (km/h)" type="number" value={form.top_speed_kmh} onChange={onChange("top_speed_kmh")} />
+                            <TextField 
+                                label="Range (km)" 
+                                type="number" 
+                                value={form.range_km} 
+                                onChange={onChange("range_km")}
+                                inputProps={{ min: 0.1, step: 0.1 }}
+                                helperText="Giá trị phải > 0 (bắt buộc)"
+                                required
+                            />
+                            <TextField 
+                                label="Tốc độ tối đa (km/h)" 
+                                type="number" 
+                                value={form.top_speed_kmh} 
+                                onChange={onChange("top_speed_kmh")}
+                                inputProps={{ min: 0.1, step: 0.1 }}
+                                helperText="Giá trị phải > 0 (bắt buộc)"
+                                required
+                            />
                         </Stack>
                         <FormControlLabel control={<Switch checked={form.abs} onChange={onChange("abs")} />} label="ABS" />
                     </Stack>
