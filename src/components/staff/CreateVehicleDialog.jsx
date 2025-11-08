@@ -14,7 +14,6 @@ import { LocalizationProvider, DateTimePicker } from "@mui/x-date-pickers";
 import { vi } from "date-fns/locale";
 import vehicleService from "../../services/vehicleService";
 import eventService from "../../services/eventService";
-import SearchIcon from "@mui/icons-material/Search";
 import ReportProblemIcon from "@mui/icons-material/ReportProblem";
 
 /* ====== CONFIG ====== */
@@ -87,6 +86,7 @@ export default function CreateVehicleDialog({ open, onClose, onCreated }) {
     const [loadingModel, setLoadingModel] = useState(false);
     const [checkingRecall, setCheckingRecall] = useState(false);
     const [modelLocked, setModelLocked] = useState(false); // Lock model sau khi lấy mẫu xe
+    const [recallResult, setRecallResult] = useState(null); // { hasRecall: boolean, events: [] } - chỉ set sau khi bấm Check Recall
 
     // ====== EV Models ======
     const [evModels, setEvModels] = useState([]);
@@ -148,6 +148,7 @@ export default function CreateVehicleDialog({ open, onClose, onCreated }) {
         const code = option?.modelCode || "";
         const name = option?.modelName || option?.name || option?.model || "";
         setFormData((s) => ({ ...s, modelCode: code, model: name || findModelName(code) }));
+        setRecallResult(null); // Reset recall result khi thay đổi modelCode
     };
 
     useEffect(() => {
@@ -157,6 +158,13 @@ export default function CreateVehicleDialog({ open, onClose, onCreated }) {
         }
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [evModels]);
+
+    // Reset recall result khi dialog đóng
+    useEffect(() => {
+        if (!open) {
+            setRecallResult(null);
+        }
+    }, [open]);
 
     // ⛳ Lấy mẫu xe từ VIN (theo BE: extract VDS từ VIN → tìm model theo VDS)
     const handleGetModelFromVin = async () => {
@@ -220,6 +228,7 @@ export default function CreateVehicleDialog({ open, onClose, onCreated }) {
                     model: foundModel.modelName || foundModel.name || foundModel.model || "",
                 }));
                 setModelLocked(true);
+                setRecallResult(null); // Reset recall result khi lấy model mới
                 setToast({ 
                     open: true, 
                     message: `✅ Đã tìm thấy mẫu xe: ${foundModel.modelCode}`, 
@@ -236,6 +245,7 @@ export default function CreateVehicleDialog({ open, onClose, onCreated }) {
                             model: modelData.modelName || modelData.name || modelData.model || "",
                         }));
                         setModelLocked(true);
+                        setRecallResult(null); // Reset recall result khi lấy model mới
                         setToast({ open: true, message: "✅ Đã lấy thông tin mẫu xe từ VIN.", severity: "success" });
                     }
                 } catch (apiErr) {
@@ -384,17 +394,20 @@ export default function CreateVehicleDialog({ open, onClose, onCreated }) {
             
             console.log("✅ Applicable recall events:", recallEvents);
             
+            // Lưu kết quả recall vào state
             if (recallEvents.length === 0) {
+                setRecallResult({ hasRecall: false, events: [] });
                 setToast({ 
                     open: true, 
-                    message: `Model "${formData.modelCode}" không thuộc chiến dịch recall nào.`, 
+                    message: `Model "${formData.modelCode}" không thuộc recall nào.`, 
                     severity: "success" 
                 });
             } else {
+                setRecallResult({ hasRecall: true, events: recallEvents });
                 const eventNames = recallEvents.map(e => e.name || e.title || e.code || "Recall Event").join(", ");
                 setToast({ 
                     open: true, 
-                    message: `⚠️ Model "${formData.modelCode}" thuộc ${recallEvents.length} chiến dịch recall: ${eventNames}`, 
+                    message: `⚠️ Model "${formData.modelCode}" thuộc ${recallEvents.length}  recall: ${eventNames}`, 
                     severity: "warning" 
                 });
             }
@@ -416,7 +429,7 @@ export default function CreateVehicleDialog({ open, onClose, onCreated }) {
 
     const validate = () => {
         const f = formData;
-        if (!f.vin || f.vin.trim().length < 11) return "VIN phải ≥ 11 ký tự.";
+        if (!f.vin || f.vin.trim().length < 17) return "VIN phải 17 ký tự.";
         if (!f.modelCode.trim()) return "Vui lòng chọn Model Code.";
         if (modelsLoading) return "Đang tải/kiểm tra Model Code, vui lòng đợi.";
         if (!f.model) return "Model Code không hợp lệ hoặc chưa được map sang Model.";
@@ -433,7 +446,7 @@ export default function CreateVehicleDialog({ open, onClose, onCreated }) {
 
         const phoneRaw = (f.intakeContactPhone || "").replace(/\s/g, "");
         if (!/^0\d{9,10}$/.test(phoneRaw) && !/^\+84\d{9,10}$/.test(phoneRaw) && !/^84\d{9,10}$/.test(phoneRaw)) {
-            return "Số điện thoại phải là 0xxxxxxxxx (hoặc +84/84 sẽ tự chuyển về 0).";
+            return "Số điện thoại phải là 0x..";
         }
         return null;
     };
@@ -525,6 +538,7 @@ export default function CreateVehicleDialog({ open, onClose, onCreated }) {
                 intakeContactPhone: "",
             });
             setModelLocked(false); // Reset lock khi tạo thành công
+            setRecallResult(null); // Reset recall result khi reset form
         } catch {
             setToast({ open: true, message: "Failed to create vehicle.", severity: "error" });
         } finally {
@@ -643,7 +657,18 @@ export default function CreateVehicleDialog({ open, onClose, onCreated }) {
                                                     ),
                                                 }}
                                                 placeholder={modelLocked ? "Đã lấy từ VIN" : "Nhấn 'Lấy mẫu xe' để tự động điền"}
-                                                helperText={modelLocked ? "Đã khóa sau khi lấy mẫu xe" : "Vui lòng nhấn 'Lấy mẫu xe' để tự động điền"}
+                                                helperText={
+                                                    recallResult?.hasRecall 
+                                                        ? "Xe thuộc Recall" 
+                                                        : recallResult !== null 
+                                                            ? "Xe không thuộc recall nào" 
+                                                            : modelLocked 
+                                                                ? "Nhấn nút ⚠️ để kiểm tra Recall" 
+                                                                : "Vui lòng nhấn 'Lấy mẫu xe' để tự động điền"
+                                                }
+                                                FormHelperTextProps={{
+                                                    sx: { fontWeight: "bold" }
+                                                }}
                                             />
                                         </Grid>
                                     </Grid>

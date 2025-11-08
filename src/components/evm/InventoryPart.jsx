@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState, useCallback } from "react";
 import {
     Box, Grid, TextField, MenuItem, Button, Paper, Typography,
     Table, TableHead, TableRow, TableCell, TableBody, TableContainer,
@@ -15,6 +15,7 @@ import {
 import centerService from "../../services/centerService";
 import inventoryPartService from "../../services/inventoryPartService";
 import inventoryLotService from "../../services/inventoryLotService";
+import partService from "../../services/partService";
 import { FormControl, InputLabel, Select } from "@mui/material";
 import axiosInstance from "../../services/axiosInstance";
 
@@ -32,6 +33,11 @@ function InventoryPartView({ onSwitch }) {
     const [page, setPage] = useState(0);
     const [size, setSize] = useState(10);
     const [totalPages, setTotalPages] = useState(0);
+
+    // Filter by Part
+    const [selectedPartId, setSelectedPartId] = useState(null);
+    const [parts, setParts] = useState([]);
+    const [partsLoading, setPartsLoading] = useState(false);
 
     // dialogs
     const [openCreate, setOpenCreate] = useState(false);
@@ -83,38 +89,107 @@ function InventoryPartView({ onSwitch }) {
         })();
     }, []);
 
-    // Tải tất cả tồn kho ban đầu (EVM + toàn bộ center)
+    // Load danh sách parts cho dropdown
+    const loadParts = async () => {
+        try {
+            setPartsLoading(true);
+            const data = await partService.getActive();
+            setParts(Array.isArray(data) ? data : []);
+        } catch (e) {
+            console.error(e);
+            notify("Không tải được danh sách phụ tùng", "error");
+        } finally {
+            setPartsLoading(false);
+        }
+    };
+
     useEffect(() => {
-        (async () => {
-            try {
-                setLoading(true);
-                const data = await inventoryPartService.getAll();
-                const parts = Array.isArray(data) ? data : (data?.inventoryParts || data?.content || []);
-                setAllItems(parts);
-                setItems(parts);
-                setTotalPages(1);
-                setPage(0);
-            } catch (e) {
-                console.error(e);
-                notify("Lỗi tải tất cả tồn kho", "error");
-            } finally {
-                setLoading(false);
-            }
-        })();
+        loadParts();
     }, []);
 
-    // Filter theo nguồn (Manufacturer / Center) và theo centerId đang chọn
-    const [sourceFilter, setSourceFilter] = useState("all"); // all | manufacturer | centers
+    // Function để load inventory parts theo partId
+    const loadPartsByPart = async (partId) => {
+        try {
+            setLoading(true);
+            const data = await inventoryPartService.listByPart(partId);
+            const parts = Array.isArray(data) ? data : (data?.inventoryParts || data?.content || []);
+            setAllItems(parts);
+            setTotalPages(1);
+            setPage(0);
+        } catch (e) {
+            console.error(e);
+            notify("Lỗi tải tồn kho theo phụ tùng", "error");
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    // Function để reload dữ liệu: ưu tiên listByPart > listByCenter > getAll
+    const reloadAll = async () => {
+        try {
+            setLoading(true);
+            let data;
+            if (selectedPartId) {
+                // Ưu tiên: filter theo part (xem part đó ở các center nào)
+                data = await inventoryPartService.listByPart(selectedPartId);
+            } else if (centerId) {
+                // Dùng API filter theo center (server-side)
+                data = await inventoryPartService.listByCenter(centerId);
+            } else {
+                // Load tất cả nếu không chọn center và part
+                data = await inventoryPartService.getAll();
+            }
+            const parts = Array.isArray(data) ? data : (data?.inventoryParts || data?.content || []);
+            setAllItems(parts);
+            setTotalPages(1);
+            setPage(0);
+        } catch (e) {
+            console.error(e);
+            notify("Lỗi tải tồn kho", "error");
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    // Tải tồn kho ban đầu khi vào trang
+    useEffect(() => {
+        reloadAll();
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []);
+
+    // Reload khi centerId hoặc selectedPartId thay đổi
+    useEffect(() => {
+        reloadAll();
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [centerId, selectedPartId]);
+
+    // Event listeners cho shipment-received, shipment-dispatch và inventory-center-reload
+    // Tự động reload khi SC-Staff receive hoặc EVM dispatch
+    useEffect(() => {
+        const onReload = (ev) => {
+            const cid = ev?.detail?.centerId;
+            // Nếu có centerId trong event và đang filter theo center đó, hoặc không filter theo center
+            if (!cid || !centerId || String(cid) === String(centerId)) {
+                notify("Đã nhận sự kiện cập nhật tồn kho. Đang làm mới dữ liệu...", "info");
+                reloadAll();
+            } else {
+                notify(`Có cập nhật tồn kho từ center ${cid}. Bạn đang xem center khác.`, "info");
+            }
+        };
+        window.addEventListener("shipment-received", onReload);
+        window.addEventListener("shipment-dispatch", onReload);
+        window.addEventListener("inventory-center-reload", onReload);
+        return () => {
+            window.removeEventListener("shipment-received", onReload);
+            window.removeEventListener("shipment-dispatch", onReload);
+            window.removeEventListener("inventory-center-reload", onReload);
+        };
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [centerId, notify]);
+
+    // Filter theo search text (client-side, vì search API có thể không hỗ trợ centerId)
     useEffect(() => {
         let list = [...allItems];
-        if (sourceFilter === "manufacturer") {
-            list = list.filter(it => !it.centerId || String(it.centerName || "").toLowerCase().includes("manufacturer"));
-        } else if (sourceFilter === "centers") {
-            list = list.filter(it => it.centerId);
-        }
-        if (centerId) {
-            list = list.filter(it => String(it.centerId) === String(centerId));
-        }
         // Search text (nếu có)
         const kw = q.trim().toLowerCase();
         if (kw) {
@@ -126,28 +201,7 @@ function InventoryPartView({ onSwitch }) {
         setItems(list);
         setTotalPages(1);
         setPage(0);
-    }, [allItems, sourceFilter, centerId, q]);
-
-    const loadByCenter = async () => {
-        if (!centerId) return notify("Hãy chọn trung tâm", "warning");
-        try {
-            setLoading(true);
-            const data = await inventoryPartService.listByCenter(centerId);
-            const parts = Array.isArray(data)
-                ? data
-                : data?.inventoryParts || data?.content || [];
-            setItems(parts);
-            setTotalPages(1);
-            setPage(0);
-            notify("Đã tải inventory theo center", "success");
-        } catch (e) {
-            console.error(e);
-            notify("Lỗi tải inventory theo center", "error");
-            setItems([]);
-        } finally {
-            setLoading(false);
-        }
-    };
+    }, [allItems, q]);
 
     const handleSearch = async () => {
         try {
@@ -238,7 +292,7 @@ function InventoryPartView({ onSwitch }) {
             await inventoryPartService.create(body);
             notify("Tạo inventory part thành công", "success");
             setOpenCreate(false);
-            await loadByCenter();
+            await reloadAll();
         } catch (e) {
             console.error(e);
             const msg = e?.response?.data?.message || e?.message || "";
@@ -302,7 +356,7 @@ function InventoryPartView({ onSwitch }) {
             await inventoryPartService.update(editing.id, body);
             notify("Cập nhật thành công", "success");
             setOpenEdit(false);
-            await loadByCenter();
+            await reloadAll();
         } catch (e) {
             console.error(e);
             notify("Không thể cập nhật", "error");
@@ -321,7 +375,7 @@ function InventoryPartView({ onSwitch }) {
 
             {/* Toolbar */}
             <Grid container spacing={2} alignItems="center" mb={2}>
-                <Grid item xs={12} md={4}>
+                <Grid item xs={12} md={3}>
                     <TextField
                         select
                         fullWidth
@@ -340,42 +394,57 @@ function InventoryPartView({ onSwitch }) {
                 </Grid>
 
                 <Grid item xs={12} md={3}>
-                    <TextField
-                        select
-                        fullWidth
+                    <Autocomplete
                         size="small"
-                        label="Nguồn kho"
-                        value={sourceFilter}
-                        onChange={(e) => setSourceFilter(e.target.value)}
-                    >
-                        <MenuItem value="all">Tất cả</MenuItem>
-                        <MenuItem value="manufacturer">Manufacturer</MenuItem>
-                        <MenuItem value="centers">Service Centers</MenuItem>
-                    </TextField>
+                        options={parts}
+                        getOptionLabel={(option) => option.partName || ""}
+                        loading={partsLoading}
+                        value={parts.find(p => p.id === selectedPartId) || null}
+                        onChange={(event, newValue) => {
+                            setSelectedPartId(newValue?.id || null);
+                        }}
+                        renderInput={(params) => (
+                            <TextField
+                                {...params}
+                                label="Chọn Phụ tùng"
+                                placeholder="Xem phụ tùng ở các trung tâm nào"
+                            />
+                        )}
+                        renderOption={(props, option) => (
+                            <li {...props} key={option.id}>
+                                {option.partName}
+                            </li>
+                        )}
+                    />
                 </Grid>
 
                 <Grid item xs="auto">
-                    <Button variant="contained" onClick={loadByCenter} disabled={!centerId || loading}>
-                        {loading ? <CircularProgress size={20} /> : "Tải theo Center"}
-                    </Button>
+                    <Tooltip title="Làm mới và xóa bộ lọc">
+                        <IconButton
+                            onClick={() => {
+                                setSelectedPartId(null);
+                                setCenterId("");
+                                setQ("");
+                                reloadAll();
+                            }}
+                            disabled={loading}
+                        >
+                            <RefreshIcon />
+                        </IconButton>
+                    </Tooltip>
                 </Grid>
 
                 <Grid item xs={12} md={3}>
                     <TextField
                         size="small"
                         fullWidth
-                        placeholder="Tìm theo tên/part/..."
+                        placeholder="Tìm theo Center/partName"
                         value={q}
                         onChange={(e) => setQ(e.target.value)}
                         InputProps={{ startAdornment: <SearchIcon sx={{ mr: 1, opacity: .6 }} /> }}
                     />
                 </Grid>
                 
-                <Grid item xs="auto">
-                    <Button variant="outlined" startIcon={<RefreshIcon />} onClick={() => { setQ(""); setItems([]); }}>
-                        Clear
-                    </Button>
-                </Grid>
                 <Grid item xs="auto">
                     <Button
                         variant="outlined"
@@ -591,6 +660,7 @@ function InventoryLotView({ onSwitch }) {
     const [centerId, setCenterId] = useState("");
     const [manufacturerCenterId, setManufacturerCenterId] = useState("");
 
+    const [allItems, setAllItems] = useState([]); // dữ liệu tổng ban đầu (tất cả inventory lots)
     const [items, setItems] = useState([]);
     const [summaryMode, setSummaryMode] = useState(false);
     const [summaryItems, setSummaryItems] = useState([]);
@@ -621,7 +691,9 @@ function InventoryLotView({ onSwitch }) {
 
     const [snack, setSnack] = useState({ open: false, message: "", severity: "info" });
 
-    const notify = (message, severity = "info") => setSnack({ open: true, message, severity });
+    const notify = useCallback((message, severity = "info") => {
+        setSnack({ open: true, message, severity });
+    }, []);
 
     const columns = useMemo(() => {
         if (!items?.length) return [];
@@ -640,6 +712,32 @@ function InventoryLotView({ onSwitch }) {
         return keys.filter((k) => !hidden.has(k));
     }, [items]);
 
+    // Function để reload dữ liệu: dùng API listByCenterWithId nếu có centerId, getAll nếu không
+    const reloadAll = useCallback(async () => {
+        try {
+            setLoading(true);
+            let data;
+            if (centerId) {
+                // Dùng API filter theo center (server-side)
+                data = await inventoryLotService.listByCenterWithId(centerId);
+            } else {
+                // Load tất cả nếu không chọn center
+                data = await inventoryLotService.getAll();
+            }
+            const lots = Array.isArray(data) ? data : (data?.inventoryLots || data?.content || []);
+            setAllItems(lots);
+            setSummaryMode(false);
+            setTotalPages(1);
+            setPage(0);
+        } catch (e) {
+            console.error(e);
+            notify("Lỗi tải inventory lots", "error");
+        } finally {
+            setLoading(false);
+        }
+    }, [notify, centerId]);
+
+    // Load centers khi vào trang
     useEffect(() => {
         (async () => {
             try {
@@ -656,12 +754,16 @@ function InventoryLotView({ onSwitch }) {
                 notify("Không tải được danh sách trung tâm", "error");
             }
         })();
+    }, [notify]);
+
+    // Event listeners cho shipment-received và inventory-center-reload
+    useEffect(() => {
         const onReload = (ev) => {
             const cid = ev?.detail?.centerId;
             if (!cid) return;
             if (String(cid) === String(centerId)) {
                 notify("Đã nhận sự kiện Receive. Đang cập nhật tồn kho...", "info");
-                loadByCenter();
+                reloadAll();
             } else {
                 notify(`Có cập nhật tồn kho từ center ${cid}. Bạn đang xem center khác.`, "info");
             }
@@ -672,29 +774,40 @@ function InventoryLotView({ onSwitch }) {
             window.removeEventListener("shipment-received", onReload);
             window.removeEventListener("inventory-center-reload", onReload);
         };
-    }, []);
+    }, [centerId, reloadAll, notify]);
 
-    const loadByCenter = async () => {
-        if (!centerId) return notify("Hãy chọn trung tâm", "warning");
-        try {
-            setLoading(true);
-            const data = await inventoryLotService.listByCenterWithId(centerId);
-            const lots = Array.isArray(data)
-                ? data
-                : data?.inventoryLots || data?.content || [];
-            setItems(lots);
-            setTotalPages(1);
-            setPage(0);
-            setSummaryMode(false);
-            notify("Đã tải inventory theo center", "success");
-        } catch (e) {
-            console.error(e);
-            notify("Lỗi tải inventory theo center", "error");
-            setItems([]);
-        } finally {
-            setLoading(false);
+    // Tải inventory lots ban đầu khi vào trang
+    useEffect(() => {
+        reloadAll();
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []); // Chỉ chạy 1 lần khi mount
+
+    // Reload khi centerId thay đổi (dùng API listByCenterWithId)
+    useEffect(() => {
+        if (!summaryMode) {
+            reloadAll();
         }
-    };
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [centerId]);
+
+    // Filter theo search text (client-side, vì search API có thể không hỗ trợ centerId)
+    useEffect(() => {
+        if (summaryMode) return; // Không filter khi đang ở summary mode
+        
+        let list = [...allItems];
+        // Search text (nếu có)
+        const kw = q.trim().toLowerCase();
+        if (kw) {
+            list = list.filter(it =>
+                String(it.partName || it.part?.name || "").toLowerCase().includes(kw) ||
+                String(it.centerName || it.centerId || "").toLowerCase().includes(kw) ||
+                String(it.partNo || it.part?.partNo || "").toLowerCase().includes(kw)
+            );
+        }
+        setItems(list);
+        setTotalPages(1);
+        setPage(0);
+    }, [allItems, q, summaryMode]);
 
     // search API không sử dụng cho Lots (theo BE hiện tại)
 
@@ -738,11 +851,39 @@ function InventoryLotView({ onSwitch }) {
             // Kiểm tra serialized/non-serialized
             const partLot = selectedPartLot || partLotOptions.find(p => p.id === finalPartLotId);
             const isSerialized = partLot?.isSerialized ?? !!partLot?.serialNo;
+            const serialNo = partLot?.serialNo;
             
             if (isSerialized) {
                 // Serialized: quantity phải = 1
                 if (finalQuantity !== 1) {
                     return notify("Phụ tùng serialized chỉ có thể tạo với quantity = 1. Mỗi serial number là 1 đơn vị.", "warning");
+                }
+                
+                // Kiểm tra SerialNo đã tồn tại trong toàn hệ thống chưa (không cho trùng ở 2 center)
+                if (serialNo) {
+                    try {
+                        const allInventoryLots = await inventoryLotService.getAll();
+                        const inventoryLotsArray = Array.isArray(allInventoryLots) 
+                            ? allInventoryLots 
+                            : (Array.isArray(allInventoryLots?.inventoryLots) ? allInventoryLots.inventoryLots : []);
+                        
+                        // Tìm Inventory Lot có cùng SerialNo (kiểm tra toàn hệ thống)
+                        const existingInventoryLot = inventoryLotsArray.find(invLot => {
+                            const invSerialNo = invLot.serialNo || invLot.partLotSerialNo || invLot.partLot?.serialNo;
+                            return invSerialNo && String(invSerialNo).trim().toLowerCase() === String(serialNo).trim().toLowerCase();
+                        });
+                        
+                        if (existingInventoryLot) {
+                            const existingCenterName = existingInventoryLot.centerName || existingInventoryLot.center?.name || "center khác";
+                            return notify(
+                                `Serial No "${serialNo}" đã tồn tại ở "${existingCenterName}". Serial number phải unique toàn hệ thống.`,
+                                "error"
+                            );
+                        }
+                    } catch (e) {
+                        console.warn("Không thể kiểm tra serialized unique:", e);
+                        // Vẫn tiếp tục, để backend validate
+                    }
                 }
             } else {
                 // Non-serialized: quantity phải > 0
@@ -768,7 +909,7 @@ function InventoryLotView({ onSwitch }) {
             setOpenCreate(false);
             setCreateForm({ centerId: "", partLotId: "", quantity: "" });
             setSelectedPartLot(null);
-            loadByCenter();
+            await reloadAll();
         } catch (e) {
             console.error("❌ Create Inventory Lot Error:", e);
             console.error("❌ Error Response:", e?.response?.data);
@@ -778,12 +919,23 @@ function InventoryLotView({ onSwitch }) {
             let errorMsg = "Lỗi khi tạo lô tồn kho";
             if (e?.response?.data) {
                 const errorData = e.response.data;
+                let rawMessage = "";
                 if (errorData.message) {
-                    errorMsg = errorData.message;
+                    rawMessage = errorData.message;
                 } else if (errorData.error) {
-                    errorMsg = errorData.error;
+                    rawMessage = errorData.error;
                 } else if (Array.isArray(errorData.details) && errorData.details.length > 0) {
-                    errorMsg = errorData.details.map(d => d.message || d).join(", ");
+                    rawMessage = errorData.details.map(d => d.message || d).join(", ");
+                }
+                
+                // Format lại thông báo lỗi dài từ backend
+                if (rawMessage.includes("Đã tồn tại InventoryLot") && rawMessage.includes("serialized")) {
+                    errorMsg = "Part Lot serialized này đã có Inventory Lot ở center này. Mỗi Part Lot serial chỉ được có 1 Inventory Lot tại mỗi center.";
+                } else if (rawMessage.includes("Serial No") || rawMessage.includes("Serial number")) {
+                    // Giữ nguyên thông báo về Serial No từ service validation
+                    errorMsg = rawMessage;
+                } else {
+                    errorMsg = rawMessage;
                 }
             } else if (e?.message) {
                 errorMsg = e.message;
@@ -817,7 +969,7 @@ function InventoryLotView({ onSwitch }) {
             await inventoryLotService.update(editing.id, body);
             notify("Cập nhật thành công", "success");
             setOpenEdit(false);
-            await loadByCenter();
+            await reloadAll();
         } catch (e) {
             console.error(e);
             notify("Không thể cập nhật", "error");
@@ -837,7 +989,7 @@ function InventoryLotView({ onSwitch }) {
             await inventoryLotService.adjustQuantity(adjustForm);
             notify("Điều chỉnh tồn kho thành công", "success");
             setOpenAdjust(false);
-            await loadByCenter();
+            await reloadAll();
         } catch (e) {
             console.error(e);
             notify("Điều chỉnh thất bại", "error");
@@ -870,20 +1022,6 @@ function InventoryLotView({ onSwitch }) {
                     </TextField>
                 </Grid>
 
-                <Grid item xs="auto">
-                    <Button variant="contained" onClick={loadByCenter} disabled={!centerId || loading}>
-                        {loading ? <CircularProgress size={20} /> : "Tải theo Center"}
-                    </Button>
-                </Grid>
-
-                <Grid item xs="auto">
-                    <Button variant="outlined" onClick={async () => {
-                        try { setLoading(true); const data = await inventoryLotService.getAll();
-                            const lots = Array.isArray(data) ? data : (data?.inventoryLots || data?.content || []);
-                            setItems(lots); setSummaryMode(false); setTotalPages(1); setPage(0); notify("Đã tải tất cả lô", "success");
-                        } catch (e) { console.error(e); notify("Lỗi tải tất cả lô", "error"); } finally { setLoading(false); }
-                    }}>Tải tất cả</Button>
-                </Grid>
                 <Grid item xs="auto">
                     <Button variant="outlined" onClick={async () => {
                         if (!centerId) return notify("Hãy chọn trung tâm", "warning");

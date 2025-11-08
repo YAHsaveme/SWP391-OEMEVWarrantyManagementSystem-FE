@@ -9,13 +9,13 @@ import AddIcon from "@mui/icons-material/Add";
 import SearchIcon from "@mui/icons-material/Search";
 import VerifiedUserIcon from "@mui/icons-material/VerifiedUser";
 import EditOutlinedIcon from "@mui/icons-material/EditOutlined";
-import ReportProblemIcon from "@mui/icons-material/ReportProblem";
 import ChevronLeftIcon from "@mui/icons-material/ChevronLeft";
 import ChevronRightIcon from "@mui/icons-material/ChevronRight";
 
 import CreateVehicleDialog from "./CreateVehicleDialog.jsx";
 import UpdateVehicleDialog from "./UpdateVehicleDialog.jsx";
 import eventService from "../../services/eventService";
+import vehicleService from "../../services/vehicleService";
 
 /* ================== API BASE ================== */
 const API_BASE = "http://localhost:8080";
@@ -113,6 +113,7 @@ export default function VehiclesPage() {
     const [page, setPage] = useState(1);
     const [vehicals, setVehicals] = useState([]); // giữ nguyên tên biến của bạn
     const [error, setError] = useState(null);
+    const [loading, setLoading] = useState(false);
     const pageSize = 10;
 
     const [confirmOpen, setConfirmOpen] = useState(false);
@@ -130,6 +131,7 @@ export default function VehiclesPage() {
             clearTokensAndGotoLogin("Chưa có token. Vui lòng đăng nhập lại.");
             return;
         }
+        setLoading(true);
         try {
             const res = await api.get("/api/vehicles/get-all", { validateStatus: () => true });
 
@@ -151,12 +153,47 @@ export default function VehiclesPage() {
         } catch (err) {
             console.error("❌ Axios Error:", err);
             setError(err.message);
+        } finally {
+            setLoading(false);
+        }
+    }, []);
+
+    // Fetch với search API
+    const fetchVehiclesWithSearch = useCallback(async (query) => {
+        const token = getToken();
+        if (!token) {
+            setError("❌ Chưa có token. Vui lòng đăng nhập lại.");
+            clearTokensAndGotoLogin("Chưa có token. Vui lòng đăng nhập lại.");
+            return;
+        }
+        setLoading(true);
+        try {
+            const list = await vehicleService.search(query);
+            const arr = Array.isArray(list) ? list : (list?.data || list?.vehicles || []);
+            setVehicals(arr);
+            setError(null);
+        } catch (err) {
+            console.error("❌ Search Error:", err);
+            const msg = err?.response?.data?.message || err?.message || "Lỗi tìm kiếm";
+            setError(msg);
+            setVehicals([]);
+        } finally {
+            setLoading(false);
         }
     }, []);
 
     useEffect(() => {
-        fetchVehicles();
-    }, [fetchVehicles]);
+        setPage(1); // Reset về trang 1 khi search query thay đổi
+        if (searchQuery.trim()) {
+            // Debounce search để tránh gọi API quá nhiều
+            const timeoutId = setTimeout(() => {
+                fetchVehiclesWithSearch(searchQuery.trim());
+            }, 500);
+            return () => clearTimeout(timeoutId);
+        } else {
+            fetchVehicles();
+        }
+    }, [searchQuery, fetchVehicles, fetchVehiclesWithSearch]);
 
     const handleCreated = () => {
         setCreateOpen(false);
@@ -170,41 +207,28 @@ export default function VehiclesPage() {
         setSnack({ open: true, message: "✅ Đã cập nhật xe", severity: "success" });
     };
 
-    /* ===== Filter + Sort + Pagination ===== */
+    /* ===== Sort + Pagination ===== */
+    // Filter đã được xử lý bởi API search, chỉ cần sort client-side
     const getCreatedAtMs = useCallback((v) => {
         const iso = v?.createdAt ?? v?.createAt ?? v?.create_at ?? v?.created_at;
         const d = iso ? new Date(iso) : null;
         return d && !isNaN(d.getTime()) ? d.getTime() : -Infinity;
     }, []);
 
-    const filteredSorted = useMemo(() => {
-        const q = searchQuery.trim().toLowerCase();
-        const safe = (v) => (typeof v === "string" ? v.toLowerCase() : "");
-
-        let arr = vehicals;
-        if (q) {
-            arr = vehicals.filter((v) =>
-                safe(v?.vin).includes(q) ||
-                safe(v?.model).includes(q) ||
-                safe(v?.modelCode).includes(q) ||
-                safe(v?.intakeContactName).includes(q) ||
-                safe(v?.intakeContactPhone).includes(q)
-            );
-        }
-
-        // sort theo dropdown
-        return [...arr].sort((a, b) =>
+    const sorted = useMemo(() => {
+        // Sort theo dropdown (client-side)
+        return [...vehicals].sort((a, b) =>
             sortOrder === "newest"
                 ? getCreatedAtMs(b) - getCreatedAtMs(a)
                 : getCreatedAtMs(a) - getCreatedAtMs(b)
         );
-    }, [searchQuery, vehicals, getCreatedAtMs, sortOrder]);
+    }, [vehicals, getCreatedAtMs, sortOrder]);
 
-    const totalPages = Math.max(1, Math.ceil(filteredSorted.length / pageSize));
+    const totalPages = Math.max(1, Math.ceil(sorted.length / pageSize));
     const pageItems = useMemo(() => {
         const start = (page - 1) * pageSize;
-        return filteredSorted.slice(start, start + pageSize);
-    }, [filteredSorted, page]);
+        return sorted.slice(start, start + pageSize);
+    }, [sorted, page]);
 
     useEffect(() => {
         if (page > totalPages) setPage(1);
@@ -432,15 +456,6 @@ export default function VehiclesPage() {
                                             </IconButton>
                                             <IconButton
                                                 size="small"
-                                                color="warning"
-                                                onClick={() => onCheckRecall(v)}
-                                                disabled={!v.vin || checkingRecall}
-                                                title="Kiểm tra Recall theo VIN"
-                                            >
-                                                {checkingRecall ? <CircularProgress size={16} /> : <ReportProblemIcon fontSize="small" />}
-                                            </IconButton>
-                                            <IconButton
-                                                size="small"
                                                 color="inherit"
                                                 onClick={() => { setSelectedVehicle(v); setUpdateOpen(true); }}
                                                 title="Chỉnh sửa"
@@ -452,7 +467,14 @@ export default function VehiclesPage() {
                                 </TableRow>
                             ))}
 
-                            {pageItems.length === 0 && (
+                            {loading && pageItems.length === 0 && (
+                                <TableRow>
+                                    <TableCell colSpan={9} align="center" sx={{ py: 6 }}>
+                                        <CircularProgress size={24} />
+                                    </TableCell>
+                                </TableRow>
+                            )}
+                            {!loading && pageItems.length === 0 && (
                                 <TableRow>
                                     <TableCell colSpan={9} align="center" sx={{ py: 6, color: "text.secondary" }}>
                                         {error ? `Lỗi tải dữ liệu: ${error}` : "No vehicles found."}
@@ -468,8 +490,8 @@ export default function VehiclesPage() {
                     page={page}
                     setPage={setPage}
                     pageSize={pageSize}
-                    total={filteredSorted.length}
-                    totalPages={Math.max(1, Math.ceil(filteredSorted.length / pageSize))}
+                    total={sorted.length}
+                    totalPages={Math.max(1, Math.ceil(sorted.length / pageSize))}
                 />
             </Card>
 

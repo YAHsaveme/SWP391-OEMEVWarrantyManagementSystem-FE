@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from "react";
+import React, { useMemo, useState, useEffect } from "react";
 import {
     Container,
     Box,
@@ -11,55 +11,62 @@ import {
     Stack,
     Paper,
     Button,
+    CircularProgress,
+    Alert,
 } from "@mui/material";
 import SearchIcon from "@mui/icons-material/Search";
 import BatteryChargingFullIcon from "@mui/icons-material/BatteryChargingFull";
 import SpeedIcon from "@mui/icons-material/Speed";
 import BoltIcon from "@mui/icons-material/Bolt";
-
-const mockModels = [
-    {
-        modelCode: "MODEL-S-2024",
-        modelName: "Model S",
-        manufacturer: "Tesla",
-        year: 2024,
-        batteryCapacity: "100 kWh",
-        range: "405 miles",
-        chargingSpeed: "250 kW",
-    },
-    {
-        modelCode: "MODEL-3-2024",
-        modelName: "Model 3",
-        manufacturer: "Tesla",
-        year: 2024,
-        batteryCapacity: "82 kWh",
-        range: "358 miles",
-        chargingSpeed: "250 kW",
-    },
-    {
-        modelCode: "IONIQ-5-2024",
-        modelName: "IONIQ 5",
-        manufacturer: "Hyundai",
-        year: 2024,
-        batteryCapacity: "77.4 kWh",
-        range: "303 miles",
-        chargingSpeed: "350 kW",
-    },
-];
+import evModelService from "../../services/evModelService";
 
 export default function EvModelsPage() {
     const [searchQuery, setSearchQuery] = useState("");
+    const [models, setModels] = useState([]);
+    const [loading, setLoading] = useState(true);
+    const [error, setError] = useState("");
+
+    // Load data từ API
+    useEffect(() => {
+        const fetchModels = async () => {
+            try {
+                setLoading(true);
+                setError("");
+                const data = await evModelService.getAll();
+                // Normalize data từ API
+                const normalized = Array.isArray(data) ? data.map(m => ({
+                    modelCode: m.modelCode || "",
+                    modelName: m.model || "",
+                    manufacturer: m.manufacturer || "—",
+                    year: m.year || new Date().getFullYear(),
+                    batteryCapacity: m.battery_kWh ? `${m.battery_kWh} kWh` : "—",
+                    range: m.range_km ? `${m.range_km} km` : "—",
+                    chargingSpeed: m.motor_kW ? `${m.motor_kW} kW` : "—",
+                    topSpeed: m.top_speed_kmh ? `${m.top_speed_kmh} km/h` : "—",
+                    abs: m.abs || false,
+                    vds: m.vds || "",
+                })) : [];
+                setModels(normalized);
+            } catch (err) {
+                console.error("Failed to load EV models:", err);
+                setError(err?.response?.data?.message || err?.message || "Lỗi tải danh sách EV Models");
+            } finally {
+                setLoading(false);
+            }
+        };
+        fetchModels();
+    }, []);
 
     const filtered = useMemo(() => {
         const q = searchQuery.trim().toLowerCase();
-        if (!q) return mockModels;
-        return mockModels.filter(
+        if (!q) return models;
+        return models.filter(
             (m) =>
                 m.modelName.toLowerCase().includes(q) ||
                 m.manufacturer.toLowerCase().includes(q) ||
                 m.modelCode.toLowerCase().includes(q)
         );
-    }, [searchQuery]);
+    }, [searchQuery, models]);
 
     return (
         <Container maxWidth="lg" sx={{ py: 5 }}>
@@ -90,9 +97,35 @@ export default function EvModelsPage() {
                 </CardContent>
             </Card>
 
+            {/* Error Message */}
+            {error && (
+                <Alert severity="error" sx={{ mb: 3 }} onClose={() => setError("")}>
+                    {error}
+                </Alert>
+            )}
+
+            {/* Loading */}
+            {loading && (
+                <Box display="flex" justifyContent="center" alignItems="center" minHeight="200px">
+                    <CircularProgress />
+                </Box>
+            )}
+
             {/* Models Grid */}
-            <Grid container spacing={3}>
-                {filtered.map((model) => (
+            {!loading && (
+                <Grid container spacing={3}>
+                    {filtered.length === 0 ? (
+                        <Grid item xs={12}>
+                            <Card>
+                                <CardContent>
+                                    <Typography align="center" color="text.secondary">
+                                        {error ? "Không thể tải dữ liệu" : "Không tìm thấy EV Model nào"}
+                                    </Typography>
+                                </CardContent>
+                            </Card>
+                        </Grid>
+                    ) : (
+                        filtered.map((model) => (
                     <Grid key={model.modelCode} item xs={12} sm={6} md={4}>
                         <Card elevation={3} sx={{ height: "100%", transition: "box-shadow .2s", "&:hover": { boxShadow: 8 } }}>
                             <CardContent>
@@ -134,8 +167,10 @@ export default function EvModelsPage() {
                             </CardContent>
                         </Card>
                     </Grid>
-                ))}
-            </Grid>
+                        ))
+                    )}
+                </Grid>
+            )}
         </Container>
     );
 }
