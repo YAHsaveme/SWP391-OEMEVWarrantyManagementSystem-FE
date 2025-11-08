@@ -105,6 +105,67 @@ const inventoryLotService = {
 
     /** ⚙️ EVM_STAFF: POST /api/inventory-lots/create */
     create: async (body) => {
+        // Kiểm tra serialized không được trùng ở 2 center - SerialNo phải unique toàn hệ thống
+        const { partLotId, centerId } = body;
+        if (partLotId) {
+            let partLot = null;
+            let serialNo = null;
+            
+            try {
+                // Load thông tin Part Lot để kiểm tra có serialized không
+                const partLotRes = await axiosInstance.get(`/part-lots/${encodeURIComponent(partLotId)}/get`, {
+                    headers: authHeader(),
+                });
+                partLot = partLotRes?.data;
+                serialNo = partLot?.serialNo;
+                const isSerialized = !!serialNo;
+                
+                if (isSerialized && serialNo) {
+                    console.log(`[InventoryLot.create] Checking serialized unique for SerialNo: ${serialNo}, PartLotId: ${partLotId}`);
+                    
+                    // Nếu là serialized, kiểm tra SerialNo đã tồn tại trong toàn hệ thống chưa
+                    const allInventoryLots = await inventoryLotService.getAll();
+                    const inventoryLotsArray = Array.isArray(allInventoryLots) 
+                        ? allInventoryLots 
+                        : (Array.isArray(allInventoryLots?.inventoryLots) ? allInventoryLots.inventoryLots : []);
+                    
+                    console.log(`[InventoryLot.create] Found ${inventoryLotsArray.length} inventory lots in system`);
+                    
+                    // Tìm Inventory Lot có cùng SerialNo (không phân biệt partLotId, kiểm tra toàn hệ thống)
+                    const existingInventoryLot = inventoryLotsArray.find(invLot => {
+                        const invSerialNo = invLot.serialNo || invLot.partLotSerialNo || invLot.partLot?.serialNo;
+                        if (!invSerialNo) return false;
+                        const serialNoMatch = String(invSerialNo).trim().toLowerCase() === String(serialNo).trim().toLowerCase();
+                        if (serialNoMatch) {
+                            console.log(`[InventoryLot.create] Found duplicate SerialNo: ${serialNo} in InventoryLot ID: ${invLot.id}, Center: ${invLot.centerId || invLot.center?.id}`);
+                        }
+                        return serialNoMatch;
+                    });
+                    
+                    if (existingInventoryLot) {
+                        const existingCenterName = existingInventoryLot.centerName || existingInventoryLot.center?.name || "center khác";
+                        const errorMsg = `Serial No "${serialNo}" đã tồn tại ở "${existingCenterName}". Serial number phải unique toàn hệ thống.`;
+                        console.error(`[InventoryLot.create] ${errorMsg}`);
+                        throw new Error(errorMsg);
+                    }
+                    
+                    console.log(`[InventoryLot.create] SerialNo ${serialNo} is unique, proceeding with create`);
+                }
+            } catch (e) {
+                // Nếu là error từ validation trên, throw lại
+                if (e?.message && (e.message.includes("Serial No") || e.message.includes("Serial number"))) {
+                    throw e;
+                }
+                // Nếu không load được Part Lot, vẫn tiếp tục và để backend validate
+                // Nhưng log warning để debug
+                console.warn(`[InventoryLot.create] Không thể kiểm tra serialized unique. PartLotId: ${partLotId}, Error:`, e);
+                // Nếu là lỗi 404 (không tìm thấy Part Lot), có thể Part Lot không tồn tại
+                if (e?.response?.status === 404) {
+                    console.warn(`[InventoryLot.create] Part Lot ${partLotId} not found, backend will validate`);
+                }
+            }
+        }
+        
         const { data } = await axiosInstance.post(`${API}/create`, body, { headers: authHeader() });
         return data;
     },
