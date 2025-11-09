@@ -1,92 +1,134 @@
+// src/services/vehicleService.js
 import api from "./axiosInstance";
 
-const BASE_URL = "/vehicles"; // axiosInstance đã có baseURL = "/api", nên không cần /api nữa
+const BASE_URL = "/vehicles"; // axiosInstance đã có baseURL = http://localhost:8080/api/
 
 const vehicleService = {
-  // Lấy tất cả xe (có thể phân trang, lọc theo trung tâm, model,...)
-  getAll: async (params = {}) => {
-    const response = await api.get(BASE_URL, { params });
-    return response.data;
-  },
-
-  // Lấy thông tin 1 xe cụ thể theo id
-  getById: async (vehicleId) => {
-    const response = await api.get(`${BASE_URL}/${vehicleId}`);
-    return response.data;
-  },
-
-  // Tìm xe theo từ khóa (biển số, model, chủ xe,...)
-  search: async (query) => {
-    const response = await api.get(`${BASE_URL}/search`, {
-      params: { q: query },
-    });
-    return response.data;
-  },
-
-  // Lọc xe theo chủ sở hữu (userId)
-  getByOwner: async (ownerId) => {
-    const response = await api.get(`${BASE_URL}/owner/${ownerId}`);
-    return response.data;
-  },
-
-  // Lọc xe theo modelId
-  getByModel: async (modelId) => {
-    const response = await api.get(`${BASE_URL}/model/${modelId}`);
-    return response.data;
-  },
-
-  // Tạo mới xe
-  create: async (vehicleData) => {
-    const response = await api.post(BASE_URL, vehicleData);
-    return response.data;
-  },
-
-  // Cập nhật xe
-  update: async (vehicleId, vehicleData) => {
-    const response = await api.put(`${BASE_URL}/${vehicleId}`, vehicleData);
-    return response.data;
-  },
-
-  // Xóa xe
-  delete: async (vehicleId) => {
-    const response = await api.delete(`${BASE_URL}/${vehicleId}`);
-    return response.data;
-  },
-
-  // Lấy thông tin xe theo VIN
-  getByVin: async (vin) => {
-    const response = await api.get(`${BASE_URL}/detail/${encodeURIComponent(vin)}`);
-    return response.data;
-  },
-
-  // Lấy EV Model từ VIN (theo BE: extract VDS từ VIN → tìm model theo VDS)
-  findEvModelByVin: async (vin) => {
-    const response = await api.get(`${BASE_URL}/find-ev-model-by-vin/${encodeURIComponent(vin)}`);
-    return response.data;
-  },
-
-  // Lấy danh sách vehicles để hiển thị trong form tạo claim
-  // Lưu ý: Backend hiện tại không có endpoint bulk để lấy vehicles đã kích hoạt bảo hành
-  // Vehicle Warranties API chỉ hỗ trợ: GET /api/vehicle-warranties/{vin}/get (theo từng VIN)
-  // Vì vậy ta lấy tất cả vehicles và để backend validate khi tạo claim
-  // Backend sẽ báo lỗi nếu VIN chưa kích hoạt: "Không thể tạo claim cho xe chưa kích hoạt bảo hành..."
-  getWithWarranty: async () => {
-    // Nếu backend sau này thêm endpoint /api/vehicles/with-warranty, code sẽ tự động sử dụng
+  /**
+   * 🟢 GET /vehicles/get-all
+   * Lấy tất cả xe — có thể dùng để load danh sách trong admin hoặc tra cứu nhanh.
+   */
+  getAll: async () => {
     try {
-      const response = await api.get(`${BASE_URL}/with-warranty`);
-      const data = response.data;
-      return Array.isArray(data) ? data : (data?.data || data?.vehicles || []);
-    } catch (err) {
-      // Hiện tại: lấy tất cả vehicles từ /api/vehicles/get-all
-      // Backend sẽ validate khi tạo claim
-      try {
-        const response = await api.get(`${BASE_URL}/get-all`);
-        const data = response.data;
-        return Array.isArray(data) ? data : (data?.data || []);
-      } catch (err2) {
-        console.error("Failed to get all vehicles:", err2);
-        return [];
+      const res = await api.get(`${BASE_URL}/get-all`);
+      return Array.isArray(res.data) ? res.data : res.data?.data || [];
+    } catch (error) {
+      console.error("❌ getAll vehicles failed:", error);
+      throw error;
+    }
+  },
+
+  /**
+   * 🟢 GET /vehicles/detail/{vin}
+   * Lấy thông tin chi tiết của 1 xe bằng VIN.
+   * @param {string} vin - Mã VIN (bắt buộc)
+   */
+  getByVin: async (vin) => {
+    if (!vin) throw new Error("VIN là bắt buộc để lấy chi tiết xe");
+    try {
+      const res = await api.get(`${BASE_URL}/detail/${encodeURIComponent(vin)}`);
+      return res.data;
+    } catch (error) {
+      console.error("❌ getByVin failed:", error);
+      if (error.response?.status === 400) {
+        throw new Error("VIN không hợp lệ hoặc xe không tồn tại");
       }
+      throw error;
+    }
+  },
+
+  /**
+   * 🟢 GET /vehicles/search?q=...
+   * Tìm kiếm xe theo từ khóa VIN, model, tên khách hàng...
+   * @param {string} query - Từ khóa tìm kiếm
+   * @param {number} page - Trang (mặc định 0)
+   * @param {number} size - Kích thước trang (mặc định 10)
+   */
+  search: async (query, page = 0, size = 10) => {
+    try {
+      const res = await api.get(`${BASE_URL}/search`, {
+        params: { q: query, page, size },
+      });
+      return res.data?.content || [];
+    } catch (error) {
+      console.error("❌ search vehicles failed:", error);
+      throw error;
+    }
+  },
+
+  /**
+   * 🟢 GET /vehicles/ev-model-by-vin?vin=...
+   * Lấy thông tin model xe điện theo VIN.
+   * @param {string} vin - Mã VIN
+   */
+  getModelByVin: async (vin) => {
+    if (!vin) throw new Error("VIN là bắt buộc để lấy model xe");
+    try {
+      const res = await api.get(`${BASE_URL}/ev-model-by-vin`, {
+        params: { vin },
+      });
+      return res.data;
+    } catch (error) {
+      console.error("❌ getModelByVin failed:", error);
+      throw error;
+    }
+  },
+
+  /**
+   * 🟢 GET /vehicles/check-phone?phone=...
+   * Kiểm tra số điện thoại đã được đăng ký hay chưa.
+   * @param {string} phone - Số điện thoại
+   */
+  checkPhone: async (phone) => {
+    if (!phone) throw new Error("Số điện thoại là bắt buộc để kiểm tra");
+    try {
+      const res = await api.get(`${BASE_URL}/check-phone`, {
+        params: { phone },
+      });
+      return res.data;
+    } catch (error) {
+      console.error("❌ checkPhone failed:", error);
+      throw error;
+    }
+  },
+
+  /**
+   * 🟢 POST /vehicles/create
+   * Tạo mới đăng ký xe máy điện.
+   * @param {object} data - Dữ liệu xe gồm:
+   *   vin, modelCode, model, inServiceDate, productionDate,
+   *   intakeContactName, intakeContactPhone
+   */
+  create: async (data) => {
+    // basic validation
+    if (!data?.vin) throw new Error("VIN là bắt buộc khi tạo xe");
+    if (!data?.intakeContactName) throw new Error("Tên người liên hệ là bắt buộc");
+    if (!data?.intakeContactPhone) throw new Error("Số điện thoại là bắt buộc");
+
+    try {
+      const res = await api.post(`${BASE_URL}/create`, data);
+      return res.data;
+    } catch (error) {
+      console.error("❌ create vehicle failed:", error);
+      throw error;
+    }
+  },
+
+  /**
+   * 🟢 PUT /vehicles/update/{vin}
+   * Cập nhật thông tin xe theo VIN.
+   * @param {string} vin - Mã VIN (bắt buộc)
+   * @param {object} data - Thông tin cập nhật (modelCode, model, ...)
+   */
+  update: async (vin, data) => {
+    if (!vin) throw new Error("VIN là bắt buộc để cập nhật xe");
+
+    try {
+      const res = await api.put(`${BASE_URL}/update/${encodeURIComponent(vin)}`, data);
+      return res.data;
+    } catch (error) {
+      console.error("❌ update vehicle failed:", error);
+      throw error;
     }
   },
 };

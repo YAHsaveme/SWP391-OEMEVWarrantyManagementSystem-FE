@@ -4,7 +4,7 @@ import { useLocation, Outlet, useNavigate } from "react-router-dom";
 import {
     AppBar, Toolbar, IconButton, Box, CssBaseline, Divider, Avatar,
     Typography, Menu, MenuItem, ThemeProvider, createTheme, alpha,
-    Paper, Container, Tabs, Tab, Tooltip, useMediaQuery
+    Paper, Container, Tabs, Tab, Badge, Tooltip, useMediaQuery
 } from "@mui/material";
 import useScrollTrigger from "@mui/material/useScrollTrigger";
 import DirectionsCarIcon from "@mui/icons-material/DirectionsCar";
@@ -13,8 +13,12 @@ import Inventory2Icon from "@mui/icons-material/Inventory2";
 import GroupsIcon from "@mui/icons-material/Groups";
 import StoreMallDirectoryIcon from "@mui/icons-material/StoreMallDirectory";
 import EventIcon from "@mui/icons-material/Event";
+import DescriptionIcon from "@mui/icons-material/Description";
+import NotificationsIcon from "@mui/icons-material/Notifications";
 import Brightness4Icon from "@mui/icons-material/Brightness4";
 import Brightness7Icon from "@mui/icons-material/Brightness7";
+import AddIcon from "@mui/icons-material/AddCircle";
+import MoreVertIcon from "@mui/icons-material/MoreVert";
 import authService from "../../services/authService";
 
 /* ===== Helper: nâng AppBar khi cuộn ===== */
@@ -36,6 +40,7 @@ function ElevationScroll({ children }) {
 const NAV_ITEMS = [
     { label: "Vehicles", path: "/staff/vehicles", icon: <DirectionsCarIcon /> },
     { label: "Claims", path: "/staff/claims", icon: <AssignmentIcon /> },
+    { label: "Claim Report", path: "/staff/claim-report", icon: <DescriptionIcon /> },
     { label: "Inventory", path: "/staff/inventory", icon: <Inventory2Icon /> },
     { label: "Technicians", path: "/staff/technicians", icon: <GroupsIcon /> },
     { label: "Service Centers", path: "/staff/centers", icon: <StoreMallDirectoryIcon /> },
@@ -50,6 +55,7 @@ export default function StaffLayout() {
         (typeof window !== "undefined" && localStorage.getItem("ui-mode")) || (prefersDark ? "dark" : "light")
     );
     const [anchorUser, setAnchorUser] = React.useState(null);
+    const [anchorMore, setAnchorMore] = React.useState(null);
     const [user, setUser] = React.useState({
         fullName: "SC Staff",
         role: "Service Center",
@@ -148,11 +154,30 @@ export default function StaffLayout() {
                             </Box>
 
                             <Box sx={{ display: "flex", alignItems: "center", gap: 0.5 }}>
+                                <Tooltip title="Thông báo">
+                                    <IconButton>
+                                        <Badge color="secondary" variant="dot" overlap="circular">
+                                            <NotificationsIcon />
+                                        </Badge>
+                                    </IconButton>
+                                </Tooltip>
                                 <Tooltip title="Chuyển giao diện">
                                     <IconButton onClick={() => setMode((m) => (m === "light" ? "dark" : "light"))}>
                                         {mode === "light" ? <Brightness4Icon /> : <Brightness7Icon />}
                                     </IconButton>
                                 </Tooltip>
+                                <Tooltip title="Thêm mới nhanh">
+                                    <IconButton onClick={() => navigate("/staff/claims")}>
+                                        <AddIcon />
+                                    </IconButton>
+                                </Tooltip>
+                                <IconButton onClick={(e) => setAnchorMore(e.currentTarget)}>
+                                    <MoreVertIcon />
+                                </IconButton>
+                                <Menu anchorEl={anchorMore} open={Boolean(anchorMore)} onClose={() => setAnchorMore(null)}>
+                                    <MenuItem onClick={() => setAnchorMore(null)}>Nhập dữ liệu CSV</MenuItem>
+                                    <MenuItem onClick={() => setAnchorMore(null)}>Xuất báo cáo PDF</MenuItem>
+                                </Menu>
 
                                 {/* Avatar người dùng (có dropdown) */}
                                 <Avatar
@@ -190,6 +215,9 @@ export default function StaffLayout() {
                                         </Typography>
                                     </Box>
                                     <Divider />
+                                    <MenuItem onClick={() => (window.location.href = "/profile")}>
+                                        Hồ sơ cá nhân
+                                    </MenuItem>
                                     <MenuItem onClick={() => (window.location.href = "/")}>Về trang chủ</MenuItem>
                                     <Divider />
                                     <MenuItem

@@ -291,7 +291,7 @@ export default function Overview() {
                             <Tab iconPosition="start" icon={<AlertTriangle />} label="Quản lý phụ tùng" />
                             <Tab iconPosition="start" icon={<PackageIcon />} label="Quản lý mẫu xe" />
                             <Tab iconPosition="start" icon={<BarChartIcon />} label="Kho phụ tùng" />
-                            <Tab iconPosition="start" icon={<FileText />} label="Yêu cầu" />
+                            <Tab iconPosition="start" icon={<FileText />} label="Yêu cầu bảo hành" />
                             <Tab iconPosition="start" icon={<CompareArrowsIcon />} label="Luân chuyển kho" />
                             <Tab iconPosition="start" icon={<CarIcon />} label="Trung tâm Dịch vụ" />
                             <Tab iconPosition="start" icon={<FileText />} label="Chính sách Bảo hành" />

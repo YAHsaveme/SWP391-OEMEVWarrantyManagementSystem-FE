@@ -3,14 +3,16 @@ import axiosInstance from "./axiosInstance";
 
 const BASE = "/claims";
 
-/** Đồng bộ với BE */
+/** Đồng bộ hoàn toàn với BE enum ClaimStatus.java */
 export const CLAIM_STATUS = {
   DIAGNOSING: "DIAGNOSING",
   ESTIMATING: "ESTIMATING",
   UNDER_REVIEW: "UNDER_REVIEW",
+  CLOSED_NO_FAULT: "CLOSED_NO_FAULT",
   APPROVED: "APPROVED",
-  COMPLETED: "COMPLETED",
   REJECTED: "REJECTED",
+  IN_PROGRESS: "IN_PROGRESS",
+  COMPLETED: "COMPLETED",
 };
 
 // Helper: unwrap + log lỗi rõ endpoint khi 400/500
@@ -23,16 +25,16 @@ const unwrap = (p) =>
   });
 
 const claimService = {
-  /** GET /api/claims/get-all */
+  /** ✅ GET /api/claims/get-all */
   getAll: () => unwrap(axiosInstance.get(`${BASE}/get-all`)),
 
-  /** GET /api/claims/{id}/get */
+  /** ✅ GET /api/claims/{id}/get */
   getById: (id) => {
     if (!id) throw new Error("⚠️ claimId không được để trống!");
     return unwrap(axiosInstance.get(`${BASE}/${encodeURIComponent(id)}/get`));
   },
 
-  /** GET /api/claims/by-vin/{vin}/get */
+  /** ✅ GET /api/claims/by-vin/{vin}/get */
   getByVin: (vin) => {
     if (!vin) throw new Error("⚠️ VIN không được để trống!");
     return unwrap(
@@ -40,7 +42,7 @@ const claimService = {
     );
   },
 
-  /** GET /api/claims/by-status/{status}/get */
+  /** ✅ GET /api/claims/by-status/{status}/get */
   getByStatus: (status) => {
     if (!Object.values(CLAIM_STATUS).includes(status)) {
       throw new Error(
@@ -52,42 +54,39 @@ const claimService = {
     );
   },
 
-  /** POST /api/claims/create */
+  /** ✅ POST /api/claims/create */
   create: (payload = {}) => {
     if (!payload?.vin) throw new Error("⚠️ VIN là bắt buộc!");
-    if (!payload?.claimType) throw new Error("⚠️ claimType là bắt buộc!");
     if (!payload?.errorDate) throw new Error("⚠️ errorDate là bắt buộc!");
+    if (payload?.odometerKm == null)
+      throw new Error("⚠️ odometerKm là bắt buộc!");
 
     const draft = {
       vin: String(payload.vin).trim(),
-      claimType: String(payload.claimType).trim(), // NORMAL/GOODWILL/RECALL/...
-      coverageType: payload.coverageType?.toString().trim(),
       errorDate: new Date(payload.errorDate).toISOString(),
-      odometerKm:
-        payload.odometerKm != null ? Number(payload.odometerKm) : undefined,
+      odometerKm: Number(payload.odometerKm),
       summary: payload.summary?.toString().trim(),
-      intakeContactName: payload.intakeContactName?.toString().trim(),
       attachmentUrls: Array.isArray(payload.attachmentUrls)
         ? payload.attachmentUrls.filter(Boolean)
-        : undefined,
+        : [],
       exclusion: payload.exclusion?.toString().trim(),
     };
 
-    // bỏ các key undefined/null/empty string trước khi gửi để tránh 400
+    // Lọc bỏ field rỗng/undefined/null
     const cleanPayload = Object.fromEntries(
-      Object.entries(draft).filter(([, v]) => {
-        if (v === undefined || v === null) return false;
-        if (typeof v === "string" && v.trim() === "") return false;
-        if (Array.isArray(v) && v.length === 0) return false;
-        return true;
-      })
+      Object.entries(draft).filter(
+        ([, v]) =>
+          v !== undefined &&
+          v !== null &&
+          (typeof v !== "string" || v.trim() !== "")
+      )
     );
 
     console.log("[ClaimService] create payload:", cleanPayload);
     return unwrap(axiosInstance.post(`${BASE}/create`, cleanPayload));
   },
 
-  /** PUT /api/claims/{claimId}/update */
+  /** ✅ PUT /api/claims/{claimId}/update */
   update: (claimId, payload = {}) => {
     if (!claimId) throw new Error("⚠️ claimId là bắt buộc!");
 
@@ -95,7 +94,7 @@ const claimService = {
       summary: payload.summary?.toString().trim(),
       attachmentUrls: Array.isArray(payload.attachmentUrls)
         ? payload.attachmentUrls.filter(Boolean)
-        : undefined,
+        : [],
       odometerKm:
         payload.odometerKm != null ? Number(payload.odometerKm) : undefined,
       errorDate: payload.errorDate
@@ -105,24 +104,32 @@ const claimService = {
     };
 
     const cleanPayload = Object.fromEntries(
-      Object.entries(draft).filter(([, v]) => v !== undefined && v !== null)
+      Object.entries(draft).filter(
+        ([, v]) =>
+          v !== undefined &&
+          v !== null &&
+          (typeof v !== "string" || v.trim() !== "")
+      )
     );
 
     return unwrap(
-      axiosInstance.put(`${BASE}/${encodeURIComponent(claimId)}/update`, cleanPayload)
+      axiosInstance.put(
+        `${BASE}/${encodeURIComponent(claimId)}/update`,
+        cleanPayload
+      )
     );
   },
 
-  /** PUT /api/claims/{claimId}/update-status */
-  updateStatus: (claimId, status, reasonNote = "") => {
+  /** ✅ PUT /api/claims/{claimId}/update-status */
+  updateStatus: (claimId, status) => {
     if (!claimId) throw new Error("⚠️ claimId là bắt buộc!");
     if (!Object.values(CLAIM_STATUS).includes(status)) {
       throw new Error(
         `⚠️ Trạng thái không hợp lệ! (${Object.keys(CLAIM_STATUS).join(", ")})`
       );
     }
+
     const body = { status };
-    if (reasonNote?.trim()) body.reasonNote = reasonNote.trim();
 
     return unwrap(
       axiosInstance.put(

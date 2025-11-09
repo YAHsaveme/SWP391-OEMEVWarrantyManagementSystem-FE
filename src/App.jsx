@@ -26,6 +26,7 @@ import Inventory from "./components/staff/Inventory";
 import VehiclesPage from "./components/staff/VehiclesPage";
 import VehicleDetailPage from "./components/staff/VehicleDetailPage";
 import WarrantyClaimsPage from "./components/staff/WarrantyClaim";
+import ClaimReport from "./components/staff/ClaimReport";
 import TechniciansPage from "./components/staff/TechniciansPage";
 import EvModelsPage from "./components/staff/EvModelsPage";
 import ServiceCentersPage from "./components/staff/ServiceCentersPage";
@@ -99,6 +100,7 @@ export default function App() {
           <Route path="vehicles" element={<VehiclesPage />} />
           <Route path="vehicles/:vin" element={<VehicleDetailPage />} />
           <Route path="claims" element={<WarrantyClaimsPage />} />
+          <Route path="claim-report" element={<ClaimReport />} />
           <Route path="technicians" element={<TechniciansPage />} />
           <Route path="ev-models" element={<EvModelsPage />} />
           <Route path="centers" element={<ServiceCentersPage />} />
