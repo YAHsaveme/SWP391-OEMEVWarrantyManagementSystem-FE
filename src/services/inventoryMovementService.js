@@ -138,6 +138,67 @@ const inventoryMovementService = {
     traceabilityByVin: (vin) => {
         return axiosInstance.get(`${BASE_URL}/traceability/${vin}/parts`);
     },
+
+    /**
+     * ======================================================
+     * 🔎 GET /api/inventory-movements/traceability/{serialNo}/info
+     * ======================================================
+     * Truy xuất thông tin chi tiết của phụ tùng theo Serial Number
+     *
+     * @param {string} serialNo - Serial Number của phụ tùng
+     * @returns {Promise<AxiosResponse>}
+     * Response: Object chứa thông tin chi tiết về phụ tùng
+     * {
+     *   partLotId: string,
+     *   partId: string,
+     *   partName: string,
+     *   partNo: string,
+     *   serialNo: string,
+     *   batchNo?: string,
+     *   mfgDate?: string,
+     *   currentCenter?: string,
+     *   currentQuantity?: number,
+     *   movements: Array<{
+     *     date: string,
+     *     direction: "IN" | "OUT",
+     *     reason: string,
+     *     centerName: string,
+     *     appointmentId?: string
+     *   }>
+     * }
+     */
+    traceabilityBySerialNoInfo: (serialNo) => {
+        return axiosInstance.get(`${BASE_URL}/traceability/${serialNo}/info`);
+    },
+
+    /**
+     * ======================================================
+     * 🔎 GET /api/inventory-movements/traceability/{serialNo}/vin
+     * ======================================================
+     * Truy xuất VIN của xe đang sử dụng phụ tùng với Serial Number này
+     *
+     * @param {string} serialNo - Serial Number của phụ tùng
+     * @returns {Promise<AxiosResponse>}
+     * Response: Object chứa thông tin VIN và xe liên quan
+     * {
+     *   serialNo: string,
+     *   vin?: string,
+     *   vehicleInfo?: {
+     *     vin: string,
+     *     model: string,
+     *     customerName?: string,
+     *     installedDate?: string
+     *   },
+     *   partInfo: {
+     *     partId: string,
+     *     partName: string,
+     *     partNo: string
+     *   }
+     * }
+     */
+    traceabilityBySerialNoVin: (serialNo) => {
+        return axiosInstance.get(`${BASE_URL}/traceability/${serialNo}/vin`);
+    },
 };
 
 export default inventoryMovementService;

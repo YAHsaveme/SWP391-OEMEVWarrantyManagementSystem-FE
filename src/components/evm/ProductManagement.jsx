@@ -25,6 +25,26 @@ const RECOVER_MODEL = (modelCode) =>
 const toStatus = (deleted) =>
     deleted ? { label: "Đã xoá", color: "default" } : { label: "Hoạt động", color: "success" };
 
+const resolveBatteryValue = (model) => {
+    if (!model || typeof model !== "object") return null;
+    const candidates = [
+        model.battery_kWh,
+        model.battery_kwh,
+        model.battery_k_wh,
+        model.batteryKWh,
+        model.batteryKW,
+        model.battery,
+        model.batteryCapacity,
+        model.battery_capacity,
+    ];
+    for (const val of candidates) {
+        if (val !== null && val !== undefined && val !== "") {
+            return Number.isNaN(Number(val)) ? val : Number(val);
+        }
+    }
+    return null;
+};
+
 export default function EvModelsManagement() {
     const [models, setModels] = useState([]);
     const [loading, setLoading] = useState(false);
@@ -60,24 +80,13 @@ export default function EvModelsManagement() {
                     battery_kWh: m.battery_kWh,
                     battery_kwh: m.battery_kwh,
                     battery_k_wh: m.battery_k_wh,
+                    batteryKWh: m.batteryKWh,
+                    batteryCapacity: m.batteryCapacity,
                     rawData: m
                 });
                 
-                // Xử lý battery_kWh: kiểm tra cả 3 format và lấy giá trị đầu tiên không null/undefined
-                // Ưu tiên: battery_kWh > battery_kwh > battery_k_wh
-                let batteryValue = null;
-                if (m.battery_kWh != null) {
-                    batteryValue = m.battery_kWh;
-                    console.log(`  → Using battery_kWh: ${batteryValue}`);
-                } else if (m.battery_kwh != null) {
-                    batteryValue = m.battery_kwh;
-                    console.log(`  → Using battery_kwh: ${batteryValue}`);
-                } else if (m.battery_k_wh != null) {
-                    batteryValue = m.battery_k_wh;
-                    console.log(`  → Using battery_k_wh: ${batteryValue}`);
-                } else {
-                    console.log(`  → All battery fields are null/undefined`);
-                }
+                const batteryValue = resolveBatteryValue(m);
+                console.log(`  → Resolved battery value: ${batteryValue}`);
                 
                 const normalizedModel = {
                     ...m,
@@ -86,6 +95,8 @@ export default function EvModelsManagement() {
                     // Xóa các field cũ để tránh confusion
                     battery_kwh: undefined,
                     battery_k_wh: undefined,
+                    batteryKWh: undefined,
+                    batteryCapacity: undefined,
                     motor_kW: m.motor_kW,
                     range_km: m.range_km,
                     top_speed_kmh: m.top_speed_kmh,
@@ -123,21 +134,14 @@ export default function EvModelsManagement() {
             // Normalize data để đảm bảo field name nhất quán
             // Xử lý cả battery_kWh, battery_kwh, và battery_k_wh
             const normalized = data.map(m => {
-                // Xử lý battery_kWh: kiểm tra cả 3 format
-                let batteryValue = null;
-                if (m.battery_kWh != null) {
-                    batteryValue = m.battery_kWh;
-                } else if (m.battery_kwh != null) {
-                    batteryValue = m.battery_kwh;
-                } else if (m.battery_k_wh != null) {
-                    batteryValue = m.battery_k_wh;
-                }
-                
+                const batteryValue = resolveBatteryValue(m);
                 return {
                     ...m,
                     battery_kWh: batteryValue,
                     battery_kwh: undefined,
                     battery_k_wh: undefined,
+                    batteryKWh: undefined,
+                    batteryCapacity: undefined,
                     motor_kW: m.motor_kW,
                     range_km: m.range_km,
                     top_speed_kmh: m.top_speed_kmh,
@@ -265,11 +269,13 @@ export default function EvModelsManagement() {
         try {
             setBusy(true);
             if (mode === "create") {
+                const batteryValue = toNum(form.battery_kWh) || 0;
                 const createPayload = {
                     modelCode: form.modelCode.trim(),
                     model: form.model.trim(),
                     vds: form.vds?.trim() || null,
-                    battery_kwh: toNum(form.battery_kWh) || 0,
+                    battery_kWh: batteryValue,
+                    battery_kwh: batteryValue, // fallback cho BE field cũ
                     motor_kW: toNum(form.motor_kW) || 0,
                     range_km: toNum(form.range_km) || 0,
                     top_speed_kmh: toNum(form.top_speed_kmh) || 0,
@@ -281,11 +287,13 @@ export default function EvModelsManagement() {
             } else {
                 // Update: Backend yêu cầu modelCode trong body (theo Swagger)
                 const vdsValue = form.vds?.trim();
+                const batteryValue = toNum(form.battery_kWh) || 0;
                 const updatePayload = {
                     modelCode: form.modelCode.trim(),
                     model: form.model.trim(),
                     vds: vdsValue && vdsValue.length > 0 ? vdsValue : null,
-                    battery_kwh: toNum(form.battery_kWh) || 0,
+                    battery_kWh: batteryValue,
+                    battery_kwh: batteryValue, // fallback
                     motor_kW: toNum(form.motor_kW) || 0,
                     range_km: toNum(form.range_km) || 0,
                     top_speed_kmh: toNum(form.top_speed_kmh) || 0,

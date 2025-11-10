@@ -50,6 +50,9 @@ import {
 } from "@mui/icons-material";
 import dayjs from "dayjs";
 import appointmentService from "../../services/appointmentService";
+import technicianService from "../../services/technicianService";
+import claimService from "../../services/claimService";
+import vehicleService from "../../services/vehicleService";
 
 const STATUS_OPTIONS = [
   { value: "IN_PROGRESS", label: "Đang tiến hành", color: "warning" },
@@ -84,6 +87,7 @@ export default function ReceiveAppointment() {
   const [filteredAppointments, setFilteredAppointments] = useState([]);
   const [loading, setLoading] = useState(true);
   const [tabValue, setTabValue] = useState(0);
+  const [technicianId, setTechnicianId] = useState("");
 
   // Filter states
   const [searchTerm, setSearchTerm] = useState("");
@@ -98,34 +102,197 @@ export default function ReceiveAppointment() {
   const [snackbar, setSnackbar] = useState({ open: false, message: "", severity: "info" });
 
   // Load appointments for current technician only
-  const loadAppointments = async () => {
-    if (!currentUserId) {
+  const loadAppointments = async (techId, fallbackUserId = null) => {
+    if (!techId && !fallbackUserId) {
+      console.warn("[ReceiveAppointment] loadAppointments: No technicianId or userId provided");
       showSnackbar("Không tìm thấy thông tin kỹ thuật viên", "error");
       setLoading(false);
       return;
     }
-    
+
+    const idToUse = techId || fallbackUserId;
+    console.log("[ReceiveAppointment] loadAppointments: Loading appointments for ID:", idToUse, "(techId:", techId, ", fallbackUserId:", fallbackUserId, ")");
     setLoading(true);
     try {
-      const res = await appointmentService.getByTechnician(currentUserId);
+      const res = await appointmentService.getByTechnician(idToUse);
+      console.log("[ReceiveAppointment] loadAppointments: API response:", res);
+      
       if (res.success) {
         const techAppointments = res.data || [];
-        setAppointments(techAppointments);
-        setFilteredAppointments(techAppointments);
+        console.log("[ReceiveAppointment] loadAppointments: Loaded", techAppointments.length, "appointments");
+        
+        // Fetch claim details for each appointment to get VIN + customerName
+        const enrichedAppointments = await Promise.all(
+          techAppointments.map(async (apt) => {
+            const claimId = apt.claimId || apt.claim?.id;
+            let vin = "";
+            let customerName = "";
+            
+            if (claimId) {
+              try {
+                console.log("[ReceiveAppointment] Fetching claim details for claimId:", claimId);
+                const claimData = await claimService.getById(claimId);
+                console.log("[ReceiveAppointment] Claim data:", claimData);
+                
+                // Extract VIN from claim
+                vin = claimData?.vin || 
+                  claimData?.vehicleVin || 
+                  claimData?.vehicle?.vin ||
+                  claimData?.vehicle?.vehicleVin ||
+                  claimData?.vehicleVinCode ||
+                  "";
+                
+                // Extract customerName (intakeContactName) from claim
+                customerName = claimData?.intakeContactName || 
+                  claimData?.contactName ||
+                  claimData?.customerName ||
+                  claimData?.customer?.name ||
+                  claimData?.ownerName ||
+                  "";
+                
+                // If customerName is not in claim, try to get from vehicle
+                if (!customerName || customerName.trim().length === 0) {
+                  if (vin && vin.trim().length > 0) {
+                    try {
+                      console.log("[ReceiveAppointment] Fetching vehicle details for VIN:", vin);
+                      const vehicleData = await vehicleService.getByVin(vin);
+                      console.log("[ReceiveAppointment] Vehicle data:", vehicleData);
+                      
+                      customerName = vehicleData?.intakeContactName ||
+                        vehicleData?.contactName ||
+                        vehicleData?.ownerName ||
+                        vehicleData?.customerName ||
+                        "";
+                    } catch (err) {
+                      console.warn("[ReceiveAppointment] Failed to fetch vehicle details for VIN:", vin, err);
+                    }
+                  }
+                }
+                
+                console.log("[ReceiveAppointment] Extracted - VIN:", vin, "CustomerName:", customerName);
+              } catch (err) {
+                console.warn("[ReceiveAppointment] Failed to fetch claim details for claimId:", claimId, err);
+                // Fallback: try to get from appointment data
+                vin = apt.vin || apt.vehicleVin || apt.claim?.vin || apt.vehicle?.vin || "";
+                customerName = apt.customerName || apt.intakeContactName || apt.claim?.intakeContactName || "";
+              }
+            } else {
+              // No claimId, try to get from appointment data
+              vin = apt.vin || apt.vehicleVin || apt.vehicle?.vin || apt.claim?.vin || "";
+              customerName = apt.customerName || apt.intakeContactName || apt.claim?.intakeContactName || "";
+            }
+            
+            // Normalize
+            vin = vin && vin !== "—" ? String(vin).trim() : "";
+            customerName = customerName && customerName !== "—" ? String(customerName).trim() : "";
+            
+            return {
+              ...apt,
+              vin: vin || "—",
+              customerName: customerName || "—",
+            };
+          })
+        );
+        
+        setAppointments(enrichedAppointments);
+        setFilteredAppointments(enrichedAppointments);
       } else {
-        showSnackbar("Không thể tải danh sách lịch hẹn", "error");
+        console.error("[ReceiveAppointment] loadAppointments: API returned success=false", res);
+        
+        // Nếu fail với techId và có fallbackUserId, thử lại với userId
+        if (techId && fallbackUserId && techId !== fallbackUserId) {
+          console.log("[ReceiveAppointment] loadAppointments: Retrying with fallback userId:", fallbackUserId);
+          return loadAppointments(null, fallbackUserId);
+        }
+        
+        const errorMsg = res.message || res.error?.message || "Không thể tải danh sách lịch hẹn";
+        showSnackbar(errorMsg, "error");
       }
     } catch (err) {
-      console.error("Load appointments error:", err);
-      showSnackbar("Lỗi khi tải dữ liệu", "error");
+      console.error("[ReceiveAppointment] loadAppointments: Error:", err);
+      console.error("[ReceiveAppointment] loadAppointments: Error response:", err?.response?.data);
+      
+      // Nếu fail với techId và có fallbackUserId, thử lại với userId
+      if (techId && fallbackUserId && techId !== fallbackUserId) {
+        console.log("[ReceiveAppointment] loadAppointments: Retrying with fallback userId after error:", fallbackUserId);
+        return loadAppointments(null, fallbackUserId);
+      }
+      
+      const errorMsg = err?.response?.data?.message || err.message || "Lỗi khi tải dữ liệu";
+      showSnackbar(errorMsg, "error");
     } finally {
       setLoading(false);
     }
   };
 
   useEffect(() => {
-    loadAppointments();
+    const fetchTechnician = async () => {
+      if (!currentUserId) {
+        showSnackbar("Không tìm thấy thông tin người dùng. Vui lòng đăng nhập lại.", "error");
+        setLoading(false);
+        return;
+      }
+
+      try {
+        console.log("[ReceiveAppointment] Fetching technician for userId:", currentUserId);
+        const res = await technicianService.getById(currentUserId);
+        console.log("[ReceiveAppointment] Technician API response (full):", JSON.stringify(res, null, 2));
+        
+        // Thử nhiều cách lấy ID từ response - ưu tiên scheduleId, techScheduleId, sau đó mới đến technicianId
+        const techId =
+          res?.scheduleId ||           // Có thể BE trả về scheduleId
+          res?.techScheduleId ||      // Hoặc techScheduleId
+          res?.techSchedule?.id ||    // Hoặc nested trong techSchedule object
+          res?.technicianId ||
+          res?.id ||
+          res?.techId ||
+          res?.userId ||
+          res?.data?.scheduleId ||
+          res?.data?.techScheduleId ||
+          res?.data?.technicianId ||
+          res?.data?.id ||
+          currentUserId; // Fallback: dùng userId nếu không tìm thấy
+        
+        console.log("[ReceiveAppointment] Extracted technicianId/scheduleId:", techId);
+        console.log("[ReceiveAppointment] All available fields in response:", Object.keys(res || {}));
+        
+        if (!techId) {
+          console.error("[ReceiveAppointment] No technicianId/scheduleId found in response");
+          showSnackbar("Không tìm thấy kỹ thuật viên!", "error");
+          setTechnicianId("");
+          setLoading(false);
+          return;
+        }
+        
+        setTechnicianId(String(techId));
+      } catch (err) {
+        console.error("[ReceiveAppointment] Fetch technician failed:", err);
+        console.error("[ReceiveAppointment] Error response:", err?.response?.data);
+        const status = err?.response?.status;
+        if (status === 404) {
+          showSnackbar("Không tìm thấy kỹ thuật viên! Vui lòng kiểm tra lại thông tin đăng nhập.", "error");
+        } else {
+          showSnackbar("Lỗi khi tải thông tin kỹ thuật viên: " + (err?.response?.data?.message || err.message), "error");
+        }
+        setTechnicianId("");
+        setLoading(false);
+      }
+    };
+
+    fetchTechnician();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  useEffect(() => {
+    if (technicianId) {
+      loadAppointments(technicianId, currentUserId);
+    } else if (currentUserId) {
+      // Nếu không có technicianId, thử dùng userId trực tiếp
+      console.log("[ReceiveAppointment] No technicianId, trying with userId:", currentUserId);
+      loadAppointments(null, currentUserId);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [technicianId, currentUserId]);
 
   // Apply filters - appointments đã được load theo technician rồi, chỉ cần filter search/status/date
   useEffect(() => {
@@ -167,7 +334,7 @@ export default function ReceiveAppointment() {
     }
 
     // Check if appointment belongs to current technician
-    if (appointment.technicianId !== currentUserId) {
+    if (appointment.technicianId !== technicianId && appointment.technicianId !== currentUserId) {
       showSnackbar("Bạn không có quyền cập nhật lịch hẹn này", "error");
       return;
     }
@@ -176,7 +343,7 @@ export default function ReceiveAppointment() {
       const res = await appointmentService.updateStatus(appointment.id, { status: "IN_PROGRESS" });
       if (res.success) {
         showSnackbar("Đã bắt đầu ca làm việc", "success");
-        loadAppointments();
+        loadAppointments(technicianId);
       } else {
         const errorMsg = res.message || res.error?.message || "Cập nhật thất bại";
         showSnackbar(errorMsg, "error");
@@ -196,7 +363,7 @@ export default function ReceiveAppointment() {
     }
 
     // Check if appointment belongs to current technician
-    if (statusDialog.appointment.technicianId !== currentUserId) {
+    if (statusDialog.appointment.technicianId !== technicianId && statusDialog.appointment.technicianId !== currentUserId) {
       showSnackbar("Bạn không có quyền cập nhật lịch hẹn này", "error");
       return;
     }
@@ -210,7 +377,7 @@ export default function ReceiveAppointment() {
       if (res.success) {
         showSnackbar("Cập nhật trạng thái thành công", "success");
         setStatusDialog({ open: false, appointment: null, newStatus: "" });
-        loadAppointments();
+        loadAppointments(technicianId);
       } else {
         const errorMsg = res.message || res.error?.message || "Cập nhật thất bại";
         showSnackbar(errorMsg, "error");
@@ -254,7 +421,7 @@ export default function ReceiveAppointment() {
 
   const renderAppointmentCard = (apt) => {
     // Check if appointment belongs to current technician
-    const canUpdate = apt.technicianId === currentUserId || apt.id === currentUserId;
+    const canUpdate = apt.technicianId === technicianId || apt.technicianId === currentUserId;
     
     return (
       <Card key={apt.id} sx={{ mb: 2, boxShadow: 2, '&:hover': { boxShadow: 4 }, bgcolor: 'transparent' }}>
@@ -309,36 +476,6 @@ export default function ReceiveAppointment() {
                       </Button>
                     </Tooltip>
                   )}
-                  {apt.status === "IN_PROGRESS" && (
-                    <>
-                      <Tooltip title="Hoàn thành">
-                        <Button
-                          variant="contained"
-                          color="success"
-                          size="small"
-                          onClick={() => {
-                            setStatusDialog({ open: true, appointment: apt, newStatus: "DONE" });
-                          }}
-                          sx={{ textTransform: 'none' }}
-                        >
-                          Complete
-                        </Button>
-                      </Tooltip>
-                      <Tooltip title="Hủy">
-                        <Button
-                          variant="contained"
-                          color="error"
-                          size="small"
-                          onClick={() => {
-                            setStatusDialog({ open: true, appointment: apt, newStatus: "CANCELLED" });
-                          }}
-                          sx={{ textTransform: 'none' }}
-                        >
-                          Cancel
-                        </Button>
-                      </Tooltip>
-                    </>
-                  )}
                   {(apt.status !== "BOOKED" && apt.status !== "IN_PROGRESS") && (
                     <Tooltip title="Cập nhật trạng thái">
                       <Button
@@ -371,9 +508,13 @@ export default function ReceiveAppointment() {
                 </Typography>
               </Box>
               <Box sx={{ display: 'flex', alignItems: 'center', mb: 1 }}>
-                <AssignmentIcon sx={{ mr: 1, color: 'text.secondary', fontSize: 20 }} />
                 <Typography variant="body2">
-                  <strong>Yêu cầu bảo hành:</strong> {apt.claimName || apt.claimDescription || "N/A"}
+                  <strong>VIN:</strong> {apt.vin && apt.vin !== "—" ? apt.vin : "N/A"}
+                </Typography>
+              </Box>
+              <Box sx={{ display: 'flex', alignItems: 'center', mb: 1 }}>
+                <Typography variant="body2">
+                  <strong>Khách hàng:</strong> {apt.customerName && apt.customerName !== "—" ? apt.customerName : "N/A"}
                 </Typography>
               </Box>
               <Box sx={{ display: 'flex', alignItems: 'center' }}>
@@ -569,7 +710,6 @@ export default function ReceiveAppointment() {
             <TableHead>
               <TableRow>
                 <TableCell><strong>Kỹ thuật viên</strong></TableCell>
-                <TableCell><strong>Yêu cầu bảo hành</strong></TableCell>
                 <TableCell><strong>Trạng thái</strong></TableCell>
                 <TableCell><strong>Kỹ năng</strong></TableCell>
                 <TableCell><strong>Ngày</strong></TableCell>
@@ -583,7 +723,6 @@ export default function ReceiveAppointment() {
                 return (
                   <TableRow key={apt.id} hover>
                     <TableCell>{apt.technicianName || "N/A"}</TableCell>
-                    <TableCell>{apt.claimName || apt.claimDescription || "N/A"}</TableCell>
                     <TableCell>
                       <Chip label={apt.status} color={getStatusColor(apt.status)} size="small" />
                     </TableCell>
@@ -614,32 +753,6 @@ export default function ReceiveAppointment() {
                                 </Button>
                               </Tooltip>
                             )}
-                          {apt.status === "IN_PROGRESS" && (
-                            <>
-                              <Tooltip title="Complete">
-                                <IconButton
-                                  size="small"
-                                  color="success"
-                                  onClick={() => {
-                                    setStatusDialog({ open: true, appointment: apt, newStatus: "DONE" });
-                                  }}
-                                >
-                                  <CheckCircleIcon />
-                                </IconButton>
-                              </Tooltip>
-                              <Tooltip title="Cancel">
-                                <IconButton
-                                  size="small"
-                                  color="error"
-                                  onClick={() => {
-                                    setStatusDialog({ open: true, appointment: apt, newStatus: "CANCELLED" });
-                                  }}
-                                >
-                                  <CloseIcon />
-                                </IconButton>
-                              </Tooltip>
-                            </>
-                          )}
                           {(apt.status !== "BOOKED" && apt.status !== "IN_PROGRESS") && (
                             <Tooltip title="Cập nhật">
                               <IconButton
@@ -673,87 +786,201 @@ export default function ReceiveAppointment() {
         onClose={() => setDetailDialog({ open: false, appointment: null })}
         maxWidth="md"
         fullWidth
-        PaperProps={{ sx: { bgcolor: 'transparent' } }}
+        PaperProps={{ 
+          sx: { 
+            bgcolor: 'background.paper',
+            borderRadius: 2,
+            boxShadow: 24,
+            zIndex: 1300
+          } 
+        }}
       >
-        <DialogTitle sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', bgcolor: 'transparent' }}>
-          Chi tiết lịch hẹn
-          <IconButton onClick={() => setDetailDialog({ open: false, appointment: null })}>
+        <DialogTitle sx={{ 
+          display: 'flex', 
+          justifyContent: 'space-between', 
+          alignItems: 'center',
+          pb: 1,
+          borderBottom: '1px solid',
+          borderColor: 'divider'
+        }}>
+          <Typography variant="h6" sx={{ fontWeight: 600 }}>
+            Chi tiết lịch hẹn
+          </Typography>
+          <IconButton 
+            onClick={() => setDetailDialog({ open: false, appointment: null })}
+            size="small"
+          >
             <CloseIcon />
           </IconButton>
         </DialogTitle>
-        <DialogContent dividers sx={{ bgcolor: 'transparent' }}>
+        <DialogContent sx={{ pt: 3, pb: 2 }}>
           {detailDialog.appointment && (
-            <Grid container spacing={2}>
-              <Grid item xs={12} md={6}>
-                <Typography variant="body2" sx={{ mb: 1 }}>
-                  <strong>Yêu cầu bảo hành:</strong> {detailDialog.appointment.claimName || detailDialog.appointment.claimDescription || "N/A"}
-                </Typography>
-                <Typography variant="body2" sx={{ mb: 1 }}>
-                  <strong>Trung tâm:</strong> {detailDialog.appointment.centerName}
-                </Typography>
-                <Typography variant="body2" sx={{ mb: 1 }}>
-                  <strong>Kỹ thuật viên:</strong> {detailDialog.appointment.technicianName}
-                </Typography>
-              </Grid>
-              <Grid item xs={12} md={6}>
-                <Typography variant="body2" sx={{ mb: 1 }}>
-                  <strong>Trạng thái:</strong>{" "}
-                  <Chip
-                    label={detailDialog.appointment.status}
-                    color={getStatusColor(detailDialog.appointment.status)}
-                    size="small"
-                  />
-                </Typography>
-                <Typography variant="body2" sx={{ mb: 1 }}>
-                  <strong>Kỹ năng:</strong> {detailDialog.appointment.requiredSkill}
-                </Typography>
-                <Typography variant="body2" sx={{ mb: 1 }}>
-                  <strong>Loại:</strong> {detailDialog.appointment.type}
-                </Typography>
-                <Typography variant="body2" sx={{ mb: 1 }}>
-                  <strong>Tạo lúc:</strong> {formatDateTime(detailDialog.appointment.createdAt)}
-                </Typography>
-              </Grid>
-              <Grid item xs={12}>
-                <Divider sx={{ my: 2 }} />
-                <Typography variant="h6" sx={{ mb: 2 }}>Thời gian làm việc</Typography>
-                {detailDialog.appointment.slots?.map((slot, idx) => (
-                  <Paper key={idx} sx={{ p: 2, mb: 1, bgcolor: 'transparent', border: '1px solid', borderColor: 'divider' }}>
-                    <Typography variant="body2">
-                      <strong>Ngày:</strong> {slot.slotDate}
-                    </Typography>
-                    <Typography variant="body2">
-                      <strong>Giờ:</strong> {slot.startTime} - {slot.endTime}
-                    </Typography>
-                    <Typography variant="body2">
-                      <strong>Trạng thái:</strong>{" "}
-                      <Chip label={slot.status} size="small" />
-                    </Typography>
-                    {slot.note && (
-                      <Typography variant="body2">
-                        <strong>Ghi chú:</strong> {slot.note}
+            <Box>
+              {/* Thông tin cơ bản */}
+              <Grid container spacing={3}>
+                <Grid item xs={12} md={6}>
+                  <Stack spacing={2}>
+                    <Box>
+                      <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 0.5 }}>
+                        VIN
                       </Typography>
-                    )}
-                  </Paper>
-                ))}
-              </Grid>
-              {detailDialog.appointment.note && (
-                <Grid item xs={12}>
-                  <Paper sx={{ p: 2, bgcolor: 'transparent', border: '1px solid', borderColor: 'divider' }}>
-                    <Typography variant="body2">
-                      <strong>Ghi chú chung:</strong>
-                    </Typography>
-                    <Typography variant="body2" sx={{ mt: 1 }}>
-                      {detailDialog.appointment.note}
-                    </Typography>
-                  </Paper>
+                      <Typography variant="body1" sx={{ fontWeight: 500 }}>
+                        {detailDialog.appointment.vin && detailDialog.appointment.vin !== "—" ? detailDialog.appointment.vin : "N/A"}
+                      </Typography>
+                    </Box>
+                    <Box>
+                      <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 0.5 }}>
+                        Khách hàng
+                      </Typography>
+                      <Typography variant="body1">
+                        {detailDialog.appointment.customerName && detailDialog.appointment.customerName !== "—" ? detailDialog.appointment.customerName : "N/A"}
+                      </Typography>
+                    </Box>
+                    <Box>
+                      <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 0.5 }}>
+                        Trung tâm
+                      </Typography>
+                      <Typography variant="body1">
+                        {detailDialog.appointment.centerName || "N/A"}
+                      </Typography>
+                    </Box>
+                    <Box>
+                      <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 0.5 }}>
+                        Kỹ thuật viên
+                      </Typography>
+                      <Typography variant="body1">
+                        {detailDialog.appointment.technicianName || "N/A"}
+                      </Typography>
+                    </Box>
+                  </Stack>
                 </Grid>
+                <Grid item xs={12} md={6}>
+                  <Stack spacing={2}>
+                    <Box>
+                      <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 0.5 }}>
+                        Trạng thái
+                      </Typography>
+                      <Chip
+                        label={detailDialog.appointment.status}
+                        color={getStatusColor(detailDialog.appointment.status)}
+                        size="small"
+                        sx={{ fontWeight: 600 }}
+                      />
+                    </Box>
+                    <Box>
+                      <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 0.5 }}>
+                        Kỹ năng
+                      </Typography>
+                      <Typography variant="body1">
+                        {detailDialog.appointment.requiredSkill || "N/A"}
+                      </Typography>
+                    </Box>
+                    <Box>
+                      <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 0.5 }}>
+                        Loại
+                      </Typography>
+                      <Typography variant="body1">
+                        {detailDialog.appointment.type || "N/A"}
+                      </Typography>
+                    </Box>
+                    <Box>
+                      <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 0.5 }}>
+                        Tạo lúc
+                      </Typography>
+                      <Typography variant="body1">
+                        {formatDateTime(detailDialog.appointment.createdAt)}
+                      </Typography>
+                    </Box>
+                  </Stack>
+                </Grid>
+              </Grid>
+
+              {/* Thời gian làm việc */}
+              {detailDialog.appointment.slots && detailDialog.appointment.slots.length > 0 && (
+                <>
+                  <Divider sx={{ my: 3 }} />
+                  <Typography variant="h6" sx={{ mb: 2, fontWeight: 600 }}>
+                    Thời gian làm việc
+                  </Typography>
+                  <Stack spacing={2}>
+                    {detailDialog.appointment.slots.map((slot, idx) => (
+                      <Paper 
+                        key={idx} 
+                        sx={{ 
+                          p: 2, 
+                          bgcolor: 'background.default',
+                          border: '1px solid',
+                          borderColor: 'divider',
+                          borderRadius: 1
+                        }}
+                      >
+                        <Grid container spacing={2}>
+                          <Grid item xs={12} sm={6}>
+                            <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 0.5 }}>
+                              Ngày
+                            </Typography>
+                            <Typography variant="body1">
+                              {slot.slotDate || "N/A"}
+                            </Typography>
+                          </Grid>
+                          <Grid item xs={12} sm={6}>
+                            <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 0.5 }}>
+                              Giờ
+                            </Typography>
+                            <Typography variant="body1">
+                              {slot.startTime} - {slot.endTime}
+                            </Typography>
+                          </Grid>
+                          <Grid item xs={12} sm={6}>
+                            <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 0.5 }}>
+                              Trạng thái
+                            </Typography>
+                            <Chip 
+                              label={slot.status} 
+                              size="small"
+                              sx={{ mt: 0.5 }}
+                            />
+                          </Grid>
+                        </Grid>
+                      </Paper>
+                    ))}
+                  </Stack>
+                </>
               )}
-            </Grid>
+
+              {/* Ghi chú chung */}
+              {detailDialog.appointment.note && (
+                <>
+                  <Divider sx={{ my: 3 }} />
+                  <Box>
+                    <Typography variant="h6" sx={{ mb: 1, fontWeight: 600 }}>
+                      Ghi chú chung
+                    </Typography>
+                    <Paper 
+                      sx={{ 
+                        p: 2, 
+                        bgcolor: 'background.default',
+                        border: '1px solid',
+                        borderColor: 'divider',
+                        borderRadius: 1
+                      }}
+                    >
+                      <Typography variant="body2" sx={{ whiteSpace: 'pre-wrap' }}>
+                        {detailDialog.appointment.note}
+                      </Typography>
+                    </Paper>
+                  </Box>
+                </>
+              )}
+            </Box>
           )}
         </DialogContent>
-        <DialogActions sx={{ bgcolor: 'transparent' }}>
-          <Button onClick={() => setDetailDialog({ open: false, appointment: null })}>
+        <DialogActions sx={{ px: 3, py: 2, borderTop: '1px solid', borderColor: 'divider' }}>
+          <Button 
+            variant="contained"
+            onClick={() => setDetailDialog({ open: false, appointment: null })}
+            sx={{ minWidth: 100 }}
+          >
             Đóng
           </Button>
         </DialogActions>

@@ -455,18 +455,67 @@ function EstimatesDialog({ open, onClose, claim, parts, partsLoading, setSnack }
     const laborSubtotal = Number(form.laborSlots || 0) * Number(form.laborRateVND || 0);
     const grandTotal = partsSubtotal + laborSubtotal;
 
-    // Get affected parts from recall events
+    // Get affected parts from recall events - map IDs to part names
     const affectedPartsFromRecall = React.useMemo(() => {
-        if (!recallEvents || recallEvents.length === 0) return [];
-        const allAffectedParts = [];
+        if (!recallEvents || recallEvents.length === 0) return { ids: [], names: [] };
+        const allAffectedPartIds = [];
+        const allAffectedPartNames = [];
+        
         recallEvents.forEach(event => {
+            // Try to get affectedParts from multiple possible fields
+            let partIds = [];
+            
+            // Try affectedParts (array)
             if (event.affectedParts && Array.isArray(event.affectedParts)) {
-                allAffectedParts.push(...event.affectedParts);
+                partIds = event.affectedParts;
+            }
+            // Try affectedPartsJson (JSON string)
+            else if (event.affectedPartsJson) {
+                try {
+                    const parsed = typeof event.affectedPartsJson === 'string' 
+                        ? JSON.parse(event.affectedPartsJson) 
+                        : event.affectedPartsJson;
+                    if (Array.isArray(parsed)) {
+                        partIds = parsed;
+                    }
+                } catch (e) {
+                    console.warn("Failed to parse affectedPartsJson:", e);
+                }
+            }
+            // Try affected_parts (snake_case)
+            else if (event.affected_parts && Array.isArray(event.affected_parts)) {
+                partIds = event.affected_parts;
+            }
+            
+            if (partIds.length > 0) {
+                partIds.forEach(partId => {
+                    const partIdStr = String(partId).trim();
+                    // Kiểm tra xem có phải là UUID (ID) không
+                    const isUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(partIdStr);
+                    
+                    if (isUUID) {
+                        // Lưu ID
+                        allAffectedPartIds.push(partIdStr);
+                        // Tìm part theo ID trong parts state của component để lấy tên
+                        const part = parts.find(p => String(p.id) === partIdStr);
+                        if (part) {
+                            const partName = part.partName || part.partNo || partIdStr;
+                            allAffectedPartNames.push(partName.toLowerCase());
+                        }
+                    } else {
+                        // Nếu không phải UUID, giả định là tên part
+                        allAffectedPartNames.push(partIdStr.toLowerCase());
+                    }
+                });
             }
         });
-        // Remove duplicates and normalize (case-insensitive)
-        return [...new Set(allAffectedParts.map(p => p.trim().toLowerCase()))];
-    }, [recallEvents]);
+        
+        // Remove duplicates
+        const uniqueIds = [...new Set(allAffectedPartIds)];
+        const uniqueNames = [...new Set(allAffectedPartNames)];
+        
+        return { ids: uniqueIds, names: uniqueNames };
+    }, [recallEvents, parts]);
 
     // Filter parts for RECALL claims - only show parts that match affectedParts
     const availableParts = React.useMemo(() => {
@@ -474,15 +523,23 @@ function EstimatesDialog({ open, onClose, claim, parts, partsLoading, setSnack }
             // Not a RECALL claim, show all parts
             return parts;
         }
-        // RECALL claim - only show parts that match affectedParts
+        // RECALL claim - only show parts that match affectedParts (by ID or name)
         return parts.filter(part => {
+            const partId = String(part.id);
             const partNameLower = (part.partName || "").toLowerCase();
             const partNoLower = (part.partNo || "").toLowerCase();
-            return affectedPartsFromRecall.some(affectedPart => 
-                partNameLower.includes(affectedPart) || 
-                affectedPart.includes(partNameLower) ||
-                partNoLower.includes(affectedPart) ||
-                affectedPart.includes(partNoLower)
+            
+            // Kiểm tra theo ID trước (chính xác nhất)
+            if (affectedPartsFromRecall.ids.includes(partId)) {
+                return true;
+            }
+            
+            // Kiểm tra theo tên (fallback)
+            return affectedPartsFromRecall.names.some(affectedName => 
+                partNameLower.includes(affectedName) || 
+                affectedName.includes(partNameLower) ||
+                partNoLower.includes(affectedName) ||
+                affectedName.includes(partNoLower)
             );
         });
     }, [parts, recallEvents, affectedPartsFromRecall]);
@@ -511,6 +568,53 @@ function EstimatesDialog({ open, onClose, claim, parts, partsLoading, setSnack }
 
     // validation: ensure each item has partId (matches estimatesService.validatePayload)
     const validateFormBeforeSend = () => {
+        // Check if recall events have valid affectedPartsJson/affectedParts
+        if (recallEvents.length > 0) {
+            const hasValidAffectedParts = recallEvents.some(event => {
+                // Check if event has affectedParts (array)
+                if (event.affectedParts && Array.isArray(event.affectedParts) && event.affectedParts.length > 0) {
+                    return true;
+                }
+                // Check if event has affectedPartsJson (JSON string)
+                if (event.affectedPartsJson) {
+                    try {
+                        const parsed = typeof event.affectedPartsJson === 'string' 
+                            ? JSON.parse(event.affectedPartsJson) 
+                            : event.affectedPartsJson;
+                        if (Array.isArray(parsed) && parsed.length > 0) {
+                            return true;
+                        }
+                    } catch (e) {
+                        // Invalid JSON
+                    }
+                }
+                // Check if event has affected_parts (snake_case)
+                if (event.affected_parts && Array.isArray(event.affected_parts) && event.affected_parts.length > 0) {
+                    return true;
+                }
+                return false;
+            });
+            
+            if (!hasValidAffectedParts) {
+                setSnack?.({ 
+                    open: true, 
+                    message: "⚠️ Recall event không có affectedPartsJson hợp lệ. Vui lòng kiểm tra lại recall event.", 
+                    severity: "error" 
+                });
+                return false;
+            }
+            
+            // Check if affectedPartsFromRecall is empty
+            if (affectedPartsFromRecall.ids.length === 0 && affectedPartsFromRecall.names.length === 0) {
+                setSnack?.({ 
+                    open: true, 
+                    message: "⚠️ Không tìm thấy phụ tùng được phép trong recall events.", 
+                    severity: "error" 
+                });
+                return false;
+            }
+        }
+        
         if (!form.items.length) {
             setSnack?.({ open: true, message: "Cần ít nhất 1 phụ tùng (item) trong estimate", severity: "warning" });
             return false;
@@ -542,12 +646,31 @@ function EstimatesDialog({ open, onClose, claim, parts, partsLoading, setSnack }
             console.error("Create estimate error:", err);
             const msg = err?.response?.data || err;
             let friendlyMessage = "Tạo estimate thất bại";
-            if (typeof msg === "string" && msg.includes("phải có trạng thái ESTIMATING")) {
-                friendlyMessage = "⚠️ Chưa có Diagnostics hoặc claim chưa chuyển sang giai đoạn lập báo giá (ESTIMATING).";
-            } else if (typeof msg === "string" && msg.includes("Không tìm thấy claim")) {
-                friendlyMessage = "Claim không tồn tại hoặc đã bị xoá.";
+            
+            // Check for specific error messages
+            if (typeof msg === "object" && msg.message) {
+                if (msg.message.includes("affectedPartsJson")) {
+                    friendlyMessage = "⚠️ Recall event không có affectedPartsJson hợp lệ. Vui lòng kiểm tra lại recall event trong hệ thống.";
+                } else if (msg.message.includes("phải có trạng thái ESTIMATING")) {
+                    friendlyMessage = "⚠️ Chưa có Diagnostics hoặc claim chưa chuyển sang giai đoạn lập báo giá (ESTIMATING).";
+                } else if (msg.message.includes("Không tìm thấy claim")) {
+                    friendlyMessage = "Claim không tồn tại hoặc đã bị xoá.";
+                } else {
+                    friendlyMessage = msg.message;
+                }
+            } else if (typeof msg === "string") {
+                if (msg.includes("affectedPartsJson")) {
+                    friendlyMessage = "⚠️ Recall event không có affectedPartsJson hợp lệ. Vui lòng kiểm tra lại recall event trong hệ thống.";
+                } else if (msg.includes("phải có trạng thái ESTIMATING")) {
+                    friendlyMessage = "⚠️ Chưa có Diagnostics hoặc claim chưa chuyển sang giai đoạn lập báo giá (ESTIMATING).";
+                } else if (msg.includes("Không tìm thấy claim")) {
+                    friendlyMessage = "Claim không tồn tại hoặc đã bị xoá.";
+                } else {
+                    friendlyMessage = msg;
+                }
             }
-            setSnack?.({ open: true, message: friendlyMessage, severity: "warning" });
+            
+            setSnack?.({ open: true, message: friendlyMessage, severity: "error" });
         } finally {
             setLoadingLocal(false);
         }
@@ -817,10 +940,12 @@ function EstimatesDialog({ open, onClose, claim, parts, partsLoading, setSnack }
                                     />
                                 )}
                             </Stack>
-                            {recallEvents.length > 0 && affectedPartsFromRecall.length > 0 && (
+                            {recallEvents.length > 0 && (affectedPartsFromRecall.ids.length > 0 || affectedPartsFromRecall.names.length > 0) && (
                                 <Alert severity="info" sx={{ mb: 1 }}>
                                     <Typography variant="caption">
-                                        Phụ tùng được phép chọn: {affectedPartsFromRecall.join(", ")}
+                                        Phụ tùng được phép chọn: {affectedPartsFromRecall.names.length > 0 
+                                            ? affectedPartsFromRecall.names.join(", ") 
+                                            : affectedPartsFromRecall.ids.join(", ")}
                                     </Typography>
                                 </Alert>
                             )}

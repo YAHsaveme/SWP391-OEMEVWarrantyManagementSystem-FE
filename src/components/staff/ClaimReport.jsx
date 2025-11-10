@@ -48,7 +48,7 @@ import {
     Receipt as ReceiptIcon,
 } from "@mui/icons-material";
 import claimReportService from "../../services/claimReportService";
-import claimService from "../../services/claimService";
+import claimService, { CLAIM_STATUS } from "../../services/claimService";
 import Autocomplete from "@mui/material/Autocomplete";
 import axiosInstance from "../../services/axiosInstance";
 
@@ -217,10 +217,7 @@ function CreateReportDialog({ open, onClose, onCreate, claims, setSnack }) {
                             <Autocomplete
                                 options={claims}
                                 getOptionLabel={(option) => {
-                                    const vin = option.vin || "—";
-                                    const summary = option.summary?.substring(0, 50) || "Không có tóm tắt";
-                                    const customer = option.intakeContactName || "";
-                                    return customer ? `${vin} - ${customer} - ${summary}` : `${vin} - ${summary}`;
+                                    return option.vin || "—";
                                 }}
                                 value={claims.find((c) => c.id === claimId) || null}
                                 onChange={(_, newValue) => setClaimId(newValue?.id || "")}
@@ -229,7 +226,7 @@ function CreateReportDialog({ open, onClose, onCreate, claims, setSnack }) {
                                         {...params}
                                         label="Chọn Claim *"
                                         required
-                                        placeholder="Tìm kiếm theo VIN, tên khách hàng hoặc tóm tắt"
+                                        placeholder="Tìm kiếm theo VIN"
                                     />
                                 )}
                                 isOptionEqualToValue={(option, value) => option.id === value.id}
@@ -507,13 +504,20 @@ export default function ClaimReport() {
                 if (mounted) {
                     const reportsArray = Array.isArray(reportsData) ? reportsData : [];
                     const claimsArray = Array.isArray(claimsData) ? claimsData : [];
+                    
+                    // Filter chỉ lấy claims có status là COMPLETED
+                    const completedClaims = claimsArray.filter(
+                        (claim) => claim.status === CLAIM_STATUS.COMPLETED || claim.status === "COMPLETED"
+                    );
+                    
                     setReports(reportsArray);
-                    setClaims(claimsArray);
+                    setClaims(completedClaims);
 
                     // Build claim map: claimId -> claim info
                     // Load vehicle info để lấy tên khách hàng
+                    // Chỉ map những claim đã được filter (COMPLETED)
                     const map = {};
-                    const loadVehiclePromises = claimsArray.map(async (claim) => {
+                    const loadVehiclePromises = completedClaims.map(async (claim) => {
                         if (claim.id && claim.vin) {
                             let intakeContactName = claim.intakeContactName || "—";
 
