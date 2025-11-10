@@ -44,7 +44,7 @@ import InventoryParts from "./InventoryParts";
 import ReceiveAppointment from "./ReceiveAppointment";
 import WarrantyClaims from "./WarrantyClaims";
 import Estimates from "./Estimates";
-
+import InventoryMove from "./InventoryMove";
 const drawerWidth = 264;
 
 /* ---------- Styled Components ---------- */
@@ -160,6 +160,7 @@ export default function SCTechnicianDashboard() {
     { label: "Quản lý Lịch Hẹn", icon: <CalendarToday />, path: "/tech/receive-appointment", key: "receive-appointment" },
     { label: "Yêu cầu bảo hành", icon: <Assignment />, path: "/tech/warranty-claims", key: "warranty-claims" },
     { label: "Báo giá", icon: <Receipt />, path: "/tech/estimates", key: "estimates" },
+    { label: "Di chuyển kho", icon: <Inventory />, path: "/tech/inventory-movement", key: "inventory-movement" },
   ];
 
   const drawer = (
@@ -371,6 +372,7 @@ export default function SCTechnicianDashboard() {
             <Route path="receive-appointment" element={<ReceiveAppointment />} />
             <Route path="warranty-claims" element={<WarrantyClaims />} />
             <Route path="estimates" element={<Estimates />} />
+            <Route path="inventory-movement" element={<InventoryMove />} />
             <Route index element={<Navigate to="diagnostics" replace />} />
           </Routes>
         </Box>

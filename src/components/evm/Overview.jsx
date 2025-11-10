@@ -7,7 +7,6 @@ import WarrantyRequests from "./WarrantyRequests";
 import WarrantyPolicy from "./WarrantyPolicy";
 import ServiceCenters from "./ServiceCenters";
 import authService from "../../services/authService";
-import InventoryMovement from "./InventoryMovement";
 import InventoryPart from "./InventoryPart";
 import ShipmentDetailPage from "./ShipmentDetailPage";
 import EventManagement from "./EventManagement";
@@ -37,7 +36,6 @@ import { alpha, createTheme } from "@mui/material/styles";
 import { ThemeProvider, useTheme } from "@mui/material/styles";
 import useMediaQuery from "@mui/material/useMediaQuery";
 import useScrollTrigger from "@mui/material/useScrollTrigger";
-import CompareArrowsIcon from "@mui/icons-material/CompareArrows";
 
 /* ===== Helper: nâng AppBar khi cuộn ===== */
 function ElevationScroll({ children }) {
@@ -124,7 +122,7 @@ export default function Overview() {
             const id = e?.detail?.id;
             if (id) {
                 setActiveShipmentId(id);
-                setTab(8); // switch to Chi tiết vận đơn tab
+                setTab(7); // switch to Chi tiết vận đơn tab
             }
         };
         window.addEventListener("open-shipment", handler);
@@ -292,7 +290,6 @@ export default function Overview() {
                             <Tab iconPosition="start" icon={<PackageIcon />} label="Quản lý mẫu xe" />
                             <Tab iconPosition="start" icon={<BarChartIcon />} label="Kho phụ tùng" />
                             <Tab iconPosition="start" icon={<FileText />} label="Yêu cầu bảo hành" />
-                            <Tab iconPosition="start" icon={<CompareArrowsIcon />} label="Luân chuyển kho" />
                             <Tab iconPosition="start" icon={<CarIcon />} label="Trung tâm Dịch vụ" />
                             <Tab iconPosition="start" icon={<FileText />} label="Chính sách Bảo hành" />
                             <Tab iconPosition="start" icon={<CarIcon />} label="Chi tiết vận đơn" />
@@ -306,12 +303,11 @@ export default function Overview() {
                             {tab === 2 && <ProductManagement />}
                             {tab === 3 && <InventoryPart />}
                             {tab === 4 && <WarrantyRequests />}
-                            {tab === 5 && <InventoryMovement />}
-                            {tab === 6 && <ServiceCenters />}
-                            {tab === 7 && <WarrantyPolicy />}
-                            {tab === 8 && <ShipmentDetailPage id={activeShipmentId} />}
-                            {tab === 9 && <EventManagement />}
-                            {tab === 10 && <PartTraceability />}
+                            {tab === 5 && <ServiceCenters />}
+                            {tab === 6 && <WarrantyPolicy />}
+                            {tab === 7 && <ShipmentDetailPage id={activeShipmentId} />}
+                            {tab === 8 && <EventManagement />}
+                            {tab === 9 && <PartTraceability />}
                         </Box>
                     </Paper>
 

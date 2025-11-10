@@ -29,6 +29,7 @@ import {
   CircularProgress,
   Snackbar,
   Alert,
+  Checkbox,
 } from "@mui/material";
 import SearchIcon from "@mui/icons-material/Search";
 import DescriptionIcon from "@mui/icons-material/Description";
@@ -66,6 +67,14 @@ const statusColor = {
   COMPLETED: "default",
   REJECTED: "error",
 };
+
+const EXCLUSIONS = [
+  "ACCIDENT_DAMAGE",
+  "WATER_INGRESSION",
+  "UNAUTHORIZED_MOD",
+  "LACK_OF_MAINTENANCE",
+  "WEAR_AND_TEAR",
+];
 
 /** ---- Stat Card ---- */
 function StatCard({ icon, label, value }) {
@@ -546,7 +555,7 @@ function CreateClaimDialog({ open, onClose, onCreate, setSnack }) {
   const [summary, setSummary] = useState("");
   const [odometerKm, setOdometerKm] = useState("");
   const [errorDate, setErrorDate] = useState("");
-  const [exclusion, setExclusion] = useState("");
+  const [exclusions, setExclusions] = useState([]);
   const [intakeContactName, setIntakeContactName] = useState("");
 
   // File upload state
@@ -688,7 +697,7 @@ function CreateClaimDialog({ open, onClose, onCreate, setSnack }) {
         odometerKm: Number(odometerKm) || 0,
         summary: summary.trim(),
         attachmentUrls: uploadedUrls,
-        exclusion: exclusion?.trim() || undefined, // Optional field theo claimService.js
+        exclusion: exclusions && exclusions.length > 0 ? exclusions.join(", ") : undefined, // Optional field - join array thành string
       };
 
       await onCreate?.(payload);
@@ -699,7 +708,7 @@ function CreateClaimDialog({ open, onClose, onCreate, setSnack }) {
       setSummary("");
       setOdometerKm("");
       setErrorDate("");
-      setExclusion("");
+      setExclusions([]);
       setFiles([]);
     } catch (err) {
       console.error("Create claim failed:", err);
@@ -894,15 +903,33 @@ function CreateClaimDialog({ open, onClose, onCreate, setSnack }) {
               />
             </Grid>
             <Grid item xs={12}>
-              <TextField
-                label="Exclusion (Optional)"
-                value={exclusion}
-                onChange={(e) => setExclusion(e.target.value)}
-                multiline
-                minRows={2}
-                fullWidth
-                helperText="Optional field - có thể để trống"
-              />
+              <FormControl fullWidth>
+                <InputLabel>Exclusions (Optional)</InputLabel>
+                <Select
+                  multiple
+                  value={exclusions}
+                  label="Exclusions (Optional)"
+                  onChange={(e) => setExclusions(e.target.value)}
+                  renderValue={(selected) => selected.length > 0 ? selected.join(", ") : "Chọn exclusions (tùy chọn)"}
+                  MenuProps={{
+                    PaperProps: {
+                      style: {
+                        maxHeight: 300,
+                      },
+                    },
+                  }}
+                >
+                  {EXCLUSIONS.map((exclusion) => (
+                    <MenuItem key={exclusion} value={exclusion}>
+                      <Checkbox checked={exclusions.indexOf(exclusion) > -1} />
+                      <Typography variant="body2">{exclusion}</Typography>
+                    </MenuItem>
+                  ))}
+                </Select>
+                <Typography variant="caption" sx={{ mt: 0.5, display: "block", color: "text.secondary" }}>
+                  Chọn các exclusions áp dụng cho claim này (có thể để trống)
+                </Typography>
+              </FormControl>
             </Grid>
 
             {/* ⚙️ File Upload Input */}
