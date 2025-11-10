@@ -931,8 +931,23 @@ function InventoryLotView({ onSwitch }) {
                 // Format lại thông báo lỗi dài từ backend
                 if (rawMessage.includes("Đã tồn tại InventoryLot") && rawMessage.includes("serialized")) {
                     errorMsg = "Part Lot serialized này đã có Inventory Lot ở center này. Mỗi Part Lot serial chỉ được có 1 Inventory Lot tại mỗi center.";
+                } else if (rawMessage.includes("Serial No") && rawMessage.includes("đã tồn tại") && rawMessage.includes("unique toàn hệ thống")) {
+                    // Format lại thông báo SerialNo duplicate từ BE (đã ngắn gọn hơn sau khi BE được cập nhật)
+                    // Nếu BE trả về message đầy đủ, giữ nguyên; nếu dài quá thì format lại
+                    if (rawMessage.length > 150) {
+                        // Tìm SerialNo và Center name trong message
+                        const serialMatch = rawMessage.match(/Serial No "([^"]+)"/);
+                        const centerMatch = rawMessage.match(/ở "([^"]+)"/);
+                        if (serialMatch && centerMatch) {
+                            errorMsg = `Serial No "${serialMatch[1]}" đã tồn tại ở "${centerMatch[1]}". Serial number phải unique toàn hệ thống.`;
+                        } else {
+                            errorMsg = rawMessage;
+                        }
+                    } else {
+                        errorMsg = rawMessage;
+                    }
                 } else if (rawMessage.includes("Serial No") || rawMessage.includes("Serial number")) {
-                    // Giữ nguyên thông báo về Serial No từ service validation
+                    // Giữ nguyên thông báo về Serial No
                     errorMsg = rawMessage;
                 } else {
                     errorMsg = rawMessage;
@@ -1369,6 +1384,7 @@ function InventoryLotView({ onSwitch }) {
 
 /* ================= Component chính ================= */
 export default function InventoryPartsPage() {
+    
     const [view, setView] = useState("part"); // "part" | "lot"
 
     return (

@@ -42,12 +42,12 @@ import {
     Receipt as ReceiptIcon,
     CheckCircle as CheckCircleIcon,
     CompareArrows as CompareIcon,
-    FileDownload as FileDownloadIcon,
 } from "@mui/icons-material";
 import estimatesService from "../../services/estimatesService";
 import claimService, { CLAIM_STATUS } from "../../services/claimService";
 import axiosInstance from "../../services/axiosInstance";
 import vehicleService from "../../services/vehicleService";
+import eventService from "../../services/eventService";
 import axios from "axios";
 
 const statusColor = {
@@ -364,6 +364,8 @@ function EstimatesDialog({ open, onClose, claim, parts, partsLoading, setSnack }
     const [versionToView, setVersionToView] = React.useState(null);
     const [compareMode, setCompareMode] = React.useState({ on: false, otherVersion: null });
     const [viewMode, setViewMode] = React.useState(false); // true = view only, false = edit mode
+    const [recallEvents, setRecallEvents] = React.useState([]);
+    const [loadingEvents, setLoadingEvents] = React.useState(false);
 
     const emptyForm = {
         items: [], // each: { partId, partName, unitPriceVND, quantity }
@@ -393,6 +395,34 @@ function EstimatesDialog({ open, onClose, claim, parts, partsLoading, setSnack }
         })();
         return () => (mounted = false);
     }, [open, claim?.id, setSnack]);
+
+    // Load recall events when dialog opens
+    React.useEffect(() => {
+        if (!open || !claim?.vin) {
+            setRecallEvents([]);
+            return;
+        }
+        let mounted = true;
+        (async () => {
+            setLoadingEvents(true);
+            try {
+                const result = await eventService.checkRecallByVin(claim.vin);
+                if (mounted) {
+                    setRecallEvents(result.events || []);
+                }
+            } catch (err) {
+                console.error("Load recall events failed:", err);
+                if (mounted) {
+                    setRecallEvents([]);
+                }
+            } finally {
+                if (mounted) setLoadingEvents(false);
+            }
+        })();
+        return () => {
+            mounted = false;
+        };
+    }, [open, claim?.vin]);
 
     // sync editing -> form
     React.useEffect(() => {
@@ -424,6 +454,38 @@ function EstimatesDialog({ open, onClose, claim, parts, partsLoading, setSnack }
     const partsSubtotal = React.useMemo(() => form.items.reduce((s, it) => s + (Number(it.unitPriceVND || 0) * Number(it.quantity || 0)), 0), [form.items]);
     const laborSubtotal = Number(form.laborSlots || 0) * Number(form.laborRateVND || 0);
     const grandTotal = partsSubtotal + laborSubtotal;
+
+    // Get affected parts from recall events
+    const affectedPartsFromRecall = React.useMemo(() => {
+        if (!recallEvents || recallEvents.length === 0) return [];
+        const allAffectedParts = [];
+        recallEvents.forEach(event => {
+            if (event.affectedParts && Array.isArray(event.affectedParts)) {
+                allAffectedParts.push(...event.affectedParts);
+            }
+        });
+        // Remove duplicates and normalize (case-insensitive)
+        return [...new Set(allAffectedParts.map(p => p.trim().toLowerCase()))];
+    }, [recallEvents]);
+
+    // Filter parts for RECALL claims - only show parts that match affectedParts
+    const availableParts = React.useMemo(() => {
+        if (recallEvents.length === 0) {
+            // Not a RECALL claim, show all parts
+            return parts;
+        }
+        // RECALL claim - only show parts that match affectedParts
+        return parts.filter(part => {
+            const partNameLower = (part.partName || "").toLowerCase();
+            const partNoLower = (part.partNo || "").toLowerCase();
+            return affectedPartsFromRecall.some(affectedPart => 
+                partNameLower.includes(affectedPart) || 
+                affectedPart.includes(partNameLower) ||
+                partNoLower.includes(affectedPart) ||
+                affectedPart.includes(partNoLower)
+            );
+        });
+    }, [parts, recallEvents, affectedPartsFromRecall]);
 
     // item operations
     const addItem = () => setForm((f) => ({ ...f, items: [...f.items, { partId: "", partName: "", unitPriceVND: 0, quantity: 1 }] }));
@@ -582,16 +644,6 @@ function EstimatesDialog({ open, onClose, claim, parts, partsLoading, setSnack }
         }
     };
 
-    const exportEstimateJSON = (est) => {
-        const blob = new Blob([JSON.stringify(est, null, 2)], { type: "application/json" });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement("a");
-        a.href = url;
-        a.download = `estimate_${(est?.claim_id ?? claim?.id ?? "claim")}_v${est?.versionNo ?? est?.version ?? "unknown"}.json`;
-        a.click();
-        URL.revokeObjectURL(url);
-    };
-
     // render
     return (
         <Dialog open={open} onClose={onClose} fullWidth maxWidth="lg">
@@ -609,8 +661,25 @@ function EstimatesDialog({ open, onClose, claim, parts, partsLoading, setSnack }
                 </Stack>
             </DialogTitle>
             <DialogContent dividers>
-                {/* top controls: version selector, show latest toggle, compare */}
+                {/* top controls: Create button, version selector, show latest toggle, compare */}
                 <Stack direction={{ xs: "column", md: "row" }} spacing={2} alignItems="center" sx={{ mb: 2 }}>
+                    <Button
+                        variant="contained"
+                        color="primary"
+                        startIcon={<Add />}
+                        onClick={() => {
+                            setCreating(true);
+                            setEditing(null);
+                            setForm(emptyForm);
+                            setViewMode(false);
+                            setVersionToView(null);
+                            setCompareMode({ on: false, otherVersion: null });
+                        }}
+                        sx={{ minWidth: 160 }}
+                    >
+                        Tạo Estimate mới
+                    </Button>
+
                     <FormControl size="small" sx={{ minWidth: 160 }}>
                         <InputLabel id="version-select-label">Chọn version</InputLabel>
                         <Select
@@ -633,14 +702,7 @@ function EstimatesDialog({ open, onClose, claim, parts, partsLoading, setSnack }
                         />
                     </FormGroup>
 
-                    <Button variant="outlined" startIcon={<FileDownloadIcon />} onClick={() => {
-                        // export all versions metadata (no IDs displayed to user but exported file will contain full object)
-                        exportEstimateJSON({ claim: { vin: claim?.vin, customer: claim?.intakeContactName }, versions: list });
-                    }}>
-                        Xuất JSON (metadata)
-                    </Button>
-
-                    <Tooltip title="So sánh với một version khác (chọn version và click ‘So sánh’)">
+                    <Tooltip title="So sánh với một version khác (chọn version và click 'So sánh')">
                         <Button
                             variant="contained"
                             startIcon={<CompareIcon />}
@@ -690,7 +752,6 @@ function EstimatesDialog({ open, onClose, claim, parts, partsLoading, setSnack }
                                             <Stack direction="row" spacing={1}>
                                                 <Button size="small" variant="outlined" startIcon={<EditIcon />} onClick={() => openForEdit(e)}>Chỉnh sửa</Button>
                                                 <Button size="small" variant="outlined" startIcon={<VisibilityIcon />} onClick={() => openForView(e)}>Xem</Button>
-                                                <Button size="small" variant="outlined" onClick={() => exportEstimateJSON(e)}>Xuất</Button>
                                                 <IconButton size="small" onClick={() => toggleExpand(e.id)}>
                                                     <ExpandMore sx={{ transform: expandedMap[e.id] ? "rotate(180deg)" : "rotate(0deg)", transition: "0.3s" }} />
                                                 </IconButton>
@@ -743,23 +804,48 @@ function EstimatesDialog({ open, onClose, claim, parts, partsLoading, setSnack }
 
                         {/* items table */}
                         <Box sx={{ p: 2, bgcolor: "background.paper", borderRadius: 2, border: "1px solid", borderColor: "divider" }}>
-                            <Typography variant="subtitle2" color="primary" gutterBottom>Danh sách phụ tùng</Typography>
+                            <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 1 }}>
+                                <Typography variant="subtitle2" color="primary" gutterBottom sx={{ mb: 0 }}>
+                                    Danh sách phụ tùng
+                                </Typography>
+                                {recallEvents.length > 0 && (
+                                    <Chip 
+                                        label="RECALL - Chỉ chọn phụ tùng trong events" 
+                                        color="warning" 
+                                        size="small"
+                                        sx={{ ml: 1 }}
+                                    />
+                                )}
+                            </Stack>
+                            {recallEvents.length > 0 && affectedPartsFromRecall.length > 0 && (
+                                <Alert severity="info" sx={{ mb: 1 }}>
+                                    <Typography variant="caption">
+                                        Phụ tùng được phép chọn: {affectedPartsFromRecall.join(", ")}
+                                    </Typography>
+                                </Alert>
+                            )}
                             <Stack spacing={1}>
                                 {form.items.map((it, idx) => (
                                     <Grid container spacing={1} key={idx} alignItems="center">
                                         <Grid item xs={6} md={5}>
                                             <Autocomplete
                                                 size="small"
-                                                options={parts}
+                                                options={availableParts}
                                                 getOptionLabel={(option) => option.partName || ""}
                                                 loading={partsLoading}
-                                                value={parts.find(p => p.id === it.partId) || (it.partName ? { id: it.partId, partName: it.partName, unitPriceVND: it.unitPriceVND } : null)}
+                                                value={availableParts.find(p => p.id === it.partId) || (it.partName ? { id: it.partId, partName: it.partName, unitPriceVND: it.unitPriceVND } : null)}
                                                 onChange={(_, selected) => {
                                                     if (!selected) { updateItem(idx, { partId: "", partName: "", unitPriceVND: 0 }); return; }
                                                     updateItem(idx, { partId: selected.id, partName: selected.partName, unitPriceVND: selected.unitPriceVND ?? 0 });
                                                 }}
-                                                renderInput={(params) => <TextField {...params} label="Phụ tùng" />}
-                                                noOptionsText="Không có phụ tùng"
+                                                renderInput={(params) => (
+                                                    <TextField 
+                                                        {...params} 
+                                                        label="Phụ tùng" 
+                                                        helperText={recallEvents.length > 0 ? "Chỉ chọn phụ tùng trong recall events" : ""}
+                                                    />
+                                                )}
+                                                noOptionsText={recallEvents.length > 0 ? "Không có phụ tùng phù hợp trong recall events" : "Không có phụ tùng"}
                                                 freeSolo={false}
                                             />
                                         </Grid>
@@ -1004,6 +1090,71 @@ function EstimatesDialog({ open, onClose, claim, parts, partsLoading, setSnack }
                                 </Card>
                             </Box>
                         )}
+                    </>
+                )}
+
+                {/* Recall Events Section */}
+                {claim?.vin && (
+                    <>
+                        <Divider sx={{ my: 2 }} />
+                        <Card variant="outlined" sx={{ mb: 2 }}>
+                            <CardContent>
+                                <Typography variant="h6" gutterBottom sx={{ mb: 2, fontWeight: 700 }}>
+                                    Recall Events ({recallEvents.length})
+                                </Typography>
+                                {loadingEvents ? (
+                                    <Box sx={{ display: "flex", justifyContent: "center", py: 2 }}>
+                                        <CircularProgress />
+                                    </Box>
+                                ) : recallEvents.length === 0 ? (
+                                    <Typography color="text.secondary">Không có recall events cho VIN này</Typography>
+                                ) : (
+                                    <Stack spacing={2}>
+                                        {recallEvents.map((event) => (
+                                            <Card key={event.id} variant="outlined" sx={{ bgcolor: "warning.light", opacity: 0.9 }}>
+                                                <CardContent>
+                                                    <Stack spacing={1}>
+                                                        <Row label="Event Name" value={event.name || "—"} />
+                                                        <Row label="Type" value={event.type || "—"} />
+                                                        <Row label="Reason" value={event.reason || "—"} />
+                                                        <Row label="Start Date" value={event.startDate ? new Date(event.startDate).toLocaleString("vi-VN") : "—"} />
+                                                        <Row label="End Date" value={event.endDate ? new Date(event.endDate).toLocaleString("vi-VN") : "—"} />
+                                                        {event.affectedParts && event.affectedParts.length > 0 && (
+                                                            <Box>
+                                                                <Typography variant="body2" color="text.secondary" sx={{ mb: 0.5, fontWeight: 600 }}>
+                                                                    Affected Parts:
+                                                                </Typography>
+                                                                <Stack spacing={0.5}>
+                                                                    {event.affectedParts.map((part, idx) => (
+                                                                        <Typography key={idx} variant="body2" sx={{ pl: 2 }}>
+                                                                            • {part}
+                                                                        </Typography>
+                                                                    ))}
+                                                                </Stack>
+                                                            </Box>
+                                                        )}
+                                                        {event.exclusions && event.exclusions.length > 0 && (
+                                                            <Box>
+                                                                <Typography variant="body2" color="text.secondary" sx={{ mb: 0.5, fontWeight: 600 }}>
+                                                                    Exclusions:
+                                                                </Typography>
+                                                                <Stack spacing={0.5}>
+                                                                    {event.exclusions.map((excl, idx) => (
+                                                                        <Typography key={idx} variant="body2" sx={{ pl: 2 }}>
+                                                                            • {excl}
+                                                                        </Typography>
+                                                                    ))}
+                                                                </Stack>
+                                                            </Box>
+                                                        )}
+                                                    </Stack>
+                                                </CardContent>
+                                            </Card>
+                                        ))}
+                                    </Stack>
+                                )}
+                            </CardContent>
+                        </Card>
                     </>
                 )}
 

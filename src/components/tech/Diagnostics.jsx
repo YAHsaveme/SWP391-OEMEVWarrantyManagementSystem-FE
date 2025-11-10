@@ -30,6 +30,9 @@ import {
   FormControl,
   InputLabel,
   TableSortLabel,
+  Card,
+  CardContent,
+  Divider,
 } from "@mui/material";
 import {
   Visibility as VisibilityIcon,
@@ -40,6 +43,7 @@ import {
 } from "@mui/icons-material";
 import Autocomplete from "@mui/material/Autocomplete";
 import diagnosticsService from "../../services/diagnosticsService";
+import eventService from "../../services/eventService";
 import axiosInstance from "../../services/axiosInstance";
 
 export default function Diagnostics() {
@@ -74,6 +78,8 @@ export default function Diagnostics() {
   const [detailData, setDetailData] = useState(null);
   const [formOpen, setFormOpen] = useState(false);
   const [formMode, setFormMode] = useState("create");
+  const [recallEvents, setRecallEvents] = useState([]);
+  const [loadingEvents, setLoadingEvents] = useState(false);
   const [formValues, setFormValues] = useState({
     claimId: "",
     customerName: "",
@@ -248,6 +254,22 @@ export default function Diagnostics() {
     try {
       const resp = await diagnosticsService.getById(id);
       setDetailData(resp);
+      
+      // Load recall events for this diagnostic's claim VIN
+      if (resp?.claimVin) {
+        setLoadingEvents(true);
+        try {
+          const recallResult = await eventService.checkRecallByVin(resp.claimVin);
+          setRecallEvents(recallResult.events || []);
+        } catch (err) {
+          log.err("Load recall events error", err);
+          setRecallEvents([]);
+        } finally {
+          setLoadingEvents(false);
+        }
+      } else {
+        setRecallEvents([]);
+      }
     } catch (err) {
       log.err("getById error", err);
       setSnackbar({ open: true, message: "Không lấy được chi tiết", severity: "error" });
@@ -684,63 +706,141 @@ export default function Diagnostics() {
               <CircularProgress />
             </Box>
           ) : (
-            <Grid container spacing={2}>
-              <Grid item xs={6}>
-                <Typography variant="caption" color="text.secondary">VIN</Typography>
-                <Typography variant="body1">{detailData.claimVin || "-"}</Typography>
+            <>
+              <Grid container spacing={2}>
+                <Grid item xs={6}>
+                  <Typography variant="caption" color="text.secondary">VIN</Typography>
+                  <Typography variant="body1">{detailData.claimVin || "-"}</Typography>
+                </Grid>
+                <Grid item xs={6}>
+                  <Typography variant="caption" color="text.secondary">Kỹ thuật viên</Typography>
+                  <Typography variant="body1">{detailData.performedByName || "-"}</Typography>
+                </Grid>
+                <Grid item xs={6}>
+                  <Typography variant="caption" color="text.secondary">SOH (%)</Typography>
+                  <Typography variant="body1">{detailData.sohPct ?? "-"}</Typography>
+                </Grid>
+                <Grid item xs={6}>
+                  <Typography variant="caption" color="text.secondary">SOC (%)</Typography>
+                  <Typography variant="body1">{detailData.socPct ?? "-"}</Typography>
+                </Grid>
+                <Grid item xs={6}>
+                  <Typography variant="caption" color="text.secondary">Pack Voltage</Typography>
+                  <Typography variant="body1">{detailData.packVoltage ?? "-"}</Typography>
+                </Grid>
+                <Grid item xs={6}>
+                  <Typography variant="caption" color="text.secondary">Cell Delta (mV)</Typography>
+                  <Typography variant="body1">{detailData.cellDeltaMv ?? "-"}</Typography>
+                </Grid>
+                <Grid item xs={6}>
+                  <Typography variant="caption" color="text.secondary">Cycles</Typography>
+                  <Typography variant="body1">{detailData.cycles ?? "-"}</Typography>
+                </Grid>
+                <Grid item xs={6}>
+                  <Typography variant="caption" color="text.secondary">Recorded At</Typography>
+                  <Typography variant="body1">
+                    {detailData.recordedAt ? new Date(detailData.recordedAt).toLocaleString("vi-VN") : "-"}
+                  </Typography>
+                </Grid>
+                <Grid item xs={6}>
+                  <Typography variant="caption" color="text.secondary">Phase</Typography>
+                  <Box mt={0.5}>
+                    <Chip label={detailData.phase || "-"} color={phaseColor(detailData.phase)} size="small" />
+                  </Box>
+                </Grid>
+                <Grid item xs={6}>
+                  <Typography variant="caption" color="text.secondary">Outcome</Typography>
+                  <Box mt={0.5}>
+                    <Chip
+                      label={detailData.outcome || "-"}
+                      color={outcomeColor(detailData.outcome)}
+                      size="small"
+                      variant="outlined"
+                    />
+                  </Box>
+                </Grid>
+                <Grid item xs={12}>
+                  <Typography variant="caption" color="text.secondary">Notes</Typography>
+                  <Typography variant="body1">{detailData.notes || "Không có ghi chú"}</Typography>
+                </Grid>
               </Grid>
-              <Grid item xs={6}>
-                <Typography variant="caption" color="text.secondary">Kỹ thuật viên</Typography>
-                <Typography variant="body1">{detailData.performedByName || "-"}</Typography>
-              </Grid>
-              <Grid item xs={6}>
-                <Typography variant="caption" color="text.secondary">SOH (%)</Typography>
-                <Typography variant="body1">{detailData.sohPct ?? "-"}</Typography>
-              </Grid>
-              <Grid item xs={6}>
-                <Typography variant="caption" color="text.secondary">SOC (%)</Typography>
-                <Typography variant="body1">{detailData.socPct ?? "-"}</Typography>
-              </Grid>
-              <Grid item xs={6}>
-                <Typography variant="caption" color="text.secondary">Pack Voltage</Typography>
-                <Typography variant="body1">{detailData.packVoltage ?? "-"}</Typography>
-              </Grid>
-              <Grid item xs={6}>
-                <Typography variant="caption" color="text.secondary">Cell Delta (mV)</Typography>
-                <Typography variant="body1">{detailData.cellDeltaMv ?? "-"}</Typography>
-              </Grid>
-              <Grid item xs={6}>
-                <Typography variant="caption" color="text.secondary">Cycles</Typography>
-                <Typography variant="body1">{detailData.cycles ?? "-"}</Typography>
-              </Grid>
-              <Grid item xs={6}>
-                <Typography variant="caption" color="text.secondary">Recorded At</Typography>
-                <Typography variant="body1">
-                  {detailData.recordedAt ? new Date(detailData.recordedAt).toLocaleString("vi-VN") : "-"}
-                </Typography>
-              </Grid>
-              <Grid item xs={6}>
-                <Typography variant="caption" color="text.secondary">Phase</Typography>
-                <Box mt={0.5}>
-                  <Chip label={detailData.phase || "-"} color={phaseColor(detailData.phase)} size="small" />
-                </Box>
-              </Grid>
-              <Grid item xs={6}>
-                <Typography variant="caption" color="text.secondary">Outcome</Typography>
-                <Box mt={0.5}>
-                  <Chip
-                    label={detailData.outcome || "-"}
-                    color={outcomeColor(detailData.outcome)}
-                    size="small"
-                    variant="outlined"
-                  />
-                </Box>
-              </Grid>
-              <Grid item xs={12}>
-                <Typography variant="caption" color="text.secondary">Notes</Typography>
-                <Typography variant="body1">{detailData.notes || "Không có ghi chú"}</Typography>
-              </Grid>
-            </Grid>
+              
+              {/* Recall Events Section */}
+              {detailData?.claimVin && (
+                <>
+                  <Divider sx={{ my: 2 }} />
+                  <Box>
+                    <Typography variant="h6" gutterBottom sx={{ mb: 2, fontWeight: 700 }}>
+                      Recall Events ({recallEvents.length})
+                    </Typography>
+                    {loadingEvents ? (
+                      <Box sx={{ display: "flex", justifyContent: "center", py: 2 }}>
+                        <CircularProgress />
+                      </Box>
+                    ) : recallEvents.length === 0 ? (
+                      <Typography color="text.secondary">Không có recall events cho VIN này</Typography>
+                    ) : (
+                      <Stack spacing={2}>
+                        {recallEvents.map((event) => (
+                          <Card key={event.id} variant="outlined" sx={{ bgcolor: "warning.light", opacity: 0.9 }}>
+                            <CardContent>
+                              <Stack spacing={1}>
+                                <Grid container spacing={2}>
+                                  <Grid item xs={6}>
+                                    <Typography variant="caption" color="text.secondary">Event Name</Typography>
+                                    <Typography variant="body1">{event.name || "—"}</Typography>
+                                  </Grid>
+                                  <Grid item xs={6}>
+                                    <Typography variant="caption" color="text.secondary">Type</Typography>
+                                    <Typography variant="body1">{event.type || "—"}</Typography>
+                                  </Grid>
+                                  <Grid item xs={12}>
+                                    <Typography variant="caption" color="text.secondary">Reason</Typography>
+                                    <Typography variant="body1">{event.reason || "—"}</Typography>
+                                  </Grid>
+                                  <Grid item xs={6}>
+                                    <Typography variant="caption" color="text.secondary">Start Date</Typography>
+                                    <Typography variant="body1">{event.startDate ? new Date(event.startDate).toLocaleString("vi-VN") : "—"}</Typography>
+                                  </Grid>
+                                  <Grid item xs={6}>
+                                    <Typography variant="caption" color="text.secondary">End Date</Typography>
+                                    <Typography variant="body1">{event.endDate ? new Date(event.endDate).toLocaleString("vi-VN") : "—"}</Typography>
+                                  </Grid>
+                                  {event.affectedParts && event.affectedParts.length > 0 && (
+                                    <Grid item xs={12}>
+                                      <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 600 }}>Affected Parts:</Typography>
+                                      <Stack spacing={0.5} sx={{ mt: 0.5 }}>
+                                        {event.affectedParts.map((part, idx) => (
+                                          <Typography key={idx} variant="body2" sx={{ pl: 2 }}>
+                                            • {part}
+                                          </Typography>
+                                        ))}
+                                      </Stack>
+                                    </Grid>
+                                  )}
+                                  {event.exclusions && event.exclusions.length > 0 && (
+                                    <Grid item xs={12}>
+                                      <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 600 }}>Exclusions:</Typography>
+                                      <Stack spacing={0.5} sx={{ mt: 0.5 }}>
+                                        {event.exclusions.map((excl, idx) => (
+                                          <Typography key={idx} variant="body2" sx={{ pl: 2 }}>
+                                            • {excl}
+                                          </Typography>
+                                        ))}
+                                      </Stack>
+                                    </Grid>
+                                  )}
+                                </Grid>
+                              </Stack>
+                            </CardContent>
+                          </Card>
+                        ))}
+                      </Stack>
+                    )}
+                  </Box>
+                </>
+              )}
+            </>
           )}
         </DialogContent>
         <DialogActions>

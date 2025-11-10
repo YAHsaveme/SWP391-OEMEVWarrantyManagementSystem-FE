@@ -106,6 +106,34 @@ const lotApi = {
                     const match = message.match(/Duplicate entry '([^']+)'/);
                     const serialNo = match ? match[1] : "";
                     message = `Số serial "${serialNo}" đã tồn tại trong hệ thống. Serial No phải unique toàn hệ thống.`;
+                } else if (message.includes("Đã tồn tại PartLot") || message.includes("PartLot với partId")) {
+                    // Format lại thông báo lỗi PartLot duplicate với batchNo và mfgDate
+                    const batchMatch = message.match(/batchNo=([^,]+)/);
+                    const mfgDateMatch = message.match(/mfgDate=([^,]+)/);
+                    const batchNo = batchMatch ? batchMatch[1].trim() : "";
+                    let mfgDate = mfgDateMatch ? mfgDateMatch[1].trim() : "";
+                    
+                    // Format lại ngày nếu có
+                    if (mfgDate) {
+                        try {
+                            const dateObj = new Date(mfgDate);
+                            if (!isNaN(dateObj.getTime())) {
+                                mfgDate = dateObj.toLocaleDateString("vi-VN");
+                            }
+                        } catch {
+                            // Giữ nguyên nếu không parse được
+                        }
+                    }
+                    
+                    if (batchNo && mfgDate) {
+                        message = `Đã tồn tại lô phụ tùng với Batch No "${batchNo}" và Ngày sản xuất "${mfgDate}". Vui lòng sử dụng Batch No hoặc Ngày sản xuất khác.`;
+                    } else if (batchNo) {
+                        message = `Đã tồn tại lô phụ tùng với Batch No "${batchNo}". Vui lòng sử dụng Batch No khác.`;
+                    } else if (message.includes("BatchNo phải unique")) {
+                        message = "Đã tồn tại lô phụ tùng với cùng Batch No và Ngày sản xuất. Vui lòng thay đổi Batch No hoặc Ngày sản xuất.";
+                    } else {
+                        message = "Đã tồn tại lô phụ tùng với thông tin tương tự. Vui lòng kiểm tra lại Batch No và Ngày sản xuất.";
+                    }
                 } else if (message.includes("Duplicate entry") && message.includes("part_lots")) {
                     message = "Dữ liệu đã tồn tại trong hệ thống. Vui lòng kiểm tra lại.";
                 } else if (res.status === 409) {
@@ -121,6 +149,34 @@ const lotApi = {
                     const match = text.match(/Duplicate entry '([^']+)'/);
                     const serialNo = match ? match[1] : "";
                     errorMsg = `Số serial "${serialNo}" đã tồn tại trong hệ thống. Serial No phải unique toàn hệ thống.`;
+                } else if (text.includes("Đã tồn tại PartLot") || text.includes("PartLot với partId")) {
+                    // Format lại thông báo lỗi PartLot duplicate với batchNo và mfgDate
+                    const batchMatch = text.match(/batchNo=([^,]+)/);
+                    const mfgDateMatch = text.match(/mfgDate=([^,]+)/);
+                    const batchNo = batchMatch ? batchMatch[1].trim() : "";
+                    let mfgDate = mfgDateMatch ? mfgDateMatch[1].trim() : "";
+                    
+                    // Format lại ngày nếu có
+                    if (mfgDate) {
+                        try {
+                            const dateObj = new Date(mfgDate);
+                            if (!isNaN(dateObj.getTime())) {
+                                mfgDate = dateObj.toLocaleDateString("vi-VN");
+                            }
+                        } catch {
+                            // Giữ nguyên nếu không parse được
+                        }
+                    }
+                    
+                    if (batchNo && mfgDate) {
+                        errorMsg = `Đã tồn tại lô phụ tùng với Batch No "${batchNo}" và Ngày sản xuất "${mfgDate}". Vui lòng sử dụng Batch No hoặc Ngày sản xuất khác.`;
+                    } else if (batchNo) {
+                        errorMsg = `Đã tồn tại lô phụ tùng với Batch No "${batchNo}". Vui lòng sử dụng Batch No khác.`;
+                    } else if (text.includes("BatchNo phải unique")) {
+                        errorMsg = "Đã tồn tại lô phụ tùng với cùng Batch No và Ngày sản xuất. Vui lòng thay đổi Batch No hoặc Ngày sản xuất.";
+                    } else {
+                        errorMsg = "Đã tồn tại lô phụ tùng với thông tin tương tự. Vui lòng kiểm tra lại Batch No và Ngày sản xuất.";
+                    }
                 } else if (text.includes("Duplicate entry")) {
                     errorMsg = "Dữ liệu đã tồn tại trong hệ thống. Vui lòng kiểm tra lại.";
                 } else if (res.status === 409) {
@@ -146,6 +202,34 @@ const lotApi = {
                     const match = message.match(/Duplicate entry '([^']+)'/);
                     const serialNo = match ? match[1] : "";
                     message = `Số serial "${serialNo}" đã tồn tại trong hệ thống. Serial No phải unique toàn hệ thống.`;
+                } else if (message.includes("Đã tồn tại PartLot") || message.includes("PartLot với partId")) {
+                    // Format lại thông báo lỗi PartLot duplicate với batchNo và mfgDate
+                    const batchMatch = message.match(/batchNo=([^,]+)/);
+                    const mfgDateMatch = message.match(/mfgDate=([^,]+)/);
+                    const batchNo = batchMatch ? batchMatch[1].trim() : "";
+                    let mfgDate = mfgDateMatch ? mfgDateMatch[1].trim() : "";
+                    
+                    // Format lại ngày nếu có
+                    if (mfgDate) {
+                        try {
+                            const dateObj = new Date(mfgDate);
+                            if (!isNaN(dateObj.getTime())) {
+                                mfgDate = dateObj.toLocaleDateString("vi-VN");
+                            }
+                        } catch {
+                            // Giữ nguyên nếu không parse được
+                        }
+                    }
+                    
+                    if (batchNo && mfgDate) {
+                        message = `Đã tồn tại lô phụ tùng với Batch No "${batchNo}" và Ngày sản xuất "${mfgDate}". Vui lòng sử dụng Batch No hoặc Ngày sản xuất khác.`;
+                    } else if (batchNo) {
+                        message = `Đã tồn tại lô phụ tùng với Batch No "${batchNo}". Vui lòng sử dụng Batch No khác.`;
+                    } else if (message.includes("BatchNo phải unique")) {
+                        message = "Đã tồn tại lô phụ tùng với cùng Batch No và Ngày sản xuất. Vui lòng thay đổi Batch No hoặc Ngày sản xuất.";
+                    } else {
+                        message = "Đã tồn tại lô phụ tùng với thông tin tương tự. Vui lòng kiểm tra lại Batch No và Ngày sản xuất.";
+                    }
                 } else if (message.includes("Duplicate entry") && message.includes("part_lots")) {
                     message = "Dữ liệu đã tồn tại trong hệ thống. Vui lòng kiểm tra lại.";
                 } else if (res.status === 409) {
@@ -526,7 +610,40 @@ function LotFormDialog({ open, onClose, onSubmit, initial }) {
             await onSubmit(payload);
             onClose(true);
         } catch (e) {
-            setServerErr(e?.message || "Lỗi lưu dữ liệu");
+            let errorMessage = e?.message || "Lỗi lưu dữ liệu";
+            
+            // Format lại thông báo lỗi PartLot duplicate với batchNo và mfgDate
+            if (errorMessage.includes("Đã tồn tại PartLot") || errorMessage.includes("PartLot với partId")) {
+                // Tìm batchNo và mfgDate trong message
+                const batchMatch = errorMessage.match(/batchNo=([^,]+)/);
+                const mfgDateMatch = errorMessage.match(/mfgDate=([^,]+)/);
+                const batchNo = batchMatch ? batchMatch[1].trim() : "";
+                let mfgDate = mfgDateMatch ? mfgDateMatch[1].trim() : "";
+                
+                // Format lại ngày nếu có
+                if (mfgDate) {
+                    try {
+                        const dateObj = new Date(mfgDate);
+                        if (!isNaN(dateObj.getTime())) {
+                            mfgDate = dateObj.toLocaleDateString("vi-VN");
+                        }
+                    } catch {
+                        // Giữ nguyên nếu không parse được
+                    }
+                }
+                
+                if (batchNo && mfgDate) {
+                    errorMessage = `Đã tồn tại lô phụ tùng với Batch No "${batchNo}" và Ngày sản xuất "${mfgDate}". Vui lòng sử dụng Batch No hoặc Ngày sản xuất khác.`;
+                } else if (batchNo) {
+                    errorMessage = `Đã tồn tại lô phụ tùng với Batch No "${batchNo}". Vui lòng sử dụng Batch No khác.`;
+                } else if (errorMessage.includes("BatchNo phải unique")) {
+                    errorMessage = "Đã tồn tại lô phụ tùng với cùng Batch No và Ngày sản xuất. Vui lòng thay đổi Batch No hoặc Ngày sản xuất.";
+                } else {
+                    errorMessage = "Đã tồn tại lô phụ tùng với thông tin tương tự. Vui lòng kiểm tra lại Batch No và Ngày sản xuất.";
+                }
+            }
+            
+            setServerErr(errorMessage);
         } finally {
             setSubmitting(false);
         }

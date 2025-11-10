@@ -28,20 +28,18 @@ axiosInstance.interceptors.response.use(
   (error) => {
     const status = error.response?.status;
     const errorData = error.response?.data;
-    const isAuthError = errorData?.error === "AUTH_ERROR" || 
-                       errorData?.message?.toLowerCase().includes("token") ||
-                       errorData?.message?.toLowerCase().includes("expired") ||
-                       errorData?.message?.toLowerCase().includes("invalid");
-
-    // Nếu token hết hạn hoặc không hợp lệ (401 hoặc 400 với AUTH_ERROR) → đăng xuất
-    if (status === 401 || (status === 400 && isAuthError)) {
-      console.warn("⚠️ Unauthorized — Token expired or invalid");
+    
+    // CHỈ đăng xuất khi status = 401 (Unauthorized) - chắc chắn là lỗi authentication
+    // KHÔNG đăng xuất cho status 400 (Bad Request) - có thể là validation error, thiếu field, v.v.
+    if (status === 401) {
+      console.warn("⚠️ Unauthorized — Token expired or invalid", errorData);
       localStorage.removeItem("token");
       localStorage.removeItem("accessToken");
       localStorage.removeItem("access_token");
       localStorage.removeItem("user");
       localStorage.removeItem("fullName");
       localStorage.removeItem("role");
+      localStorage.removeItem("userId");
       if (!window.location.pathname.includes("/login")) {
         window.location.href = "/login";
       }

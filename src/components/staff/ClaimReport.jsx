@@ -41,7 +41,6 @@ import {
     Add as AddIcon,
     Visibility as VisibilityIcon,
     Edit as EditIcon,
-    Download as DownloadIcon,
     FilterList as FilterListIcon,
     Search as SearchIcon,
     AttachMoney as AttachMoneyIcon,
@@ -51,6 +50,21 @@ import {
 import claimReportService from "../../services/claimReportService";
 import claimService from "../../services/claimService";
 import Autocomplete from "@mui/material/Autocomplete";
+import axiosInstance from "../../services/axiosInstance";
+
+// Vehicle service — dùng để lấy thông tin khách hàng theo VIN
+const vehiclesService = {
+    getByVin: async (vin) => {
+        if (!vin) return null;
+        try {
+            const res = await axiosInstance.get(`/vehicles/detail/${encodeURIComponent(vin)}`);
+            return res.data;
+        } catch (err) {
+            console.warn(`Không thể lấy thông tin vehicle cho VIN: ${vin}`, err);
+            return null;
+        }
+    },
+};
 
 // Helper function để format giá trị hiển thị
 const formatCurrency = (value) => {
@@ -202,9 +216,12 @@ function CreateReportDialog({ open, onClose, onCreate, claims, setSnack }) {
                         <Grid item xs={12}>
                             <Autocomplete
                                 options={claims}
-                                getOptionLabel={(option) =>
-                                    `${option.vin || option.id} - ${option.summary?.substring(0, 50) || "No summary"}`
-                                }
+                                getOptionLabel={(option) => {
+                                    const vin = option.vin || "—";
+                                    const summary = option.summary?.substring(0, 50) || "Không có tóm tắt";
+                                    const customer = option.intakeContactName || "";
+                                    return customer ? `${vin} - ${customer} - ${summary}` : `${vin} - ${summary}`;
+                                }}
                                 value={claims.find((c) => c.id === claimId) || null}
                                 onChange={(_, newValue) => setClaimId(newValue?.id || "")}
                                 renderInput={(params) => (
@@ -212,7 +229,7 @@ function CreateReportDialog({ open, onClose, onCreate, claims, setSnack }) {
                                         {...params}
                                         label="Chọn Claim *"
                                         required
-                                        placeholder="Tìm kiếm theo VIN hoặc ID"
+                                        placeholder="Tìm kiếm theo VIN, tên khách hàng hoặc tóm tắt"
                                     />
                                 )}
                                 isOptionEqualToValue={(option, value) => option.id === value.id}
@@ -245,30 +262,19 @@ function CreateReportDialog({ open, onClose, onCreate, claims, setSnack }) {
 }
 
 // Dialog xem chi tiết Report
-function ViewReportDialog({ open, onClose, report, onUpdate }) {
+function ViewReportDialog({ open, onClose, report, onUpdate, claimMap = {} }) {
     if (!report) return null;
+
+    const claimInfo = claimMap[report.claimId] || {};
+    const claimDisplayName = claimInfo.intakeContactName && claimInfo.intakeContactName !== "—"
+        ? claimInfo.intakeContactName
+        : "—";
 
     return (
         <Dialog open={open} onClose={onClose} fullWidth maxWidth="md">
             <DialogTitle>Chi tiết Report</DialogTitle>
             <DialogContent dividers>
                 <Grid container spacing={2} sx={{ mt: 1 }}>
-                    <Grid item xs={12} sm={6}>
-                        <Typography variant="caption" color="text.secondary">
-                            Report ID
-                        </Typography>
-                        <Typography variant="body1" fontWeight={600} sx={{ fontFamily: "monospace" }}>
-                            {report.id || "—"}
-                        </Typography>
-                    </Grid>
-                    <Grid item xs={12} sm={6}>
-                        <Typography variant="caption" color="text.secondary">
-                            Claim ID
-                        </Typography>
-                        <Typography variant="body1" fontWeight={600} sx={{ fontFamily: "monospace" }}>
-                            {report.claimId || "—"}
-                        </Typography>
-                    </Grid>
                     <Grid item xs={12} sm={6}>
                         <Typography variant="caption" color="text.secondary">
                             VIN
@@ -283,6 +289,19 @@ function ViewReportDialog({ open, onClose, report, onUpdate }) {
                         </Typography>
                         <Typography variant="body1">{formatDate(report.createdAt)}</Typography>
                     </Grid>
+                    <Grid item xs={12} sm={6}>
+                        <Typography variant="caption" color="text.secondary">
+                            Claim
+                        </Typography>
+                        <Typography variant="body1" fontWeight={600}>
+                            {claimDisplayName}
+                        </Typography>
+                        {claimInfo.summary && claimInfo.summary !== "—" && (
+                            <Typography variant="caption" color="text.secondary" sx={{ mt: 0.5, display: "block" }}>
+                                {claimInfo.summary}
+                            </Typography>
+                        )}
+                    </Grid>
                     <Grid item xs={12}>
                         <Divider sx={{ my: 1 }} />
                     </Grid>
@@ -290,7 +309,7 @@ function ViewReportDialog({ open, onClose, report, onUpdate }) {
                         <Typography variant="caption" color="text.secondary">
                             Tóm tắt Claim
                         </Typography>
-                        <Typography variant="body1">{report.claimSummary || "—"}</Typography>
+                        <Typography variant="body1">{report.claimSummary || claimInfo.summary || "—"}</Typography>
                     </Grid>
                     <Grid item xs={12}>
                         <Divider sx={{ my: 1 }} />
@@ -432,11 +451,6 @@ function UpdateNoteDialog({ open, onClose, report, onUpdate, setSnack }) {
                 <DialogContent dividers>
                     <Grid container spacing={2} sx={{ mt: 1 }}>
                         <Grid item xs={12}>
-                            <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
-                                Report ID: <strong>{report?.id || "—"}</strong>
-                            </Typography>
-                        </Grid>
-                        <Grid item xs={12}>
                             <TextField
                                 label="Ghi chú"
                                 value={note}
@@ -467,6 +481,7 @@ export default function ClaimReport() {
     const [error, setError] = useState(null);
     const [reports, setReports] = useState([]);
     const [claims, setClaims] = useState([]);
+    const [claimMap, setClaimMap] = useState({}); // Map claimId -> claim info
     const [searchQuery, setSearchQuery] = useState("");
     const [dateFrom, setDateFrom] = useState("");
     const [dateTo, setDateTo] = useState("");
@@ -490,8 +505,44 @@ export default function ClaimReport() {
                     claimService.getAll(),
                 ]);
                 if (mounted) {
-                    setReports(Array.isArray(reportsData) ? reportsData : []);
-                    setClaims(Array.isArray(claimsData) ? claimsData : []);
+                    const reportsArray = Array.isArray(reportsData) ? reportsData : [];
+                    const claimsArray = Array.isArray(claimsData) ? claimsData : [];
+                    setReports(reportsArray);
+                    setClaims(claimsArray);
+
+                    // Build claim map: claimId -> claim info
+                    // Load vehicle info để lấy tên khách hàng
+                    const map = {};
+                    const loadVehiclePromises = claimsArray.map(async (claim) => {
+                        if (claim.id && claim.vin) {
+                            let intakeContactName = claim.intakeContactName || "—";
+
+                            // Nếu không có intakeContactName trong claim, thử load từ vehicle
+                            if (!intakeContactName || intakeContactName === "—") {
+                                try {
+                                    const vehicle = await vehiclesService.getByVin(claim.vin);
+                                    if (vehicle) {
+                                        intakeContactName = vehicle.intakeContactName ||
+                                            vehicle.intake_contact_name ||
+                                            vehicle.customerName ||
+                                            vehicle.ownerName ||
+                                            "—";
+                                    }
+                                } catch (err) {
+                                    console.warn(`Không thể lấy thông tin vehicle cho VIN: ${claim.vin}`, err);
+                                }
+                            }
+
+                            map[claim.id] = {
+                                vin: claim.vin || "—",
+                                summary: claim.summary || "—",
+                                intakeContactName: intakeContactName,
+                            };
+                        }
+                    });
+
+                    await Promise.all(loadVehiclePromises);
+                    setClaimMap(map);
                 }
             } catch (err) {
                 console.error("Fetch data failed:", err);
@@ -499,6 +550,7 @@ export default function ClaimReport() {
                 if (mounted) {
                     setReports([]);
                     setClaims([]);
+                    setClaimMap({});
                 }
             } finally {
                 if (mounted) setLoading(false);
@@ -514,15 +566,15 @@ export default function ClaimReport() {
     const filteredReports = useMemo(() => {
         let filtered = [...reports];
 
-        // Search by VIN, claimId, or report ID
+        // Search by VIN, claim summary, or customer name (not by ID)
         if (searchQuery.trim()) {
             const query = searchQuery.trim().toLowerCase();
             filtered = filtered.filter(
                 (r) =>
                     r.vin?.toLowerCase().includes(query) ||
-                    r.claimId?.toLowerCase().includes(query) ||
-                    r.id?.toLowerCase().includes(query) ||
-                    r.claimSummary?.toLowerCase().includes(query)
+                    r.claimSummary?.toLowerCase().includes(query) ||
+                    (claimMap[r.claimId]?.intakeContactName?.toLowerCase().includes(query)) ||
+                    (claimMap[r.claimId]?.summary?.toLowerCase().includes(query))
             );
         }
 
@@ -537,6 +589,13 @@ export default function ClaimReport() {
                 (r) => !r.createdAt || new Date(r.createdAt) <= new Date(dateTo + "T23:59:59")
             );
         }
+
+        // Sort by createdAt (newest first)
+        filtered.sort((a, b) => {
+            const dateA = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+            const dateB = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+            return dateB - dateA; // Descending order (newest first)
+        });
 
         return filtered;
     }, [reports, searchQuery, dateFrom, dateTo]);
@@ -607,53 +666,6 @@ export default function ClaimReport() {
         }
     };
 
-    const handleExport = () => {
-        const headers = [
-            "ID",
-            "Claim ID",
-            "VIN",
-            "Tóm tắt Claim",
-            "Tổng giá phụ tùng",
-            "Tổng giá lao động",
-            "Tổng giá gộp",
-            "Bảo hành trả",
-            "Khách hàng trả",
-            "Chênh lệch",
-            "Ngày tạo",
-            "Ghi chú",
-        ];
-        const rows = filteredReports.map((r) => [
-            r.id || "",
-            r.claimId || "",
-            r.vin || "",
-            r.claimSummary || "",
-            r.partsTotalPrice || 0,
-            r.laborTotalPrice || 0,
-            r.grossTotalPrice || 0,
-            r.warrantyPay || 0,
-            r.customerPay || 0,
-            r.variance || 0,
-            formatDate(r.createdAt),
-            (r.note || "").replace(/"/g, '""'),
-        ]);
-
-        const csvContent = [headers, ...rows]
-            .map((row) => row.map((cell) => `"${cell}"`).join(","))
-            .join("\n");
-
-        const blob = new Blob(["\uFEFF" + csvContent], { type: "text/csv;charset=utf-8;" });
-        const link = document.createElement("a");
-        const url = URL.createObjectURL(blob);
-        link.setAttribute("href", url);
-        link.setAttribute(
-            "download",
-            `claim-reports-${new Date().toISOString().split("T")[0]}.csv`
-        );
-        link.style.visibility = "hidden";
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
-    };
 
     const handleResetFilters = () => {
         setSearchQuery("");
@@ -695,14 +707,6 @@ export default function ClaimReport() {
                         onClick={() => setCreateOpen(true)}
                     >
                         Tạo Report
-                    </Button>
-                    <Button
-                        variant="outlined"
-                        startIcon={<DownloadIcon />}
-                        onClick={handleExport}
-                        disabled={filteredReports.length === 0}
-                    >
-                        Xuất CSV
                     </Button>
                 </Stack>
             </Box>
@@ -749,7 +753,7 @@ export default function ClaimReport() {
                             <TextField
                                 fullWidth
                                 size="small"
-                                placeholder="Tìm kiếm theo VIN, Claim ID, Report ID..."
+                                placeholder="Tìm kiếm theo VIN, tên khách hàng, tóm tắt..."
                                 value={searchQuery}
                                 onChange={(e) => setSearchQuery(e.target.value)}
                                 InputProps={{
@@ -803,7 +807,7 @@ export default function ClaimReport() {
                             <TableHead>
                                 <TableRow>
                                     <TableCell>VIN</TableCell>
-                                    <TableCell>Claim ID</TableCell>
+                                    <TableCell>Khách hàng</TableCell>
                                     <TableCell>Tổng giá gộp</TableCell>
                                     <TableCell>Bảo hành trả</TableCell>
                                     <TableCell>Khách hàng trả</TableCell>
@@ -819,60 +823,74 @@ export default function ClaimReport() {
                                         </TableCell>
                                     </TableRow>
                                 ) : (
-                                    filteredReports.map((report) => (
-                                        <TableRow key={report.id} hover>
-                                            <TableCell>
-                                                <Typography variant="body2" sx={{ fontFamily: "monospace" }}>
-                                                    {report.vin || "—"}
-                                                </Typography>
-                                            </TableCell>
-                                            <TableCell>
-                                                <Typography variant="body2" sx={{ fontFamily: "monospace", fontSize: "0.75rem" }}>
-                                                    {report.claimId?.substring(0, 8) || "—"}
-                                                </Typography>
-                                            </TableCell>
-                                            <TableCell>
-                                                <Typography variant="body2" fontWeight={600} color="success.main">
-                                                    {formatCurrency(report.grossTotalPrice)}
-                                                </Typography>
-                                            </TableCell>
-                                            <TableCell>
-                                                <Typography variant="body2" color="info.main">
-                                                    {formatCurrency(report.warrantyPay)}
-                                                </Typography>
-                                            </TableCell>
-                                            <TableCell>
-                                                <Typography variant="body2" color="warning.main">
-                                                    {formatCurrency(report.customerPay)}
-                                                </Typography>
-                                            </TableCell>
-                                            <TableCell>
-                                                <Typography variant="body2">{formatDate(report.createdAt)}</Typography>
-                                            </TableCell>
-                                            <TableCell align="right">
-                                                <Stack direction="row" spacing={1} justifyContent="flex-end">
-                                                    <Tooltip title="Xem chi tiết">
-                                                        <IconButton
-                                                            size="small"
-                                                            color="primary"
-                                                            onClick={() => handleViewReport(report)}
-                                                        >
-                                                            <VisibilityIcon fontSize="small" />
-                                                        </IconButton>
-                                                    </Tooltip>
-                                                    <Tooltip title="Cập nhật ghi chú">
-                                                        <IconButton
-                                                            size="small"
-                                                            color="secondary"
-                                                            onClick={() => handleUpdateNote(report)}
-                                                        >
-                                                            <EditIcon fontSize="small" />
-                                                        </IconButton>
-                                                    </Tooltip>
-                                                </Stack>
-                                            </TableCell>
-                                        </TableRow>
-                                    ))
+                                    filteredReports.map((report) => {
+                                        const claimInfo = claimMap[report.claimId] || {};
+                                        // Chỉ hiển thị tên khách hàng
+                                        const claimDisplay = claimInfo.intakeContactName && claimInfo.intakeContactName !== "—"
+                                            ? claimInfo.intakeContactName
+                                            : "—";
+                                        return (
+                                            <TableRow key={report.id} hover>
+                                                <TableCell>
+                                                    <Typography variant="body2" sx={{ fontFamily: "monospace" }}>
+                                                        {report.vin || "—"}
+                                                    </Typography>
+                                                </TableCell>
+                                                <TableCell>
+                                                    <Typography variant="body2" fontWeight={600} color="primary.main">
+                                                        {claimDisplay}
+                                                    </Typography>
+                                                    {claimInfo.summary && claimInfo.summary !== "—" && (
+                                                        <Typography variant="caption" color="text.secondary" sx={{ display: "block", mt: 0.25 }}>
+                                                            {claimInfo.summary.length > 50
+                                                                ? `${claimInfo.summary.substring(0, 50)}...`
+                                                                : claimInfo.summary}
+                                                        </Typography>
+                                                    )}
+                                                </TableCell>
+                                                <TableCell>
+                                                    <Typography variant="body2" fontWeight={600} color="success.main">
+                                                        {formatCurrency(report.grossTotalPrice)}
+                                                    </Typography>
+                                                </TableCell>
+                                                <TableCell>
+                                                    <Typography variant="body2" color="info.main">
+                                                        {formatCurrency(report.warrantyPay)}
+                                                    </Typography>
+                                                </TableCell>
+                                                <TableCell>
+                                                    <Typography variant="body2" color="warning.main">
+                                                        {formatCurrency(report.customerPay)}
+                                                    </Typography>
+                                                </TableCell>
+                                                <TableCell>
+                                                    <Typography variant="body2">{formatDate(report.createdAt)}</Typography>
+                                                </TableCell>
+                                                <TableCell align="right">
+                                                    <Stack direction="row" spacing={1} justifyContent="flex-end">
+                                                        <Tooltip title="Xem chi tiết">
+                                                            <IconButton
+                                                                size="small"
+                                                                color="primary"
+                                                                onClick={() => handleViewReport(report)}
+                                                            >
+                                                                <VisibilityIcon fontSize="small" />
+                                                            </IconButton>
+                                                        </Tooltip>
+                                                        <Tooltip title="Cập nhật ghi chú">
+                                                            <IconButton
+                                                                size="small"
+                                                                color="secondary"
+                                                                onClick={() => handleUpdateNote(report)}
+                                                            >
+                                                                <EditIcon fontSize="small" />
+                                                            </IconButton>
+                                                        </Tooltip>
+                                                    </Stack>
+                                                </TableCell>
+                                            </TableRow>
+                                        );
+                                    })
                                 )}
                             </TableBody>
                         </Table>
@@ -894,6 +912,7 @@ export default function ClaimReport() {
                 onClose={() => setViewOpen(false)}
                 report={activeReport}
                 onUpdate={handleUpdateNote}
+                claimMap={claimMap}
             />
 
             <UpdateNoteDialog

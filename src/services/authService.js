@@ -19,6 +19,13 @@ const authService = {
       if (data?.user) localStorage.setItem("user", JSON.stringify(data.user));
       if (data?.user?.fullName) localStorage.setItem("fullName", data.user.fullName);
       if (data?.user?.role) localStorage.setItem("role", data.user.role);
+      // ✅ Lưu userId và technicianId (nếu có) để dùng cho appointment
+      if (data?.user?.id) localStorage.setItem("userId", data.user.id);
+      if (data?.user?.userId) localStorage.setItem("userId", data.user.userId);
+      if (data?.user?.technicianId) localStorage.setItem("technicianId", data.user.technicianId);
+      // Nếu response có userId trực tiếp
+      if (data?.userId) localStorage.setItem("userId", data.userId);
+      if (data?.technicianId) localStorage.setItem("technicianId", data.technicianId);
 
       return data;
     } catch (error) {

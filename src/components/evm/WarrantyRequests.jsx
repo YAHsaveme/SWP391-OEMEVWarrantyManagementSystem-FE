@@ -8,7 +8,8 @@ import {
     Dialog, DialogTitle, DialogContent, DialogActions, Snackbar, Alert, FormControl,
     InputLabel, Select, MenuItem, Stack, Tooltip, Checkbox
 } from "@mui/material";
-import { Visibility, CheckCircle, Cancel, Search, Refresh, LocalShipping, Add, Delete } from "@mui/icons-material";
+import DescriptionIcon from "@mui/icons-material/Description";
+import { Visibility, CheckCircle, Cancel, Search, Refresh, LocalShipping, Add, Delete, Remove } from "@mui/icons-material";
 
 import claimService, { CLAIM_STATUS } from "../../services/claimService";
 import ticketService from "../../services/ticketService";
@@ -16,6 +17,9 @@ import centerService from "../../services/centerService";
 import shipmentService from "../../services/shipmentService";
 import inventoryLotService from "../../services/inventoryLotService";
 import partService from "../../services/partService";  // ← THÊM IMPORT NÀY
+import diagnosticsService from "../../services/diagnosticsService";
+import estimatesService from "../../services/estimatesService";
+import eventService from "../../services/eventService";
 import axiosInstance from "../../services/axiosInstance";
 import { useNavigate } from "react-router-dom";
 
@@ -209,12 +213,16 @@ function ReplenishmentTicketList() {
             .trim();
 
     const viewRows = useMemo(() => {
-        if (!filterCenter) return [];
         const needle = norm(q);
         const filtered = rows.filter((t) => {
             const cId = String(t.centerId ?? "");
             const cName = String(t.centerName ?? "");
-            if (!(cId === String(filterCenter) || cName === filterCenter)) return false;
+            const matchesCenter =
+                !filterCenter ||
+                cId === String(filterCenter) ||
+                cName === filterCenter;
+            if (!matchesCenter) return false;
+
             if (filterStatus !== "all" && t.status !== filterStatus) return false;
 
             const item = Array.isArray(t.items) && t.items[0] ? t.items[0] : {};
@@ -259,6 +267,7 @@ function ReplenishmentTicketList() {
     const [dispatchBusy, setDispatchBusy] = useState(false);
     const [createdShipmentId, setCreatedShipmentId] = useState(null);
     const [selectedPartIds, setSelectedPartIds] = useState(new Set()); // Chỉ dùng cho Center-to-Center
+    const [insufficientByPart, setInsufficientByPart] = useState({}); // { partId: { required, totalAvail } }
 
     // Load centers cho Center-to-Center shipment dùng suggest-center API
     // Chỉ suggest centers có các parts đã được chọn
@@ -641,6 +650,37 @@ function ReplenishmentTicketList() {
                         };
                     })
                 );
+
+                // 🔁 Manufacturer (EVM → Center): nếu là serialized, tự tạo đủ số dòng = requiredQuantity
+                setShipmentItems(prev => {
+                    // Chỉ áp dụng khi đang ở manufacturer
+                    if (shipmentType !== "manufacturer") return prev;
+                    const next = [];
+                    for (const it of prev) {
+                        const info = newInfoMap[it.partId];
+                        const isSerialized = info?.isSerialized === true || it.isSerialized === true;
+                        if (isSerialized) {
+                            // Lấy số dòng mong muốn từ ticket (ưu tiên tổng yêu cầu theo partId)
+                            const desired = Math.max(
+                                1,
+                                Number(getMaxQuantityByPartId[it.partId] ?? it.requiredQuantity ?? it.quantity ?? 1)
+                            );
+                            for (let i = 0; i < desired; i++) {
+                                next.push({
+                                    ...it,
+                                    id: `${it.partId}-${Date.now()}-${Math.random()}`, // dòng riêng biệt
+                                    quantity: 1, // serialized luôn 1
+                                    serialNo: "",
+                                    batchNo: "",
+                                    mfgDate: "",
+                                });
+                            }
+                        } else {
+                            next.push(it);
+                        }
+                    }
+                    return next;
+                });
             } finally {
                 setLoadingPartInfo(false);
             }
@@ -811,37 +851,21 @@ function ReplenishmentTicketList() {
                     }
 
                     setAvailableLots(lotsMap);
+                    // Ghi nhận part thiếu tồn kho so với yêu cầu ticket
+                    const insuff = {};
+                    shipmentItems.forEach(it => {
+                        if (!it.partId) return;
+                        const required = Number(it.requiredQuantity) || 0;
+                            const totalAvail = availableQtyMap[it.partId] || 0;
+                        if (required > totalAvail) {
+                            insuff[it.partId] = { required, totalAvail };
+                        }
+                    });
+                    setInsufficientByPart(insuff);
 
                     // ⛔ Clamp + auto-assign lots for serialized
-                    // Xóa parts không có inventory khỏi shipmentItems
-                    const partsWithoutInventory = [];
-                    const partsToRemove = [];
-
                     setShipmentItems(prev => {
                         let next = [...prev];
-                        // Xóa parts không có inventory và lưu lại để bỏ chọn
-                        next = next.filter(it => {
-                            if (!it.partId) return true;
-                            const totalAvail = availableQtyMap[it.partId] || 0;
-                            if (totalAvail === 0) {
-                                partsWithoutInventory.push(it.partName || it.partId);
-                                partsToRemove.push(it.partId);
-                                return false; // Xóa part không có inventory
-                            }
-                            return true;
-                        });
-
-                        // Cập nhật selectedPartIds - bỏ chọn parts không có inventory
-                        if (partsToRemove.length > 0) {
-                            setSelectedPartIds(prev => {
-                                const newSet = new Set(prev);
-                                partsToRemove.forEach(pid => newSet.delete(pid));
-                                return newSet;
-                            });
-
-                            notify(`Center nguồn không có tồn kho cho: ${partsWithoutInventory.join(", ")}. Đã tự động bỏ chọn.`, "warning");
-                        }
-
                         next = next.map(it => {
                             if (!it.partId) return it;
                             const isSerialized = it.isSerialized ?? partInfoMap[it.partId]?.isSerialized ?? false;
@@ -849,7 +873,8 @@ function ReplenishmentTicketList() {
                             const want = Number(it.requiredQuantity) || 0;
                             return {
                                 ...it,
-                                quantity: isSerialized ? 1 : Math.min(totalAvail, want || totalAvail),
+                                // Non-serialized: giữ want để user thấy yêu cầu; cảnh báo hiển thị nếu totalAvail < want
+                                quantity: isSerialized ? 1 : (want || totalAvail || 1),
                             };
                         });
 
@@ -873,7 +898,7 @@ function ReplenishmentTicketList() {
                                     partName: base?.partName || "",
                                     partNo: base?.partNo || "",
                                     quantity: 1,
-                                    requiredQuantity: base?.requiredQuantity || desired,
+                                requiredQuantity: desired,
                                     isSerialized: true,
                                     serialNo: "",
                                     batchNo: "",
@@ -925,7 +950,7 @@ function ReplenishmentTicketList() {
         }
 
         // Validate quantity nếu đang update quantity
-        if (field === "quantity" && shipmentType === "manufacturer") {
+        if (field === "quantity") {
             const item = shipmentItems.find(i => i.id === itemId);
             if (item && item.partId) {
                 const newQty = Number(value) || 0;
@@ -934,7 +959,7 @@ function ReplenishmentTicketList() {
                     notify("Phụ tùng serialized phải có số lượng = 1", "warning");
                     return;
                 }
-                if (!isSerialized) {
+                if (!isSerialized && shipmentType === "manufacturer") {
                     const maxQty = getMaxQuantityByPartId[item.partId];
                     if (maxQty !== undefined) {
                         const otherItemsTotal = shipmentItems
@@ -947,6 +972,21 @@ function ReplenishmentTicketList() {
                             return; // ← CHẶN CẬP NHẬT
                         }
                     }
+                }
+                if (!isSerialized && shipmentType === "center") {
+                    const ticketMax = getMaxQuantityByPartId[item.partId] ?? item.requiredQuantity ?? Infinity;
+                    const lots = availableLots[item.partId] || [];
+                    const lot = lots.find(l => (l.id || l.lotId || l.partLotId) === item.partLotId);
+                    const lotAvail = lot ? (lot.availableQuantity ?? lot.availableQty ?? Infinity) : Infinity;
+                    const cap = Math.min(ticketMax, lotAvail);
+                    let finalQty = Math.max(1, Math.min(newQty, cap));
+                    if (newQty !== finalQty) {
+                        notify(`Số lượng tối đa cho lot này là ${cap}. Đã điều chỉnh về ${finalQty}.`, "warning");
+                    }
+                    setShipmentItems(prev => prev.map(i =>
+                        i.id === itemId ? { ...i, quantity: finalQty } : i
+                    ));
+                    return;
                 }
                 // Nếu OK → Cập nhật quantity
                 setShipmentItems(prev => prev.map(i =>
@@ -1065,6 +1105,12 @@ function ReplenishmentTicketList() {
                 const totalAvail = lots.reduce((s, l) => s + (l.availableQuantity || 0), 0);
                 if (totalAvail === 0) {
                     notify(`Center nguồn không có tồn kho cho "${item.partName}". Vui lòng chọn center khác hoặc bỏ chọn phụ tùng này.`, "warning");
+                    return;
+                }
+                // Chặn khi tổng tồn < yêu cầu ticket
+                const required = Number(item.requiredQuantity) || 0;
+                if (required > totalAvail) {
+                    notify(`Center nguồn chỉ có ${totalAvail}/${required} cho "${item.partName}". Vui lòng chọn center khác hoặc giảm số lượng.`, "warning");
                     return;
                 }
                 if (!item.quantity || Number(item.quantity) < 1) {
@@ -1254,7 +1300,7 @@ function ReplenishmentTicketList() {
                             onChange={(e) => setFilterCenter(e.target.value)}
                         >
                             <MenuItem value="">
-                                <em>— Chọn trung tâm —</em>
+                                <em>Tất cả trung tâm</em>
                             </MenuItem>
                             {centers.map((c) => (
                                 <MenuItem key={c.id ?? c.centerId} value={String(c.id ?? c.centerId)}>
@@ -1287,11 +1333,6 @@ function ReplenishmentTicketList() {
                         inputProps={{ autoComplete: "off", spellCheck: "false", autoCorrect: "off", autoCapitalize: "none" }}
                     />
                 </Stack>
-                {!filterCenter && (
-                    <Alert severity="info" variant="outlined">
-                        Hãy chọn <b>Trung tâm</b> để xem và duyệt yêu cầu bổ sung.
-                    </Alert>
-                )}
             </Stack>
             {/* Bảng tickets */}
             <Paper sx={{ borderRadius: 3, boxShadow: 4 }}>
@@ -1311,7 +1352,7 @@ function ReplenishmentTicketList() {
                             <TableRow>
                                 <TableCell colSpan={6} align="center">
                                     <Typography color="text.secondary">
-                                        {filterCenter ? "Không có ticket" : "Chưa chọn trung tâm"}
+                                        Không có ticket
                                     </Typography>
                                 </TableCell>
                             </TableRow>
@@ -1340,9 +1381,9 @@ function ReplenishmentTicketList() {
                                         </TableCell>
                                         <TableCell>{t.createdAt ? new Date(t.createdAt).toLocaleString() : "—"}</TableCell>
                                         <TableCell align="center">
-                                            <Tooltip title={filterCenter ? "Xem chi tiết" : "Chọn trung tâm trước"}>
+                                            <Tooltip title="Xem chi tiết">
                                                 <span>
-                                                    <IconButton color="info" onClick={() => openView(t.id)} disabled={!filterCenter}>
+                                                    <IconButton color="info" onClick={() => openView(t.id)}>
                                                         <Visibility />
                                                     </IconButton>
                                                 </span>
@@ -1541,11 +1582,11 @@ function ReplenishmentTicketList() {
                                         </Box>
                                     )}
                                     <Stack spacing={2}>
-                                        {/* Hiển thị nhiều dòng cho serialized (Center->Center); còn lại mỗi partId 1 dòng */}
+                                        {/* Hiển thị nhiều dòng cho serialized (Manufacturer và Center->Center); Non-serialized: mỗi partId 1 dòng */}
                                         {shipmentItems
                                             .filter((item, idx, self) => {
                                                 const isSerialized = item.isSerialized ?? partInfoMap[item.partId]?.isSerialized ?? false;
-                                                if (shipmentType === "center" && isSerialized) return true; // cho phép nhiều dòng
+                                                if (isSerialized) return true; // cho phép nhiều dòng cho serialized ở cả hai loại shipment
                                                 return idx === self.findIndex(i => i.partId === item.partId);
                                             })
                                             .map((item, idx) => {
@@ -1563,213 +1604,89 @@ function ReplenishmentTicketList() {
                                                                 {item.partName || item.partNo || `Item ${idx + 1}`}
                                                                 {loadingPartInfo ? "" : <span style={{ fontSize: "0.85em", color: "#666", fontWeight: "normal" }}>{partTypeLabel}</span>}
                                                             </Typography>
-                                                            <TextField
-                                                                label="Số lượng"
-                                                                type="number"
-                                                                value={shipmentType === "center" && isSerialized ? 1 : item.quantity}
-                                                                onChange={(e) => updateShipmentItem(item.id, "quantity", e.target.value)}
-                                                                fullWidth
-                                                                size="small"
-                                                                disabled={shipmentSubmitting || (shipmentType === "center" && isSerialized)}
-                                                                required
-                                                                inputProps={(() => {
-                                                                    const itemIsSerialized = item.isSerialized ?? partInfoMap[item.partId]?.isSerialized ?? false;
-                                                                    if (shipmentType === "center") {
-                                                                        const lots = availableLots[item.partId] || [];
-                                                                        // Nếu đã chọn lot → max = tồn lot; chưa chọn → max = tổng tồn part
-                                                                        const sel = lots.find(l => (l.partLotId || l.id) === item.partLotId);
-                                                                        if (sel?.availableQuantity != null) {
-                                                                            return { min: 1, max: sel.availableQuantity };
-                                                                        }
-                                                                        const totalAvail = Math.max(1, lots.reduce((s, l) => s + (l.availableQuantity || 0), 0));
-                                                                        return { min: 1, max: totalAvail };
-                                                                    } else {
-                                                                        // Manufacturer
-                                                                        const maxQty = getMaxQuantityByPartId[item.partId];
-                                                                        if (maxQty !== undefined && !itemIsSerialized) {
-                                                                            const otherItemsTotal = shipmentItems
-                                                                                .filter(i => i.id !== item.id && i.partId === item.partId)
-                                                                                .reduce((sum, i) => sum + Number(i.quantity || 0), 0);
-                                                                            const maxAllowed = Math.max(1, maxQty - otherItemsTotal);
-                                                                            return { min: 1, max: maxAllowed };
-                                                                        }
-                                                                        return { min: 1 };
-                                                                    }
-                                                                })()}
-                                                                helperText={(() => {
-                                                                    const itemIsSerialized = item.isSerialized ?? partInfoMap[item.partId]?.isSerialized ?? false;
-                                                                    if (shipmentType === "center") {
-                                                                        const lots = availableLots[item.partId] || [];
-                                                                        const totalAvail = lots.reduce((s, l) => s + (l.availableQuantity || 0), 0);
-
-                                                                        if (totalAvail === 0 && lots.length === 0) {
-                                                                            return `⚠️ Không có Inventory Lot nào. Vui lòng tạo Inventory Lot trong "Quản lý tồn kho lô" trước.`;
-                                                                        }
-
-                                                                        if (itemIsSerialized) {
-                                                                            // Serialized: đếm số rows (mỗi row = 1 lot = 1 unit)
-                                                                            const rowsOfThisPart = shipmentItems.filter(i => i.partId === item.partId);
-                                                                            const pickedRows = rowsOfThisPart.length;
-                                                                            const remaining = totalAvail - pickedRows;
-
-                                                                            if (remaining < 0) {
-                                                                                return `⚠️ Đã chọn ${pickedRows} lot nhưng chỉ có ${totalAvail} lot available. Vui lòng bỏ bớt.`;
-                                                                            }
-                                                                            return `Center có: ${totalAvail} lot (tối đa). Đã chọn: ${pickedRows} lot. Còn lại: ${remaining} lot. Mỗi lot = 1 unit (Serialized).`;
-                                                                        } else {
-                                                                            // Non-serialized: tính tổng quantity
-                                                                            const picked = shipmentItems
-                                                                                .filter(i => i.partId === item.partId)
-                                                                                .reduce((s, i) => s + (Number(i.quantity) || 0), 0);
-                                                                            const remaining = totalAvail - picked;
-                                                                            if (remaining < 0) {
-                                                                                return `⚠️ Đã chọn ${picked} nhưng chỉ có ${totalAvail} available. Vui lòng giảm số lượng.`;
-                                                                            }
-                                                                            return `Center có: ${totalAvail} (tối đa). Đã chọn: ${picked}. Còn lại: ${remaining}.`;
-                                                                        }
-                                                                    } else {
-                                                                        // Manufacturer
-                                                                        if (itemIsSerialized) {
-                                                                            return "Phụ tùng serialized luôn có số lượng = 1";
-                                                                        }
-                                                                        const maxQty = getMaxQuantityByPartId[item.partId];
-                                                                        const currentTotal = getCurrentTotalQuantityByPartId[item.partId] || 0;
-                                                                        if (maxQty !== undefined) {
-                                                                            const otherItemsTotal = shipmentItems
-                                                                                .filter(i => i.id !== item.id && i.partId === item.partId)
-                                                                                .reduce((sum, i) => sum + Number(i.quantity || 0), 0);
-                                                                            const remaining = Math.max(0, maxQty - otherItemsTotal);
-                                                                            return `Ticket yêu cầu: ${maxQty} (tối đa). Có thể nhập tối đa: ${remaining}. Tổng hiện tại: ${currentTotal}`;
-                                                                        }
-                                                                        return item.requiredQuantity
-                                                                            ? `Ticket yêu cầu: ${item.requiredQuantity}`
-                                                                            : "";
-                                                                    }
-                                                                })()}
-                                                            />
                                                             {shipmentType === "manufacturer" ? (
-                                                                <>
-                                                                    {isSerialized ? (
-                                                                        <>
-                                                                            {/* Layout ngang cho Serialized: Serial No + Batch No + Mfg Date */}
+                                                                isSerialized ? (
+                                                                    // Serialized (Manufacturer): 4 input trên 1 dòng
                                                                             <Stack direction="row" spacing={1}>
-                                                                                <TextField
-                                                                                    label="Serial No *"
-                                                                                    value={item.serialNo || ""}
-                                                                                    onChange={(e) => updateShipmentItem(item.id, "serialNo", e.target.value)}
-                                                                                    size="small"
-                                                                                    disabled={shipmentSubmitting}
-                                                                                    required
-                                                                                    sx={{ flex: 1 }}
-                                                                                    helperText=""
-                                                                                />
-                                                                                <TextField
-                                                                                    label="Batch No *"
-                                                                                    value={item.batchNo || ""}
-                                                                                    onChange={(e) => updateShipmentItem(item.id, "batchNo", e.target.value)}
-                                                                                    size="small"
-                                                                                    disabled={shipmentSubmitting}
-                                                                                    required
-                                                                                    sx={{ flex: 1 }}
-                                                                                    helperText=""
-                                                                                />
-                                                                                <TextField
-                                                                                    label="Mfg Date *"
-                                                                                    type="date"
-                                                                                    value={item.mfgDate ? item.mfgDate.split('T')[0] : ""}
-                                                                                    onChange={(e) => updateShipmentItem(item.id, "mfgDate", new Date(e.target.value + 'T00:00:00').toISOString())}
-                                                                                    size="small"
-                                                                                    disabled={shipmentSubmitting}
-                                                                                    required
-                                                                                    InputLabelProps={{ shrink: true }}
-                                                                                    sx={{ flex: 1 }}
-                                                                                    helperText=""
-                                                                                />
+                                                                        <TextField label="Số lượng" type="number" value={1} size="small" disabled sx={{ width: 90 }} />
+                                                                        <TextField label="Serial No *" value={item.serialNo || ""} onChange={(e) => updateShipmentItem(item.id, "serialNo", e.target.value)} size="small" disabled={shipmentSubmitting} required sx={{ flex: 1 }} />
+                                                                        <TextField label="Batch No *" value={item.batchNo || ""} onChange={(e) => updateShipmentItem(item.id, "batchNo", e.target.value)} size="small" disabled={shipmentSubmitting} required sx={{ flex: 1 }} />
+                                                                        <TextField label="Mfg Date *" type="date" value={item.mfgDate ? item.mfgDate.split('T')[0] : ""} onChange={(e) => updateShipmentItem(item.id, "mfgDate", new Date(e.target.value + 'T00:00:00').toISOString())} size="small" disabled={shipmentSubmitting} required InputLabelProps={{ shrink: true }} sx={{ flex: 1, minWidth: 180 }} />
                                                                             </Stack>
-                                                                            <Typography variant="caption" color="text.secondary">
-                                                                                Phụ tùng serialized: SerialNo phải unique. BatchNo và MfgDate cũng bắt buộc.
-                                                                            </Typography>
-                                                                        </>
                                                                     ) : (
                                                                         <>
-                                                                            {/* Layout ngang cho Non-serialized: Batch No + Mfg Date */}
-                                                                            <Stack direction="row" spacing={1}>
+                                                                            <Stack direction="row" spacing={1} alignItems="flex-start">
                                                                                 <TextField
-                                                                                    label="Batch No *"
-                                                                                    value={item.batchNo || ""}
-                                                                                    onChange={(e) => updateShipmentItem(item.id, "batchNo", e.target.value)}
+                                                                                    label="Số lượng"
+                                                                                    type="number"
+                                                                                    value={item.quantity}
+                                                                                    onChange={(e) => updateShipmentItem(item.id, "quantity", e.target.value)}
                                                                                     size="small"
                                                                                     disabled={shipmentSubmitting}
                                                                                     required
-                                                                                    sx={{ flex: 1 }}
-                                                                                    helperText=""
+                                                                                    inputProps={{ min: 1, step: 1 }}
+                                                                                    sx={{
+                                                                                        width: 100,
+                                                                                        '& .MuiOutlinedInput-root': { borderRadius: 999 },
+                                                                                        '& input': { textAlign: 'center', fontWeight: 600 }
+                                                                                    }}
                                                                                 />
-                                                                                <TextField
-                                                                                    label="Mfg Date *"
-                                                                                    type="date"
-                                                                                    value={item.mfgDate ? item.mfgDate.split('T')[0] : ""}
-                                                                                    onChange={(e) => updateShipmentItem(item.id, "mfgDate", new Date(e.target.value + 'T00:00:00').toISOString())}
-                                                                                    size="small"
-                                                                                    disabled={shipmentSubmitting}
-                                                                                    required
-                                                                                    InputLabelProps={{ shrink: true }}
-                                                                                    sx={{ flex: 1 }}
-                                                                                    helperText=""
-                                                                                />
+                                                                                <TextField label="Batch No *" value={item.batchNo || ""} onChange={(e) => updateShipmentItem(item.id, "batchNo", e.target.value)} size="small" disabled={shipmentSubmitting} required sx={{ flex: 1 }} />
+                                                                                <TextField label="Mfg Date *" type="date" value={item.mfgDate ? item.mfgDate.split('T')[0] : ""} onChange={(e) => updateShipmentItem(item.id, "mfgDate", new Date(e.target.value + 'T00:00:00').toISOString())} size="small" disabled={shipmentSubmitting} required InputLabelProps={{ shrink: true }} sx={{ flex: 1, minWidth: 180 }} />
                                                                             </Stack>
-                                                                            <Typography variant="caption" color="text.secondary">
-                                                                                Phụ tùng non-serialized: BatchNo và MfgDate bắt buộc.
-                                                                            </Typography>
+                                                                            <Typography variant="caption" color="text.secondary">Phụ tùng non-serialized: BatchNo và MfgDate bắt buộc.</Typography>
                                                                         </>
-                                                                    )}
-                                                                </>
+                                                                )
                                                             ) : (
-                                                                <FormControl fullWidth required>
+                                                                <>
+                                                                    <Stack direction="row" spacing={1} alignItems="flex-start">
+                                                                        <FormControl fullWidth required sx={{ flex: 1 }}>
                                                                     <InputLabel>Part Lot</InputLabel>
-                                                                    <Select
-                                                                        value={item.partLotId}
-                                                                        label="Part Lot"
-                                                                        onChange={(e) => handleShipmentItemLotChange(item.id, e.target.value)}
-                                                                        disabled={shipmentSubmitting || loadingLots || (availableLots[item.partId] || []).length === 0}
-                                                                        size="small"
-                                                                    >
-                                                                        <MenuItem value="">
-                                                                            <em>— Chọn Part Lot —</em>
+                                                                            <Select value={item.partLotId} label="Part Lot" onChange={(e) => handleShipmentItemLotChange(item.id, e.target.value)} disabled={shipmentSubmitting || loadingLots} size="small">
+                                                                                <MenuItem value=""><em>— Chọn Part Lot —</em></MenuItem>
+                                                                                {(availableLots[item.partId] || []).length === 0 && !loadingLots && (
+                                                                                    <MenuItem value="" disabled>
+                                                                                        <em>— Không có lot khả dụng —</em>
                                                                         </MenuItem>
+                                                                                )}
                                                                         {(availableLots[item.partId] || []).map((lot) => {
                                                                             const lotId = lot.id || lot.lotId || lot.partLotId;
-                                                                            // Hiển thị tên lot: ưu tiên serialNo, sau đó batchNo, cuối cùng partLotId
-                                                                            const lotName = lot.name || lot.lotName ||
-                                                                                lot.serialNo ||
-                                                                                lot.batchNo ||
-                                                                                lot.partLotId ||
-                                                                                lotId || "Unknown Lot";
+                                                                                    const lotName = lot.name || lot.lotName || lot.serialNo || lot.batchNo || lot.partLotId || lotId || "Unknown Lot";
                                                                             const qty = lot.availableQuantity || lot.availableQty || 0;
-
-                                                                            // Hiển thị đầy đủ thông tin: serialNo, batchNo, partLotId
                                                                             const displayParts = [];
-                                                                            if (lot.serialNo) {
-                                                                                displayParts.push(`Serial: ${lot.serialNo}`);
-                                                                            }
-                                                                            if (lot.batchNo) {
-                                                                                displayParts.push(`Batch: ${lot.batchNo}`);
-                                                                            }
-                                                                            if (lot.partLotId && lotName !== lot.serialNo && lotName !== lot.batchNo) {
-                                                                                displayParts.push(`Lot: ${lot.partLotId}`);
-                                                                            }
-                                                                            const displayText = displayParts.length > 0
-                                                                                ? displayParts.join(" | ")
-                                                                                : lotName;
-
-                                                                            return (
-                                                                                <MenuItem key={lotId} value={lotId}>
-                                                                                    {displayText} (Còn: {qty})
-                                                                                </MenuItem>
-                                                                            );
+                                                                                    if (lot.serialNo) displayParts.push(`Serial: ${lot.serialNo}`);
+                                                                                    if (lot.batchNo) displayParts.push(`Batch: ${lot.batchNo}`);
+                                                                                    if (lot.partLotId && lotName !== lot.serialNo && lotName !== lot.batchNo) displayParts.push(`Lot: ${lot.partLotId}`);
+                                                                                    const displayText = displayParts.length > 0 ? displayParts.join(" | ") : lotName;
+                                                                                    return (<MenuItem key={lotId} value={lotId}>{displayText} (Còn: {qty})</MenuItem>);
                                                                         })}
                                                                     </Select>
                                                                 </FormControl>
+                                                                        {!isSerialized && (
+                                                                            <Box sx={{ width: 100 }}>
+                                                                                <TextField
+                                                                                    size="small"
+                                                                                    type="number"
+                                                                                    label="Số lượng"
+                                                                                    value={item.quantity ?? 1}
+                                                                                    onChange={(e) => updateShipmentItem(item.id, "quantity", e.target.value)}
+                                                                                    inputProps={{ min: 1, step: 1 }}
+                                                                                    sx={{
+                                                                                        '& .MuiOutlinedInput-root': { borderRadius: 999 },
+                                                                                        '& input': { textAlign: 'center', fontWeight: 600 }
+                                                                                    }}
+                                                                                />
+                                                                            </Box>
+                                                                        )}
+                                                                    </Stack>
+                                                                    {insufficientByPart?.[item.partId] && (
+                                                                        <Typography variant="caption" color="warning.main" sx={{ mt: 0.5, display: "block" }}>
+                                                                            Center nguồn chỉ có {insufficientByPart[item.partId].totalAvail}/{insufficientByPart[item.partId].required}. Vui lòng chọn center khác hoặc giảm số lượng.
+                                                                        </Typography>
+                                                                    )}
+                                                                </>
                                                             )}
+                                                           
                                                             {shipmentType === "center" && isSerialized && (
                                                                 <Stack direction="row" spacing={1} justifyContent="flex-end">
                                                                     <Tooltip title="Xóa dòng">
@@ -1912,6 +1829,16 @@ function WarrantyRequests() {
     const [viewOpen, setViewOpen] = useState(false);
     const [page, setPage] = useState(1);
     const [rowsPerPage] = useState(10);
+    
+    // State cho Diagnostics, Estimates, Recall Events
+    const [vehicleInfo, setVehicleInfo] = useState(null);
+    const [centerName, setCenterName] = useState("");
+    const [currentUser, setCurrentUser] = useState(null);
+    const [openedByUserName, setOpenedByUserName] = useState("");
+    const [diagnostics, setDiagnostics] = useState([]);
+    const [estimates, setEstimates] = useState([]);
+    const [recallEvents, setRecallEvents] = useState([]);
+    const [loadingData, setLoadingData] = useState(false);
 
     const fetchRequests = async () => {
         setLoading(true);
@@ -1985,6 +1912,145 @@ function WarrantyRequests() {
             setViewOpen(false);
         }
     };
+
+    // Load current user
+    useEffect(() => {
+        const fetchCurrentUser = async () => {
+            try {
+                const res = await axiosInstance.get("/auth/users/me");
+                setCurrentUser(res.data);
+            } catch (err) {
+                console.error("❌ Lỗi khi lấy thông tin user:", err);
+            }
+        };
+        fetchCurrentUser();
+    }, []);
+
+    // Load center name
+    useEffect(() => {
+        const fetchCenterName = async () => {
+            try {
+                const userRes = await axiosInstance.get("/auth/users/me");
+                const user = userRes.data;
+                if (!user.centerId) {
+                    setCenterName("—");
+                    return;
+                }
+                const centerRes = await axiosInstance.get(`/centers/detail/${user.centerId}`);
+                const center = centerRes.data;
+                setCenterName(center?.name || "Không rõ tên trung tâm");
+            } catch (err) {
+                console.error("❌ Lỗi khi tải tên trung tâm:", err);
+                setCenterName("Không xác định");
+            }
+        };
+        if (viewOpen) {
+            fetchCenterName();
+        }
+    }, [viewOpen]);
+
+    // Load vehicle info
+    useEffect(() => {
+        if (!viewOpen || !selectedClaim?.vin) return;
+        const fetchVehicle = async () => {
+            try {
+                const res = await axiosInstance.get(`/vehicles/detail/${encodeURIComponent(selectedClaim.vin)}`);
+                setVehicleInfo(res.data);
+            } catch (err) {
+                console.error("❌ Vehicle fetch error:", err);
+                setVehicleInfo(null);
+            }
+        };
+        fetchVehicle();
+    }, [viewOpen, selectedClaim?.vin]);
+
+    // Load opened by user name
+    useEffect(() => {
+        if (!viewOpen || !selectedClaim?.openedBy) {
+            setOpenedByUserName("");
+            return;
+        }
+        const fetchUserName = async () => {
+            try {
+                // Try to get user by ID - using getAllUsers and find
+                const res = await axiosInstance.get("/auth/users/get-all-user", { params: { page: 0 } });
+                const users = Array.isArray(res.data?.content) ? res.data.content : (Array.isArray(res.data) ? res.data : []);
+                const user = users.find(u => u.id === selectedClaim.openedBy);
+                if (user) {
+                    setOpenedByUserName(user.fullName || user.username || selectedClaim.openedBy);
+                } else {
+                    // If not found in first page, try to get directly
+                    try {
+                        const userRes = await axiosInstance.get(`/auth/users/${selectedClaim.openedBy}/get`);
+                        setOpenedByUserName(userRes.data?.fullName || userRes.data?.username || selectedClaim.openedBy);
+                    } catch (e) {
+                        setOpenedByUserName(selectedClaim.openedBy);
+                    }
+                }
+            } catch (err) {
+                console.error("❌ Load user name error:", err);
+                setOpenedByUserName(selectedClaim.openedBy);
+            }
+        };
+        fetchUserName();
+    }, [viewOpen, selectedClaim?.openedBy]);
+
+    // Load Diagnostics, Estimates, and Recall Events
+    useEffect(() => {
+        if (!viewOpen || !selectedClaim?.id) return;
+
+        const loadAllData = async () => {
+            setLoadingData(true);
+            try {
+                // Load Diagnostics
+                try {
+                    const diagData = await diagnosticsService.getByClaim(selectedClaim.id);
+                    setDiagnostics(Array.isArray(diagData) ? diagData : []);
+                } catch (err) {
+                    console.error("Load diagnostics failed:", err);
+                    setDiagnostics([]);
+                }
+
+                // Load Estimates
+                try {
+                    const estData = await estimatesService.getByClaim(selectedClaim.id);
+                    setEstimates(Array.isArray(estData) ? estData : []);
+                } catch (err) {
+                    console.error("Load estimates failed:", err);
+                    setEstimates([]);
+                }
+
+                // Load Recall Events
+                if (selectedClaim.vin) {
+                    try {
+                        const recallData = await eventService.checkRecallByVin(selectedClaim.vin);
+                        setRecallEvents(recallData.events || []);
+                    } catch (err) {
+                        console.error("Load recall events failed:", err);
+                        setRecallEvents([]);
+                    }
+                }
+            } finally {
+                setLoadingData(false);
+            }
+        };
+
+        loadAllData();
+    }, [viewOpen, selectedClaim?.id, selectedClaim?.vin]);
+
+    // Helper function to render list items
+    const renderDetailListItem = (label, value) => (
+        <Box sx={{ py: 1, borderBottom: "1px solid", borderColor: "divider" }}>
+            <Stack direction="row" spacing={2}>
+                <Typography variant="body2" color="text.secondary" sx={{ minWidth: 150, fontWeight: 600 }}>
+                    {label}:
+                </Typography>
+                <Typography variant="body2" sx={{ flex: 1 }}>
+                    {value || "—"}
+                </Typography>
+            </Stack>
+        </Box>
+    );
 
     /* 🔧 MOVE useMemo LÊN TRÊN TRƯỚC EARLY RETURN */
     const totals = useMemo(() => {
@@ -2167,53 +2233,241 @@ function WarrantyRequests() {
                         </Table>
                     </Paper>
                     {/* Dialog xem chi tiết claim */}
-                    <Dialog open={viewOpen} onClose={() => setViewOpen(false)} fullWidth maxWidth="md">
-                        <DialogTitle sx={nonEditableSx}>Chi tiết đơn bảo hành</DialogTitle>
+                    <Dialog open={viewOpen} onClose={() => setViewOpen(false)} fullWidth maxWidth="lg">
+                        <DialogTitle sx={nonEditableSx}>Xem chi tiết Claim</DialogTitle>
                         <DialogContent dividers>
                             {!selectedClaim ? (
                                 <Typography color="text.secondary" sx={nonEditableSx}>Không có dữ liệu</Typography>
                             ) : (
-                                <Grid container spacing={2}>
-                                    <Grid item xs={12} sm={6}>
-                                        <TextField label="VIN" value={selectedClaim.vin} fullWidth InputProps={{ readOnly: true }} />
-                                    </Grid>
-                                    <Grid item xs={12} sm={6}>
-                                        <TextField label="Claim Type" value={selectedClaim.claimType || "—"} fullWidth InputProps={{ readOnly: true }} />
-                                    </Grid>
-                                    <Grid item xs={12} sm={6}>
-                                        <TextField label="Odometer (km)" value={selectedClaim.odometerKm || 0} fullWidth InputProps={{ readOnly: true }} />
-                                    </Grid>
-                                    <Grid item xs={12} sm={6}>
-                                        <TextField
-                                            label="Error Date"
-                                            value={selectedClaim.errorDate ? new Date(selectedClaim.errorDate).toLocaleString() : "—"}
-                                            fullWidth
-                                            InputProps={{ readOnly: true }}
-                                        />
-                                    </Grid>
-                                    <Grid item xs={12}>
-                                        <TextField
-                                            label="Summary"
-                                            multiline
-                                            minRows={3}
-                                            value={selectedClaim.summary || ""}
-                                            fullWidth
-                                            InputProps={{ readOnly: true }}
-                                        />
-                                    </Grid>
-                                    {Array.isArray(selectedClaim.attachmentUrls) && selectedClaim.attachmentUrls.length > 0 && (
-                                        <Grid item xs={12}>
-                                            <Typography variant="subtitle2" sx={nonEditableSx}>Đính kèm:</Typography>
-                                            <Stack spacing={1}>
-                                                {selectedClaim.attachmentUrls.map((url, i) => (
-                                                    <a key={i} href={url} target="_blank" rel="noopener noreferrer" style={{ fontSize: "0.9rem", color: "#1976d2", textDecoration: "none" }}>
-                                                        📎 {decodeURIComponent(url.split("/").pop())}
-                                                    </a>
+                                <Box>
+                                    {loadingData && (
+                                        <Box sx={{ display: "flex", justifyContent: "center", py: 2 }}>
+                                            <CircularProgress />
+                                        </Box>
+                                    )}
+
+                                    {/* Claim Information - List Format */}
+                                    <Card variant="outlined" sx={{ mb: 2 }}>
+                                        <CardContent>
+                                            <Typography variant="h6" gutterBottom sx={{ mb: 2, fontWeight: 700 }}>
+                                                Thông tin Claim
+                                            </Typography>
+                                            <Box>
+                                                {renderDetailListItem("VIN", <Box component="span" sx={{ fontFamily: "monospace" }}>{selectedClaim.vin || "—"}</Box>)}
+                                                {renderDetailListItem("Intake Contact Name", vehicleInfo?.intakeContactName || selectedClaim.intakeContactName || "—")}
+                                                {renderDetailListItem("Intake Contact Phone", vehicleInfo?.intakeContactPhone || "—")}
+                                                {renderDetailListItem("Service Center", centerName)}
+                                                {renderDetailListItem("Opened By", openedByUserName || selectedClaim.openedBy || "—")}
+                                                {renderDetailListItem("Claim Type", selectedClaim.claimType || "—")}
+                                                {renderDetailListItem("Status", selectedClaim.status || "—")}
+                                                {renderDetailListItem("Opened At", selectedClaim.openedAt ? new Date(selectedClaim.openedAt).toLocaleString("vi-VN") : "—")}
+                                                {renderDetailListItem("Error Date", selectedClaim.errorDate ? new Date(selectedClaim.errorDate).toLocaleString("vi-VN") : "—")}
+                                                {renderDetailListItem("Coverage Type", selectedClaim.coverageType || "—")}
+                                                {renderDetailListItem("Odometer (km)", selectedClaim.odometerKm || "—")}
+                                                {renderDetailListItem("Summary", selectedClaim.summary || "—")}
+                                                {renderDetailListItem("Exclusion", selectedClaim.exclusion || "—")}
+                                            </Box>
+
+                                            {/* Attachments */}
+                                            {Array.isArray(selectedClaim.attachmentUrls) && selectedClaim.attachmentUrls.filter((url) => url && url !== "string").length > 0 && (
+                                                <Box sx={{ mt: 2, pt: 2, borderTop: "1px solid", borderColor: "divider" }}>
+                                                    <Typography variant="subtitle2" sx={{ mb: 1, fontWeight: 600 }}>
+                                                        Attachments:
+                                                    </Typography>
+                                                    <Stack spacing={1} direction="row" flexWrap="wrap">
+                                                        {selectedClaim.attachmentUrls
+                                                            ?.filter((url) => typeof url === "string" && url.trim() && url !== "string")
+                                                            .map((url, i) => {
+                                                                const fileName = decodeURIComponent(url.split("/").pop());
+                                                                const isImage = /\.(png|jpg|jpeg|gif|webp)$/i.test(fileName);
+                                                                const isPdf = /\.pdf$/i.test(fileName);
+                                                                return (
+                                                                    <Box key={i} sx={{ display: "flex", alignItems: "center", gap: 1 }}>
+                                                                        {isImage ? (
+                                                                            <Tooltip title="Click to view" arrow>
+                                                                                <img
+                                                                                    src={url}
+                                                                                    alt={fileName}
+                                                                                    style={{
+                                                                                        maxWidth: "120px",
+                                                                                        maxHeight: "120px",
+                                                                                        borderRadius: "8px",
+                                                                                        border: "1px solid #ddd",
+                                                                                        cursor: "pointer",
+                                                                                    }}
+                                                                                    onClick={() => window.open(url, "_blank")}
+                                                                                />
+                                                                            </Tooltip>
+                                                                        ) : isPdf ? (
+                                                                            <Tooltip title="Click to view PDF" arrow>
+                                                                                <DescriptionIcon
+                                                                                    color="action"
+                                                                                    sx={{ fontSize: 40, cursor: "pointer" }}
+                                                                                    onClick={() => window.open(url, "_blank")}
+                                                                                />
+                                                                            </Tooltip>
+                                                                        ) : (
+                                                                            <a
+                                                                                href={url}
+                                                                                target="_blank"
+                                                                                rel="noopener noreferrer"
+                                                                                style={{
+                                                                                    fontSize: "0.85rem",
+                                                                                    color: "#1976d2",
+                                                                                    textDecoration: "none",
+                                                                                }}
+                                                                            >
+                                                                                📎 {fileName}
+                                                                            </a>
+                                                                        )}
+                                                                    </Box>
+                                                                );
+                                                            })}
+                                                    </Stack>
+                                                </Box>
+                                            )}
+                                        </CardContent>
+                                    </Card>
+
+                                    {/* Diagnostics Section */}
+                                    <Card variant="outlined" sx={{ mb: 2 }}>
+                                        <CardContent>
+                                            <Typography variant="h6" gutterBottom sx={{ mb: 2, fontWeight: 700 }}>
+                                                Diagnostics ({diagnostics.length})
+                                            </Typography>
+                                            {diagnostics.length === 0 ? (
+                                                <Typography color="text.secondary">Chưa có diagnostics</Typography>
+                                            ) : (
+                                                <Stack spacing={2}>
+                                                    {diagnostics.map((diag) => (
+                                                        <Card key={diag.id} variant="outlined" sx={{ bgcolor: "action.hover" }}>
+                                                            <CardContent>
+                                                                <Stack spacing={1}>
+                                                                    {renderDetailListItem("Phase", diag.phase || "—")}
+                                                                    {renderDetailListItem("Outcome", diag.outcome || "—")}
+                                                                    {renderDetailListItem("SOH (%)", diag.sohPct ?? "—")}
+                                                                    {renderDetailListItem("SOC (%)", diag.socPct ?? "—")}
+                                                                    {renderDetailListItem("Pack Voltage", diag.packVoltage ?? "—")}
+                                                                    {renderDetailListItem("Cell Delta (mV)", diag.cellDeltaMv ?? "—")}
+                                                                    {renderDetailListItem("Cycles", diag.cycles ?? "—")}
+                                                                    {renderDetailListItem("Performed By", diag.performedByName || "—")}
+                                                                    {renderDetailListItem("Recorded At", diag.recordedAt ? new Date(diag.recordedAt).toLocaleString("vi-VN") : "—")}
+                                                                    {renderDetailListItem("Notes", diag.notes || "—")}
+                                                                </Stack>
+                                                            </CardContent>
+                                                        </Card>
                                                 ))}
                                             </Stack>
-                                        </Grid>
-                                    )}
-                                </Grid>
+                                            )}
+                                        </CardContent>
+                                    </Card>
+
+                                    {/* Estimates Section */}
+                                    <Card variant="outlined" sx={{ mb: 2 }}>
+                                        <CardContent>
+                                            <Typography variant="h6" gutterBottom sx={{ mb: 2, fontWeight: 700 }}>
+                                                Estimates ({estimates.length})
+                                            </Typography>
+                                            {estimates.length === 0 ? (
+                                                <Typography color="text.secondary">Chưa có estimates</Typography>
+                                            ) : (
+                                                <Stack spacing={2}>
+                                                    {estimates.map((est) => {
+                                                        const items = est.itemsJson ? (typeof est.itemsJson === "string" ? JSON.parse(est.itemsJson) : est.itemsJson) : est.items || [];
+                                                        return (
+                                                            <Card key={est.id} variant="outlined" sx={{ bgcolor: "action.hover" }}>
+                                                                <CardContent>
+                                                                    <Stack spacing={1}>
+                                                                        {renderDetailListItem("Version", est.versionNo ?? est.version ?? "—")}
+                                                                        {renderDetailListItem("Created At", est.createdAt ? new Date(est.createdAt).toLocaleString("vi-VN") : "—")}
+                                                                        {renderDetailListItem("Note", est.note || "—")}
+                                                                        {renderDetailListItem("Labor Slots", est.laborSlots ?? "—")}
+                                                                        {renderDetailListItem("Labor Rate (VND)", est.laborRateVND ? est.laborRateVND.toLocaleString("vi-VN") : "—")}
+                                                                        {renderDetailListItem("Parts Subtotal (VND)", est.partsSubtotalVND ? est.partsSubtotalVND.toLocaleString("vi-VN") : "—")}
+                                                                        {renderDetailListItem("Labor Subtotal (VND)", est.laborSubtotalVND ? est.laborSubtotalVND.toLocaleString("vi-VN") : "—")}
+                                                                        {renderDetailListItem("Grand Total (VND)", est.grandTotalVND ? est.grandTotalVND.toLocaleString("vi-VN") : "—")}
+                                                                        {items.length > 0 && (
+                                                                            <Box sx={{ mt: 1 }}>
+                                                                                <Typography variant="subtitle2" sx={{ mb: 1, fontWeight: 600 }}>
+                                                                                    Items:
+                                                                                </Typography>
+                                                                                <Stack spacing={0.5}>
+                                                                                    {items.map((item, idx) => (
+                                                                                        <Box key={idx} sx={{ pl: 2, py: 0.5, borderLeft: "2px solid", borderColor: "primary.main" }}>
+                                                                                            <Typography variant="body2">
+                                                                                                {item.partName || item.part_name || "—"} × {item.quantity ?? 0} = {(item.unitPriceVND ?? item.unit_price_vnd ?? 0) * (item.quantity ?? 0)} VND
+                                                                                            </Typography>
+                                                                                        </Box>
+                                                                                    ))}
+                                                                                </Stack>
+                                                                            </Box>
+                                                                        )}
+                                                                    </Stack>
+                                                                </CardContent>
+                                                            </Card>
+                                                        );
+                                                    })}
+                                                </Stack>
+                                            )}
+                                        </CardContent>
+                                    </Card>
+
+                                    {/* Recall Events Section */}
+                                    <Card variant="outlined">
+                                        <CardContent>
+                                            <Typography variant="h6" gutterBottom sx={{ mb: 2, fontWeight: 700 }}>
+                                                Recall Events ({recallEvents.length})
+                                            </Typography>
+                                            {recallEvents.length === 0 ? (
+                                                <Typography color="text.secondary">Không có recall events cho VIN này</Typography>
+                                            ) : (
+                                                <Stack spacing={2}>
+                                                    {recallEvents.map((event) => (
+                                                        <Card key={event.id} variant="outlined" sx={{ bgcolor: "warning.light", opacity: 0.9 }}>
+                                                            <CardContent>
+                                                                <Stack spacing={1}>
+                                                                    {renderDetailListItem("Event Name", event.name || "—")}
+                                                                    {renderDetailListItem("Type", event.type || "—")}
+                                                                    {renderDetailListItem("Reason", event.reason || "—")}
+                                                                    {renderDetailListItem("Start Date", event.startDate ? new Date(event.startDate).toLocaleString("vi-VN") : "—")}
+                                                                    {renderDetailListItem("End Date", event.endDate ? new Date(event.endDate).toLocaleString("vi-VN") : "—")}
+                                                                    {event.affectedParts && event.affectedParts.length > 0 && (
+                                                                        <Box>
+                                                                            <Typography variant="body2" color="text.secondary" sx={{ mb: 0.5, fontWeight: 600 }}>
+                                                                                Affected Parts:
+                                                                            </Typography>
+                                                                            <Stack spacing={0.5}>
+                                                                                {event.affectedParts.map((part, idx) => (
+                                                                                    <Typography key={idx} variant="body2" sx={{ pl: 2 }}>
+                                                                                        • {part}
+                                                                                    </Typography>
+                                                                                ))}
+                                                                            </Stack>
+                                                                        </Box>
+                                                                    )}
+                                                                    {event.exclusions && event.exclusions.length > 0 && (
+                                                                        <Box>
+                                                                            <Typography variant="body2" color="text.secondary" sx={{ mb: 0.5, fontWeight: 600 }}>
+                                                                                Exclusions:
+                                                                            </Typography>
+                                                                            <Stack spacing={0.5}>
+                                                                                {event.exclusions.map((excl, idx) => (
+                                                                                    <Typography key={idx} variant="body2" sx={{ pl: 2 }}>
+                                                                                        • {excl}
+                                                                                    </Typography>
+                                                                                ))}
+                                                                            </Stack>
+                                                                        </Box>
+                                                                    )}
+                                                                </Stack>
+                                                            </CardContent>
+                                                        </Card>
+                                                    ))}
+                                                </Stack>
+                                            )}
+                                        </CardContent>
+                                    </Card>
+                                </Box>
                             )}
                         </DialogContent>
                         <DialogActions>

@@ -46,6 +46,7 @@ import {
   Schedule as ScheduleIcon,
   CalendarToday as CalendarTodayIcon,
   Update as UpdateIcon,
+  CheckCircle as CheckCircleIcon,
 } from "@mui/icons-material";
 import dayjs from "dayjs";
 import appointmentService from "../../services/appointmentService";
@@ -56,8 +57,28 @@ const STATUS_OPTIONS = [
 ];
 
 export default function ReceiveAppointment() {
-  // ✅ Lấy userId hiện tại từ localStorage
-  const currentUserId = localStorage.getItem("userId");
+  // ✅ Lấy userId hiện tại từ localStorage hoặc từ user object
+  const getCurrentUserId = () => {
+    // Thử lấy trực tiếp từ localStorage
+    let userId = localStorage.getItem("userId") || localStorage.getItem("technicianId");
+    
+    // Nếu không có, thử lấy từ user object
+    if (!userId) {
+      try {
+        const userStr = localStorage.getItem("user");
+        if (userStr) {
+          const user = JSON.parse(userStr);
+          userId = user?.id || user?.userId || user?.technicianId;
+        }
+      } catch (err) {
+        console.warn("Failed to parse user from localStorage:", err);
+      }
+    }
+    
+    return userId;
+  };
+  
+  const currentUserId = getCurrentUserId();
   
   const [appointments, setAppointments] = useState([]);
   const [filteredAppointments, setFilteredAppointments] = useState([]);
@@ -106,16 +127,9 @@ export default function ReceiveAppointment() {
     loadAppointments();
   }, []);
 
-  // Apply filters - only show appointments for current technician
+  // Apply filters - appointments đã được load theo technician rồi, chỉ cần filter search/status/date
   useEffect(() => {
     let filtered = [...appointments];
-
-    // Filter by current technician
-    if (currentUserId) {
-      filtered = filtered.filter(apt => 
-        apt.technicianId === currentUserId || apt.id === currentUserId
-      );
-    }
 
     // Search filter (by names only, no IDs)
     if (searchTerm) {
@@ -139,10 +153,39 @@ export default function ReceiveAppointment() {
     }
 
     setFilteredAppointments(filtered);
-  }, [searchTerm, filterStatus, filterDate, appointments, currentUserId]);
+  }, [searchTerm, filterStatus, filterDate, appointments]);
 
   const showSnackbar = (message, severity = "info") => {
     setSnackbar({ open: true, message, severity });
+  };
+
+  // Handle start appointment - update status to IN_PROGRESS
+  const handleStartAppointment = async (appointment) => {
+    if (!appointment?.id) {
+      showSnackbar("Không tìm thấy appointment", "error");
+      return;
+    }
+
+    // Check if appointment belongs to current technician
+    if (appointment.technicianId !== currentUserId) {
+      showSnackbar("Bạn không có quyền cập nhật lịch hẹn này", "error");
+      return;
+    }
+
+    try {
+      const res = await appointmentService.updateStatus(appointment.id, { status: "IN_PROGRESS" });
+      if (res.success) {
+        showSnackbar("Đã bắt đầu ca làm việc", "success");
+        loadAppointments();
+      } else {
+        const errorMsg = res.message || res.error?.message || "Cập nhật thất bại";
+        showSnackbar(errorMsg, "error");
+      }
+    } catch (err) {
+      console.error("Start appointment error:", err);
+      const errorMsg = err.response?.data?.message || err.message || "Lỗi khi bắt đầu ca làm việc";
+      showSnackbar(errorMsg, "error");
+    }
   };
 
   // Update status - only if appointment belongs to current technician
@@ -153,7 +196,7 @@ export default function ReceiveAppointment() {
     }
 
     // Check if appointment belongs to current technician
-    if (statusDialog.appointment.technicianId !== currentUserId && statusDialog.appointment.id !== currentUserId) {
+    if (statusDialog.appointment.technicianId !== currentUserId) {
       showSnackbar("Bạn không có quyền cập nhật lịch hẹn này", "error");
       return;
     }
@@ -169,28 +212,28 @@ export default function ReceiveAppointment() {
         setStatusDialog({ open: false, appointment: null, newStatus: "" });
         loadAppointments();
       } else {
-        showSnackbar("Cập nhật thất bại", "error");
+        const errorMsg = res.message || res.error?.message || "Cập nhật thất bại";
+        showSnackbar(errorMsg, "error");
       }
     } catch (err) {
-      showSnackbar("Lỗi khi cập nhật trạng thái", "error");
+      console.error("Update status error:", err);
+      const errorMsg = err.response?.data?.message || err.message || "Lỗi khi cập nhật trạng thái";
+      showSnackbar(errorMsg, "error");
     }
   };
 
-  // Statistics
+  // Statistics - appointments đã được load theo technician rồi
   const stats = useMemo(() => {
-    const techAppointments = appointments.filter(apt => 
-      apt.technicianId === currentUserId || apt.id === currentUserId
-    );
-    const total = techAppointments.length;
-    const inProgress = techAppointments.filter(a => a.status === "IN_PROGRESS").length;
-    const done = techAppointments.filter(a => a.status === "DONE").length;
-    const booked = techAppointments.filter(a => a.status === "BOOKED").length;
-    const today = techAppointments.filter(a =>
+    const total = appointments.length;
+    const inProgress = appointments.filter(a => a.status === "IN_PROGRESS").length;
+    const done = appointments.filter(a => a.status === "DONE").length;
+    const booked = appointments.filter(a => a.status === "BOOKED").length;
+    const today = appointments.filter(a =>
       a.slots?.some(s => s.slotDate === dayjs().format("YYYY-MM-DD"))
     ).length;
 
     return { total, booked, inProgress, done, today };
-  }, [appointments, currentUserId]);
+  }, [appointments]);
 
   const getStatusColor = (status) => {
     const statusMap = {
@@ -252,23 +295,69 @@ export default function ReceiveAppointment() {
                 </IconButton>
               </Tooltip>
               {canUpdate && (
-                <Tooltip title="Cập nhật trạng thái">
-                  <Button
-                    variant="contained"
-                    size="small"
-                    startIcon={<UpdateIcon />}
-                    onClick={() => {
-                      // Set initial status to current status if it's IN_PROGRESS or DONE, otherwise default to IN_PROGRESS
-                      const initialStatus = (apt.status === "IN_PROGRESS" || apt.status === "DONE") 
-                        ? apt.status 
-                        : "IN_PROGRESS";
-                      setStatusDialog({ open: true, appointment: apt, newStatus: initialStatus });
-                    }}
-                    sx={{ textTransform: 'none' }}
-                  >
-                    Cập nhật trạng thái
-                  </Button>
-                </Tooltip>
+                <Stack direction="row" spacing={1}>
+                  {apt.status === "BOOKED" && (
+                    <Tooltip title="Bắt đầu ca làm việc">
+                      <Button
+                        variant="contained"
+                        color="success"
+                        size="small"
+                        onClick={() => handleStartAppointment(apt)}
+                        sx={{ textTransform: 'none' }}
+                      >
+                        Bắt đầu
+                      </Button>
+                    </Tooltip>
+                  )}
+                  {apt.status === "IN_PROGRESS" && (
+                    <>
+                      <Tooltip title="Hoàn thành">
+                        <Button
+                          variant="contained"
+                          color="success"
+                          size="small"
+                          onClick={() => {
+                            setStatusDialog({ open: true, appointment: apt, newStatus: "DONE" });
+                          }}
+                          sx={{ textTransform: 'none' }}
+                        >
+                          Complete
+                        </Button>
+                      </Tooltip>
+                      <Tooltip title="Hủy">
+                        <Button
+                          variant="contained"
+                          color="error"
+                          size="small"
+                          onClick={() => {
+                            setStatusDialog({ open: true, appointment: apt, newStatus: "CANCELLED" });
+                          }}
+                          sx={{ textTransform: 'none' }}
+                        >
+                          Cancel
+                        </Button>
+                      </Tooltip>
+                    </>
+                  )}
+                  {(apt.status !== "BOOKED" && apt.status !== "IN_PROGRESS") && (
+                    <Tooltip title="Cập nhật trạng thái">
+                      <Button
+                        variant="outlined"
+                        size="small"
+                        startIcon={<UpdateIcon />}
+                        onClick={() => {
+                          const initialStatus = (apt.status === "IN_PROGRESS" || apt.status === "DONE") 
+                            ? apt.status 
+                            : "IN_PROGRESS";
+                          setStatusDialog({ open: true, appointment: apt, newStatus: initialStatus });
+                        }}
+                        sx={{ textTransform: 'none' }}
+                      >
+                        Cập nhật
+                      </Button>
+                    </Tooltip>
+                  )}
+                </Stack>
               )}
             </Box>
           </Box>
@@ -489,7 +578,8 @@ export default function ReceiveAppointment() {
             </TableHead>
             <TableBody>
               {filteredAppointments.map(apt => {
-                const canUpdate = apt.technicianId === currentUserId || apt.id === currentUserId;
+                // Appointments đã được load theo technician rồi, nên tất cả đều thuộc về technician hiện tại
+                const canUpdate = true;
                 return (
                   <TableRow key={apt.id} hover>
                     <TableCell>{apt.technicianName || "N/A"}</TableCell>
@@ -502,25 +592,72 @@ export default function ReceiveAppointment() {
                       {apt.slots?.[0]?.slotDate || "N/A"}
                     </TableCell>
                     <TableCell>
-                      <IconButton
-                        size="small"
-                        onClick={() => setDetailDialog({ open: true, appointment: apt })}
-                      >
-                        <InfoIcon />
-                      </IconButton>
-                      {canUpdate && (
+                      <Stack direction="row" spacing={0.5} alignItems="center">
                         <IconButton
                           size="small"
-                          onClick={() => {
-                            const initialStatus = (apt.status === "IN_PROGRESS" || apt.status === "DONE") 
-                              ? apt.status 
-                              : "IN_PROGRESS";
-                            setStatusDialog({ open: true, appointment: apt, newStatus: initialStatus });
-                          }}
+                          onClick={() => setDetailDialog({ open: true, appointment: apt })}
                         >
-                          <UpdateIcon />
+                          <InfoIcon />
                         </IconButton>
-                      )}
+                        {canUpdate && (
+                          <>
+                            {apt.status === "BOOKED" && (
+                              <Tooltip title="Bắt đầu ca làm việc">
+                                <Button
+                                  variant="contained"
+                                  color="success"
+                                  size="small"
+                                  onClick={() => handleStartAppointment(apt)}
+                                  sx={{ textTransform: 'none', minWidth: 100 }}
+                                >
+                                  Bắt đầu
+                                </Button>
+                              </Tooltip>
+                            )}
+                          {apt.status === "IN_PROGRESS" && (
+                            <>
+                              <Tooltip title="Complete">
+                                <IconButton
+                                  size="small"
+                                  color="success"
+                                  onClick={() => {
+                                    setStatusDialog({ open: true, appointment: apt, newStatus: "DONE" });
+                                  }}
+                                >
+                                  <CheckCircleIcon />
+                                </IconButton>
+                              </Tooltip>
+                              <Tooltip title="Cancel">
+                                <IconButton
+                                  size="small"
+                                  color="error"
+                                  onClick={() => {
+                                    setStatusDialog({ open: true, appointment: apt, newStatus: "CANCELLED" });
+                                  }}
+                                >
+                                  <CloseIcon />
+                                </IconButton>
+                              </Tooltip>
+                            </>
+                          )}
+                          {(apt.status !== "BOOKED" && apt.status !== "IN_PROGRESS") && (
+                            <Tooltip title="Cập nhật">
+                              <IconButton
+                                size="small"
+                                onClick={() => {
+                                  const initialStatus = (apt.status === "IN_PROGRESS" || apt.status === "DONE") 
+                                    ? apt.status 
+                                    : "IN_PROGRESS";
+                                  setStatusDialog({ open: true, appointment: apt, newStatus: initialStatus });
+                                }}
+                              >
+                                <UpdateIcon />
+                              </IconButton>
+                            </Tooltip>
+                          )}
+                          </>
+                        )}
+                      </Stack>
                     </TableCell>
                   </TableRow>
                 );

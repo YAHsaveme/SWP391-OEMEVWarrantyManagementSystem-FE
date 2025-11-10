@@ -19,20 +19,48 @@ const appointmentService = {
     // ✅ PUT /api/appointments/{appointmentId}/update
     async update(appointmentId, payload = {}) {
         if (!isValidString(appointmentId)) return { success: false, message: "appointmentId không hợp lệ" };
-        if (payload.slotIds && !Array.isArray(payload.slotIds))
-            return { success: false, message: "slotIds phải là mảng" };
+        
+        // Validation các field bắt buộc theo API
+        if (!payload.claimId) return { success: false, message: "claimId là bắt buộc" };
+        if (!payload.requiredSkill) return { success: false, message: "requiredSkill là bắt buộc" };
+        if (!payload.technicianId) return { success: false, message: "technicianId là bắt buộc" };
+        if (!Array.isArray(payload.slotIds) || payload.slotIds.length === 0)
+            return { success: false, message: "slotIds là bắt buộc và phải có ít nhất 1 slot" };
 
+        // Loại bỏ field rỗng (trừ các field bắt buộc đã validate ở trên)
         const cleanPayload = Object.fromEntries(
-            Object.entries(payload).filter(([_, v]) => v !== null && v !== undefined && v !== "")
+            Object.entries(payload).filter(([_, v]) => {
+                // Giữ lại các field bắt buộc và các field có giá trị
+                if (v === null || v === undefined) return false;
+                // Giữ lại empty string cho note (có thể để trống)
+                if (typeof v === "string" && v === "" && payload.note !== undefined) return true;
+                // Giữ lại các giá trị khác
+                return true;
+            })
         );
 
         try {
             console.log("[AppointmentService] update payload:", cleanPayload);
+            console.log("[AppointmentService] update appointmentId:", appointmentId);
+            console.log("[AppointmentService] update claimId:", cleanPayload.claimId);
+            console.log("[AppointmentService] update requiredSkill:", cleanPayload.requiredSkill);
+            console.log("[AppointmentService] update technicianId:", cleanPayload.technicianId);
+            console.log("[AppointmentService] update slotIds:", cleanPayload.slotIds);
+            console.log("[AppointmentService] update workingStartTime:", cleanPayload.workingStartTime);
+            console.log("[AppointmentService] update workingEndTime:", cleanPayload.workingEndTime);
+            
             const res = await axiosInstance.put(`/appointments/${appointmentId}/update`, cleanPayload);
+            console.log("[AppointmentService] update success:", res.data);
             return { success: true, data: res.data };
         } catch (err) {
-            console.error("[AppointmentService] update:", err.response?.data || err.message);
-            return { success: false, error: err.response?.data || err };
+            console.error("[AppointmentService] update error response:", err.response);
+            console.error("[AppointmentService] update error data:", err.response?.data);
+            console.error("[AppointmentService] update error status:", err.response?.status);
+            console.error("[AppointmentService] update error message:", err.message);
+            
+            const errorData = err.response?.data;
+            const errorMessage = errorData?.message || errorData?.error || err.message || "Lỗi khi cập nhật appointment";
+            return { success: false, error: errorData || err, message: errorMessage };
         }
     },
 
