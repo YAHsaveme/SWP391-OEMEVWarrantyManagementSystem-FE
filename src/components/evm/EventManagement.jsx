@@ -11,6 +11,7 @@ import eventService from "../../services/eventService";
 import evModelService from "../../services/evModelService";
 import partService from "../../services/partService";
 import axiosInstance from "../../services/axiosInstance";
+import partLotService from "../../services/partLotService";
 
 // Exclusions cho phép
 const ALLOWED_EXCLUSIONS = [
@@ -199,34 +200,91 @@ export default function EventManagement() {
     const openCreate = () => {
         setMode("create");
         setSelectedEvent(null);
-        setForm({
+        const newForm = {
             name: "",
             reason: "",
             startDate: "",
             endDate: "",
             exclusions: [],
-            affectedParts: [],
+            affectedParts: [], // Khởi tạo là array rỗng
             modelRanges: [],
-        });
+        };
+        console.log("[EventManagement] openCreate - Initializing form:", newForm);
+        setForm(newForm);
         setOpen(true);
     };
 
-    const openEdit = (e) => {
+    const openEdit = async (e) => {
         setMode("edit");
         setSelectedEvent(e);
+        
+        // Đảm bảo parts đã được load trước khi parse
+        if (parts.length === 0) {
+            await fetchParts();
+        }
+        
+        // Parse affectedPartsJson to get part IDs
+        let affectedPartIds = [];
+        if (e.affectedPartsJson) {
+            try {
+                const parsed = typeof e.affectedPartsJson === 'string' 
+                    ? JSON.parse(e.affectedPartsJson) 
+                    : e.affectedPartsJson;
+                if (Array.isArray(parsed)) {
+                    // Validate: nếu parsed là array of strings (tên parts), tìm ID
+                    // Nếu parsed là array of IDs, dùng trực tiếp
+                    affectedPartIds = parsed.map(item => {
+                        if (typeof item === 'string') {
+                            // Có thể là ID (UUID) hoặc tên part
+                            // Thử tìm part theo ID trước
+                            const partById = parts.find(p => String(p.id) === item);
+                            if (partById) {
+                                return String(partById.id);
+                            }
+                            // Nếu không tìm thấy theo ID, thử tìm theo tên
+                            const partByName = parts.find(p => p.partName === item || p.partNo === item);
+                            if (partByName) {
+                                return String(partByName.id);
+                            }
+                            // Nếu không tìm thấy, giữ nguyên (có thể là ID hợp lệ nhưng part đã bị xóa)
+                            return item;
+                        }
+                        // Nếu là object hoặc number, convert sang string
+                        return String(item);
+                    }).filter(id => id != null && id !== "");
+                }
+                console.log("[EventManagement] Parsed affectedPartsJson:", affectedPartIds);
+            } catch (err) {
+                console.warn("[EventManagement] Failed to parse affectedPartsJson:", err, "Raw value:", e.affectedPartsJson);
+            }
+        } else if (Array.isArray(e.affectedParts) && e.affectedParts.length > 0) {
+            // Fallback: nếu có affectedParts (array of strings), tìm ID từ parts
+            console.log("[EventManagement] Using affectedParts fallback, parts count:", parts.length);
+            affectedPartIds = e.affectedParts.map(partName => {
+                const part = parts.find(p => p.partName === partName || p.partNo === partName);
+                if (part) {
+                    return String(part.id);
+                }
+                console.warn("[EventManagement] Part not found for name:", partName);
+                return null;
+            }).filter(id => id != null && id !== "");
+            console.log("[EventManagement] Mapped affectedPartIds from affectedParts:", affectedPartIds);
+        }
+        
         setForm({
             name: e.name || "",
             reason: e.reason || "",
             startDate: formatDateForInput(e.startDate),
             endDate: formatDateForInput(e.endDate),
             exclusions: Array.isArray(e.exclusions) ? e.exclusions : [],
-            affectedParts: Array.isArray(e.affectedParts) ? e.affectedParts : [],
+            affectedParts: affectedPartIds, // Lưu array of IDs
             modelRanges: Array.isArray(e.modelRanges) ? e.modelRanges.map(r => ({
                 modelCode: r.modelCode || "",
                 productionFrom: formatDateForInput(r.productionFrom),
                 productionTo: formatDateForInput(r.productionTo),
             })) : [],
         });
+        console.log("[EventManagement] Form initialized with affectedParts:", affectedPartIds);
         setOpen(true);
     };
 
@@ -295,6 +353,30 @@ export default function EventManagement() {
             setBusy(true);
             // Theo backend: khi create, endDate mặc định là null
             // Backend sẽ normalize dates về date-only (bỏ giờ)
+            // Backend mong đợi affectedParts là array of IDs (strings), không phải JSON string
+            // affectedPartsJson sẽ được backend tự động tạo từ affectedParts array
+            console.log("[EventManagement] form.affectedParts before processing:", form.affectedParts);
+            console.log("[EventManagement] form.affectedParts type:", typeof form.affectedParts, "isArray:", Array.isArray(form.affectedParts));
+            
+            const affectedPartsArray = form.affectedParts && Array.isArray(form.affectedParts) && form.affectedParts.length > 0
+                ? form.affectedParts
+                    .filter(id => {
+                        const isValid = id != null && id !== "" && id !== undefined;
+                        if (!isValid) {
+                            console.warn("[EventManagement] Filtered out invalid ID:", id);
+                        }
+                        return isValid;
+                    })
+                    .map(id => {
+                        const strId = String(id).trim();
+                        console.log("[EventManagement] Processing ID:", id, "->", strId);
+                        return strId;
+                    })
+                    .filter(id => id.length > 0)
+                : null;
+            
+            console.log("[EventManagement] Final affectedPartsArray for payload:", affectedPartsArray);
+            
             const payload = {
                 name: form.name.trim(),
                 reason: form.reason?.trim() || null,
@@ -303,13 +385,18 @@ export default function EventManagement() {
                 // Update: có thể set endDate
                 endDate: mode === "create" ? null : (form.endDate ? parseDateFromInput(form.endDate) : null),
                 exclusions: form.exclusions.length > 0 ? form.exclusions : null,
-                affectedParts: form.affectedParts.length > 0 ? form.affectedParts : null,
+                // Backend mong đợi affectedParts là array of IDs (theo ví dụ payload)
+                affectedParts: affectedPartsArray, // Array of IDs (strings)
                 modelRanges: form.modelRanges.length > 0 ? form.modelRanges.map(r => ({
                     modelCode: r.modelCode,
                     productionFrom: r.productionFrom ? parseDateFromInput(r.productionFrom) : null,
                     productionTo: r.productionTo ? parseDateFromInput(r.productionTo) : null,
                 })) : null
             };
+            
+            console.log("[EventManagement] Submit payload:", JSON.stringify(payload, null, 2));
+            console.log("[EventManagement] affectedParts in payload:", payload.affectedParts);
+            console.log("[EventManagement] affectedParts type:", typeof payload.affectedParts, "isArray:", Array.isArray(payload.affectedParts));
 
             if (mode === "create") {
                 await eventService.create(payload);
@@ -627,42 +714,62 @@ export default function EventManagement() {
 
                         <Autocomplete
                             multiple
-                            freeSolo
                             options={parts}
                             loading={partsLoading}
-                            value={form.affectedParts.map(ap => {
-                                // Nếu là string đã có, tìm Part object tương ứng
-                                const part = parts.find(p => {
-                                    const name = p.partName || "";
-                                    const no = p.partNo || "";
-                                    return ap === name || ap === no || ap === `${name} (${no})`;
-                                });
-                                return part || ap; // Trả về Part object hoặc giữ nguyên string
-                            })}
+                            value={form.affectedParts.map(partId => {
+                                // Tìm Part object từ ID
+                                const part = parts.find(p => String(p.id) === String(partId));
+                                if (!part) {
+                                    console.warn("[EventManagement] Part not found for ID:", partId, "Available parts:", parts.map(p => p.id));
+                                }
+                                return part || null;
+                            }).filter(Boolean)}
                             onChange={(e, val) => {
-                                // Lưu partName (nếu là Part object) hoặc giữ nguyên string (nếu nhập tay)
-                                const partNames = val.map(v => {
-                                    if (typeof v === "string") return v; // Nhập tay
-                                    const name = v.partName || "";
-                                    const no = v.partNo || "";
-                                    return name || no; // Chọn từ danh sách
-                                }).filter(Boolean);
-                                setForm((s) => ({ ...s, affectedParts: partNames }));
+                                console.log("[EventManagement] Autocomplete onChange - val:", val);
+                                console.log("[EventManagement] Autocomplete onChange - val type:", typeof val, "isArray:", Array.isArray(val));
+                                
+                                // Lưu chỉ ID của parts được chọn
+                                const partIds = val
+                                    .map((v, idx) => {
+                                        console.log(`[EventManagement] Processing part ${idx}:`, v, "id:", v?.id);
+                                        return v?.id;
+                                    })
+                                    .filter(id => {
+                                        const isValid = id != null && id !== "" && id !== undefined;
+                                        if (!isValid) {
+                                            console.warn(`[EventManagement] Filtered out invalid part ID:`, id);
+                                        }
+                                        return isValid;
+                                    })
+                                    .map(id => {
+                                        const strId = String(id).trim();
+                                        console.log(`[EventManagement] Converting ID:`, id, "->", strId);
+                                        return strId;
+                                    })
+                                    .filter(id => id.length > 0);
+                                
+                                console.log("[EventManagement] Final selected part IDs:", partIds);
+                                console.log("[EventManagement] Setting form.affectedParts to:", partIds);
+                                
+                                setForm((s) => {
+                                    const newForm = { ...s, affectedParts: partIds };
+                                    console.log("[EventManagement] New form state:", newForm);
+                                    return newForm;
+                                });
                             }}
                             getOptionLabel={(opt) => {
-                                if (typeof opt === "string") return opt; // String từ nhập tay
-                                return opt ? `${opt.partName || "—"}${opt.partNo ? ` (${opt.partNo})` : ""}` : "";
+                                if (!opt) return "";
+                                return `${opt.partName || "—"}${opt.partNo ? ` (${opt.partNo})` : ""}`;
                             }}
                             isOptionEqualToValue={(a, b) => {
-                                if (typeof a === "string" && typeof b === "string") return a === b;
-                                if (typeof a === "string" || typeof b === "string") return false;
+                                if (!a || !b) return a === b;
                                 return String(a?.id) === String(b?.id);
                             }}
                             renderInput={(params) => (
                                 <TextField
                                     {...params}
                                     label="Affected Parts"
-                                    placeholder="Chọn từ danh sách hoặc nhập tay..."
+                                    placeholder="Chọn parts từ danh sách..."
                                     InputProps={{
                                         ...params.InputProps,
                                         endAdornment: (
@@ -675,15 +782,6 @@ export default function EventManagement() {
                                 />
                             )}
                             renderOption={(props, option) => {
-                                // Nếu là string (nhập tay), hiển thị đơn giản
-                                if (typeof option === "string") {
-                                    return (
-                                        <li {...props} key={option}>
-                                            <Typography>{option}</Typography>
-                                        </li>
-                                    );
-                                }
-                                // Nếu là Part object, hiển thị đầy đủ
                                 return (
                                     <li {...props} key={option.id}>
                                         <Box sx={{ display: "flex", flexDirection: "column" }}>
@@ -699,9 +797,7 @@ export default function EventManagement() {
                             }}
                             renderTags={(value, getTagProps) =>
                                 value.map((option, index) => {
-                                    const label = typeof option === "string"
-                                        ? option
-                                        : (option.partName || option.partNo || "");
+                                    const label = option?.partName || option?.partNo || "";
                                     return (
                                         <Chip
                                             {...getTagProps({ index })}

@@ -139,7 +139,51 @@ function InventoryPartView({ onSwitch }) {
                 // Load tất cả nếu không chọn center và part
                 data = await inventoryPartService.getAll();
             }
-            const parts = Array.isArray(data) ? data : (data?.inventoryParts || data?.content || []);
+            let parts = Array.isArray(data) ? data : (data?.inventoryParts || data?.content || []);
+
+            // Đồng bộ số lượng với tồn kho thực tế từ các Part Lot nếu đang filter theo Center
+            if (centerId) {
+                try {
+                    const lotsRes = await inventoryLotService.listByCenterWithId(centerId);
+                    const lotsData = Array.isArray(lotsRes?.inventoryLots)
+                        ? lotsRes.inventoryLots
+                        : Array.isArray(lotsRes)
+                            ? lotsRes
+                            : [];
+                    const totalByPart = {};
+                    lotsData.forEach(lot => {
+                        const partId = lot.partId || lot.partLotPartId || lot.part?.id;
+                        if (!partId) return;
+                        const isSerialized =
+                            lot.isSerialized ??
+                            lot.part?.isSerialized ??
+                            Boolean(lot.serialNo || lot.partLotSerialNo || lot.partLot?.serialNo);
+                        const rawQty = lot.quantity;
+                        let qty = Number(rawQty);
+                        if (Number.isNaN(qty)) {
+                            qty = isSerialized ? 1 : 0;
+                        }
+                        if (isSerialized) {
+                            // Serialized: mỗi lot đại diện cho 1 đơn vị nếu quantity không chỉ định
+                            if (Number.isNaN(Number(rawQty)) || rawQty === null || rawQty === undefined) {
+                                qty = 1;
+                            }
+                        }
+                        totalByPart[partId] = (totalByPart[partId] || 0) + (Number.isNaN(qty) ? 0 : qty);
+                    });
+
+                    parts = parts.map(item => {
+                        const partId = item.partId || item.part?.id;
+                        if (partId && totalByPart[partId] !== undefined) {
+                            return { ...item, quantity: totalByPart[partId] };
+                        }
+                        return item;
+                    });
+                } catch (err) {
+                    console.warn("[InventoryPart] sync quantity with lots failed:", err);
+                }
+            }
+
             setAllItems(parts);
             setTotalPages(1);
             setPage(0);

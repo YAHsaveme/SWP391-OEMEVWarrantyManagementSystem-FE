@@ -321,18 +321,12 @@ function ReplenishmentTicketList() {
                     const uniqueCenters = Array.from(centerMap.values());
                     console.log("[suggest-center] Parsed centers (unique):", uniqueCenters);
 
-                    // Lọc ra center đích của ticket (center tạo ticket = nơi cần phụ tùng)
-                    // Center nguồn phải KHÁC với center đích
                     const ticketDestinationCenterId = viewData?.centerId ? String(viewData.centerId) : null;
-                    const filteredCenters = uniqueCenters.filter(center => {
-                        const centerIdStr = String(center.id ?? center.centerId);
-                        // Loại bỏ center đích khỏi danh sách center nguồn
-                        return centerIdStr !== ticketDestinationCenterId;
-                    });
-
                     console.log("[suggest-center] Ticket destination center:", ticketDestinationCenterId);
-                    console.log("[suggest-center] Filtered centers (excluding destination):", filteredCenters);
+                    console.log("[suggest-center] Centers returned from API (including destination if any):", uniqueCenters);
 
+                    const filteredCenters = uniqueCenters.filter(center => String(center.id ?? center.centerId) !== ticketDestinationCenterId);
+                    console.log("[suggest-center] Centers after excluding destination:", filteredCenters);
                     setShipmentCenters(filteredCenters);
 
                     // Tự động chọn center đầu tiên và load lots luôn
@@ -862,7 +856,7 @@ function ReplenishmentTicketList() {
                         }
                     });
                     setInsufficientByPart(insuff);
-
+                        
                     // ⛔ Clamp + auto-assign lots for serialized
                     setShipmentItems(prev => {
                         let next = [...prev];

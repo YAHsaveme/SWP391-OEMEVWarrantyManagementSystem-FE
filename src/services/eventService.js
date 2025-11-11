@@ -51,10 +51,13 @@ const eventService = {
   // ➕ Tạo Event mới
   async create(data) {
     try {
+      console.log("[eventService.create] Request data:", JSON.stringify(data, null, 2));
       const res = await axiosInstance.post(`${EVENT_API}/create`, data);
+      console.log("[eventService.create] Response:", res.data);
       return res.data;
     } catch (error) {
       console.error("Create Event failed:", error.response?.data || error.message);
+      console.error("[eventService.create] Request that failed:", JSON.stringify(data, null, 2));
       throw error;
     }
   },
