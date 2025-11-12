@@ -145,7 +145,7 @@ export default function StaffLayout() {
                                 </Avatar>
                                 <Box>
                                     <Typography variant="h6" fontWeight={900} letterSpacing={0.3}>
-                                        EV Warranty Management
+                                        EVM Warranty Management System
                                     </Typography>
                                     <Typography variant="caption" color="text.secondary">
                                         Staff Portal

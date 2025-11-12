@@ -12,6 +12,7 @@ import ShipmentDetailPage from "./ShipmentDetailPage";
 import EventManagement from "./EventManagement";
 import Dashboard from "./Dashboard";
 import PartTraceability from "./PartTraceability";
+import InventoryMovement from "./InventoryMovement";
 
 import {
     AppBar, Toolbar, Typography, Container, Box, Avatar, Tabs, Tab,
@@ -31,6 +32,7 @@ import {
     MoreVert as MoreIcon,
     AddCircle as AddIcon,
     Build as BuildIcon,
+    CompareArrows as CompareArrowsIcon,
 } from "@mui/icons-material";
 import { alpha, createTheme } from "@mui/material/styles";
 import { ThemeProvider, useTheme } from "@mui/material/styles";
@@ -122,7 +124,7 @@ export default function Overview() {
             const id = e?.detail?.id;
             if (id) {
                 setActiveShipmentId(id);
-                setTab(7); // switch to Chi tiết vận đơn tab
+                setTab(8); // switch to Chi tiết vận đơn tab
             }
         };
         window.addEventListener("open-shipment", handler);
@@ -151,7 +153,7 @@ export default function Overview() {
                                 </Avatar>
                                 <Box>
                                     <Typography variant="h6" fontWeight={900} letterSpacing={.3}>
-                                        EV Warranty Management
+                                        EVM Warranty Management System
                                     </Typography>
                                     <Typography variant="caption" color="text.secondary">
                                         Hệ thống quản lý bảo hành xe điện
@@ -289,6 +291,7 @@ export default function Overview() {
                             <Tab iconPosition="start" icon={<AlertTriangle />} label="Quản lý phụ tùng" />
                             <Tab iconPosition="start" icon={<PackageIcon />} label="Quản lý mẫu xe" />
                             <Tab iconPosition="start" icon={<BarChartIcon />} label="Kho phụ tùng" />
+                            <Tab iconPosition="start" icon={<CompareArrowsIcon />} label="Luân chuyển kho" />
                             <Tab iconPosition="start" icon={<FileText />} label="Yêu cầu bảo hành" />
                             <Tab iconPosition="start" icon={<CarIcon />} label="Trung tâm Dịch vụ" />
                             <Tab iconPosition="start" icon={<FileText />} label="Chính sách Bảo hành" />
@@ -302,12 +305,13 @@ export default function Overview() {
                             {tab === 1 && <PartManagement />}
                             {tab === 2 && <ProductManagement />}
                             {tab === 3 && <InventoryPart />}
-                            {tab === 4 && <WarrantyRequests />}
-                            {tab === 5 && <ServiceCenters />}
-                            {tab === 6 && <WarrantyPolicy />}
-                            {tab === 7 && <ShipmentDetailPage id={activeShipmentId} />}
-                            {tab === 8 && <EventManagement />}
-                            {tab === 9 && <PartTraceability />}
+                            {tab === 4 && <InventoryMovement />}
+                            {tab === 5 && <WarrantyRequests />}
+                            {tab === 6 && <ServiceCenters />}
+                            {tab === 7 && <WarrantyPolicy />}
+                            {tab === 8 && <ShipmentDetailPage id={activeShipmentId} />}
+                            {tab === 9 && <EventManagement />}
+                            {tab === 10 && <PartTraceability />}
                         </Box>
                     </Paper>
 

@@ -86,33 +86,11 @@ const Header = () => {
               </svg>
             </div>
             <span className="text-white font-bold text-lg hidden sm:block drop-shadow-lg">
-              OEM EV
+              EVM Warranty Management System
             </span>
           </div>
 
-          {/* Navigation */}
-          <div className="hidden md:block">
-            <div className="ml-10 flex items-baseline space-x-8">
-              <a
-                href="#warranty-policy"
-                className="text-gray-200 hover:text-cyan-400 transition"
-              >
-                Chính sách bảo hành
-              </a>
-              <a
-                href="#campaigns"
-                className="text-gray-200 hover:text-cyan-400 transition"
-              >
-                Chiến dịch
-              </a>
-              <a
-                href="#support"
-                className="text-gray-200 hover:text-cyan-400 transition"
-              >
-                Hỗ trợ
-              </a>
-            </div>
-          </div>
+          
 
           {/* User Info */}
           <div className="hidden md:flex items-center space-x-4">

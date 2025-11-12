@@ -6,7 +6,7 @@ import {
     Table, TableHead, TableRow, TableCell, TableBody, IconButton,
     Dialog, DialogTitle, DialogContent, DialogActions, Chip,
     CircularProgress, Snackbar, Divider, MenuItem, Autocomplete, Alert,
-    FormControl, InputLabel, Select
+    FormControl, InputLabel, Select, Tooltip
 } from "@mui/material";
 
 import {
@@ -26,6 +26,7 @@ import technicianService from "../../services/technicianService";
 import inventoryPartService from "../../services/inventoryPartService";
 import partService from "../../services/partService";
 import claimService from "../../services/claimService";
+import estimatesService from "../../services/estimatesService";
 import vehicleService from "../../services/vehicleService";
 import partLotService from "../../services/partLotService";
 import inventoryLotService from "../../services/inventoryLotService";
@@ -106,6 +107,7 @@ export default function InventoryMove() {
     
     // Available parts for selection
     const [availablePartsList, setAvailablePartsList] = useState([]); // all parts that can be selected
+    const [partCatalog, setPartCatalog] = useState({}); // map partId -> part info (for name lookup)
     const [loadingAvailableParts, setLoadingAvailableParts] = useState(false);
     const [openAddPartDialog, setOpenAddPartDialog] = useState(false);
     const [centerId, setCenterId] = useState("");
@@ -113,6 +115,12 @@ export default function InventoryMove() {
     // Service out items for return
     const [serviceOutItems, setServiceOutItems] = useState([]); // items from SERVICE_USE movements
     const [loadingServiceOut, setLoadingServiceOut] = useState(false);
+
+    // Estimate parts info for selected claim
+    const [estimateParts, setEstimateParts] = useState([]);
+    const [loadingEstimateParts, setLoadingEstimateParts] = useState(false);
+    const [latestEstimateMeta, setLatestEstimateMeta] = useState(null);
+    const [estimateFetchError, setEstimateFetchError] = useState(null);
 
     // Recall events state
     const [recallEvents, setRecallEvents] = useState([]);
@@ -499,6 +507,17 @@ export default function InventoryMove() {
         }
     }, [selectedClaim]);
 
+    // Load estimate parts for the selected claim
+    useEffect(() => {
+        if (selectedClaim?.claimId) {
+            loadEstimateParts(selectedClaim.claimId);
+        } else {
+            setEstimateParts([]);
+            setLatestEstimateMeta(null);
+            setEstimateFetchError(null);
+        }
+    }, [selectedClaim?.claimId]);
+
     // Load appointment details to get centerId
     async function loadAppointmentDetails(appointmentId) {
         try {
@@ -525,6 +544,16 @@ export default function InventoryMove() {
             // Get all active parts
             const allPartsRes = await partService.getActive();
             const allParts = Array.isArray(allPartsRes) ? allPartsRes : (allPartsRes?.data || allPartsRes?.content || []);
+            const catalogUpdate = {};
+            allParts.forEach((p) => {
+                const pid = String(p.id || p.partId || "");
+                if (pid) {
+                    catalogUpdate[pid] = {
+                        partName: p.partName || p.name || "",
+                        partNo: p.partNo || p.code || p.sku || "",
+                    };
+                }
+            });
             
             // Get inventory for this center
             const inventoryRes = await inventoryPartService.listByCenter(centerIdParam);
@@ -551,12 +580,92 @@ export default function InventoryMove() {
                 };
             });
             
+            setPartCatalog((prev) => ({ ...prev, ...catalogUpdate }));
             setAvailablePartsList(partsWithQty);
         } catch (err) {
             console.error("[InventoryMove] Load available parts failed:", err);
             setSnack({ open: true, message: "Không thể tải danh sách phụ tùng", severity: "error" });
         } finally {
             setLoadingAvailableParts(false);
+        }
+    }
+
+    async function loadEstimateParts(claimId) {
+        if (!claimId) {
+            setEstimateParts([]);
+            setLatestEstimateMeta(null);
+            setEstimateFetchError(null);
+            return;
+        }
+        setLoadingEstimateParts(true);
+        setEstimateFetchError(null);
+        try {
+            const data = await estimatesService.getByClaim(claimId);
+            const arr = Array.isArray(data) ? data : data ? [data] : [];
+
+            if (!arr.length) {
+                setEstimateParts([]);
+                setLatestEstimateMeta(null);
+                return;
+            }
+
+            const toTime = (val) => {
+                if (!val) return 0;
+                const t = new Date(val).getTime();
+                return Number.isNaN(t) ? 0 : t;
+            };
+
+            const sorted = [...arr].sort((a, b) => {
+                const timeA = toTime(a.createdAt || a.updatedAt || a.approvedAt);
+                const timeB = toTime(b.createdAt || b.updatedAt || b.approvedAt);
+                if (timeA === timeB) {
+                    const versionA = Number(a.versionNo ?? a.version ?? 0);
+                    const versionB = Number(b.versionNo ?? b.version ?? 0);
+                    return versionB - versionA;
+                }
+                return timeB - timeA;
+            });
+
+            const latest = sorted[0] || null;
+            let rawItems = [];
+            if (latest?.itemsJson) {
+                try {
+                    rawItems = typeof latest.itemsJson === "string" ? JSON.parse(latest.itemsJson) : latest.itemsJson;
+                } catch (jsonErr) {
+                    console.warn("[InventoryMove] Parse itemsJson failed:", jsonErr);
+                    rawItems = [];
+                }
+            } else if (Array.isArray(latest?.items)) {
+                rawItems = latest.items;
+            }
+
+            const normalized = (Array.isArray(rawItems) ? rawItems : []).map((item, idx) => {
+                const partIdRaw = item.partId || item.part_id || item.id || item.itemId || "";
+                const partId = partIdRaw ? String(partIdRaw) : `idx_${idx}`;
+                const partNo = item.partNo || item.part_no || item.code || item.sku || "";
+                const partName = item.partName || item.part_name || item.name || "";
+                const quantity = Number(item.quantity ?? item.qty ?? item.amount ?? 0) || 0;
+                return {
+                    partId,
+                    partNo,
+                    partName,
+                    quantity,
+                };
+            });
+
+            setEstimateParts(normalized);
+            setLatestEstimateMeta({
+                estimateId: latest?.id ?? null,
+                version: latest?.versionNo ?? latest?.version ?? null,
+                createdAt: latest?.createdAt || latest?.updatedAt || latest?.approvedAt || null,
+            });
+        } catch (err) {
+            console.error("[InventoryMove] Load estimate parts failed:", err);
+            setEstimateParts([]);
+            setLatestEstimateMeta(null);
+            setEstimateFetchError(err?.response?.data?.message || err.message || "Không thể tải estimate cho claim này");
+        } finally {
+            setLoadingEstimateParts(false);
         }
     }
 
@@ -804,18 +913,40 @@ export default function InventoryMove() {
             return;
         }
         const partLotQuantities = [];
-        // selectedPartLotsReturn: { partLotId: qty }
+        // selectedPartLotsReturn: { lotId: qty } where lotId is the key from serviceOutItems
+        // We need to map back to actual partLotId from serviceOutItems
         Object.entries(selectedPartLotsReturn).forEach(([lotId, qty]) => {
             const qn = Number(qty || 0);
-            if (qn > 0) partLotQuantities.push({ partLotId: lotId, quantity: qn });
+            if (qn > 0) {
+                // Find the actual partLotId from serviceOutItems
+                const item = serviceOutItems.find(item => {
+                    const itemLotId = item.partLotId || item.id || `lot_${serviceOutItems.indexOf(item)}`;
+                    return String(itemLotId) === String(lotId);
+                });
+                
+                if (item) {
+                    const actualPartLotId = item.partLotId || item.id;
+                    if (actualPartLotId) {
+                        partLotQuantities.push({ partLotId: String(actualPartLotId), quantity: qn });
+                        console.log("[InventoryMove] Adding return:", { partLotId: actualPartLotId, quantity: qn });
+                    } else {
+                        console.warn("[InventoryMove] Item found but no partLotId:", item);
+                    }
+                } else {
+                    console.warn("[InventoryMove] Item not found for lotId:", lotId);
+                }
+            }
         });
+        
         if (!partLotQuantities.length) {
             setSnack({ open: true, message: "Chọn ít nhất 1 lot để trả (qty > 0)", severity: "warning" });
             return;
         }
+        
         setBusy(true);
         try {
             const payload = { appointmentId, partLotQuantities, note: `Return từ appointment (${selectedClaim.label})` };
+            console.log("[InventoryMove] Return payload:", JSON.stringify(payload, null, 2));
             await inventoryMovementService.returnParts(payload);
             setSnack({ open: true, message: "Trả linh kiện thành công", severity: "success" });
             // refresh service out items & history
@@ -824,8 +955,10 @@ export default function InventoryMove() {
             // Clear selected return lots
             setSelectedPartLotsReturn({});
         } catch (err) {
-            console.error(err);
-            setSnack({ open: true, message: err?.response?.data?.message || "Tạo return thất bại", severity: "error" });
+            console.error("[InventoryMove] Return error:", err);
+            console.error("[InventoryMove] Error response:", err?.response?.data);
+            const errorMessage = err?.response?.data?.message || err?.response?.data?.error || err.message || "Tạo return thất bại";
+            setSnack({ open: true, message: errorMessage, severity: "error" });
         } finally {
             setBusy(false);
         }
@@ -911,15 +1044,29 @@ export default function InventoryMove() {
     };
 
     // ---------- computed ----------
+    const estimatePartsDisplay = useMemo(() => {
+        return (estimateParts || []).map((item) => {
+            const catalogInfo = item.partId ? partCatalog[String(item.partId)] : null;
+            const displayName = (item.partName && String(item.partName).trim()) ||
+                (catalogInfo?.partName && String(catalogInfo.partName).trim()) ||
+                (item.partNo && String(item.partNo).trim()) ||
+                (catalogInfo?.partNo && String(catalogInfo.partNo).trim()) ||
+                (item.partId && String(item.partId).trim()) ||
+                "—";
+            const displayPartNo = (item.partNo && String(item.partNo).trim()) ||
+                (catalogInfo?.partNo && String(catalogInfo.partNo).trim()) ||
+                "";
+            return {
+                ...item,
+                displayName,
+                displayPartNo,
+            };
+        });
+    }, [estimateParts, partCatalog]);
+
     const totalPartsSelected = useMemo(() => {
         return Object.values(selectedParts).reduce((s, v) => s + (Number(v) || 0), 0);
     }, [selectedParts]);
-    
-    // Filter available parts (exclude already added)
-    const availablePartsForSelection = useMemo(() => {
-        const addedPartIds = new Set(parts.map(p => p.partId));
-        return availablePartsList.filter(p => !addedPartIds.has(p.partId));
-    }, [availablePartsList, parts]);
 
     const totalReturnQty = useMemo(() => {
         return Object.values(selectedPartLotsReturn).reduce((s, v) => s + (Number(v) || 0), 0);
@@ -1029,6 +1176,37 @@ export default function InventoryMove() {
             return id;
         });
     }, [affectedPartsFromRecall, availablePartsList]);
+
+    // Filter available parts (exclude already added AND filter by recall events if applicable)
+    const availablePartsForSelection = useMemo(() => {
+        const addedPartIds = new Set(parts.map(p => p.partId));
+        
+        // First, filter by recall events if applicable (same logic as availableParts)
+        let filteredByRecall = availablePartsList;
+        if (recallEvents.length > 0) {
+            filteredByRecall = availablePartsList.filter(part => {
+                const partId = String(part.partId || part.id);
+                const partNameLower = (part.partName || "").toLowerCase();
+                const partNoLower = (part.partNo || "").toLowerCase();
+                
+                // Kiểm tra theo ID trước (chính xác nhất)
+                if (affectedPartsFromRecall.ids.includes(partId)) {
+                    return true;
+                }
+                
+                // Kiểm tra theo tên (fallback)
+                return affectedPartsFromRecall.names.some(affectedName => 
+                    partNameLower.includes(affectedName) || 
+                    affectedName.includes(partNameLower) ||
+                    partNoLower.includes(affectedName) ||
+                    affectedName.includes(partNoLower)
+                );
+            });
+        }
+        
+        // Then, exclude already added parts
+        return filteredByRecall.filter(p => !addedPartIds.has(p.partId));
+    }, [availablePartsList, parts, recallEvents, affectedPartsFromRecall]);
 
     // ---------- render ----------
     return (
@@ -1174,7 +1352,7 @@ export default function InventoryMove() {
 
             {/* Parts panel */}
             <Grid container spacing={2}>
-                <Grid item xs={12} md={6}>
+                <Grid item xs={12} md={4}>
                     <Paper sx={{ p: 2, borderRadius: 2 }}>
                         <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 1 }}>
                             <Typography variant="subtitle1" fontWeight={700}>Linh kiện thuộc cuộc hẹn</Typography>
@@ -1189,6 +1367,34 @@ export default function InventoryMove() {
                         <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
                             Thêm linh kiện và nhập số lượng cần xuất.
                         </Typography>
+                        {selectedClaim?.claimId && (
+                            loadingEstimateParts ? (
+                                <Alert severity="info" sx={{ mb: 1 }}>
+                                    <Typography variant="caption">Đang tải phụ tùng từ Estimate...</Typography>
+                                </Alert>
+                            ) : estimateFetchError ? (
+                                <Alert severity="error" sx={{ mb: 1 }}>
+                                    <Typography variant="caption">{estimateFetchError}</Typography>
+                                </Alert>
+                            ) : estimatePartsDisplay.length > 0 ? (
+                                <Alert severity="info" sx={{ mb: 1 }}>
+                                    <Typography variant="caption" fontWeight={600}>
+                                        Phụ tùng trong Estimate{latestEstimateMeta?.version ? ` (Version ${latestEstimateMeta.version})` : ""}:
+                                    </Typography>
+                                    <Stack spacing={0.25} sx={{ mt: 0.75 }}>
+                                        {estimatePartsDisplay.map((item, idx) => (
+                                            <Typography key={`${item.partId}_${idx}`} variant="caption">
+                                                • {item.displayName}{item.displayPartNo ? ` (${item.displayPartNo})` : ""} – SL: {item.quantity}
+                                            </Typography>
+                                        ))}
+                                    </Stack>
+                                </Alert>
+                            ) : (
+                                <Alert severity="warning" sx={{ mb: 1 }}>
+                                    <Typography variant="caption">Chưa có Estimate nào cho claim này.</Typography>
+                                </Alert>
+                            )
+                        )}
                         {recallEvents.length > 0 && (affectedPartsFromRecall.ids.length > 0 || affectedPartsFromRecall.names.length > 0) && (
                             <Alert severity="info" sx={{ mb: 1 }}>
                                 <Typography variant="caption">
@@ -1223,27 +1429,39 @@ export default function InventoryMove() {
                                 </Typography>
                             </Box>
                         ) : (
-                            <Table size="small">
+                            <Table size="small" sx={{ tableLayout: "auto", width: "100%" }}>
                                 <TableHead>
                                     <TableRow>
-                                        <TableCell>Part No</TableCell>
-                                        <TableCell>Tên linh kiện</TableCell>
-                                        <TableCell>Sẵn có</TableCell>
-                                        <TableCell>Xuất (qty)</TableCell>
-                                        <TableCell>Thao tác</TableCell>
+                                        <TableCell sx={{ width: "20%", px: 1 }}>Part No</TableCell>
+                                        <TableCell sx={{ width: "35%", px: 1 }}>Tên linh kiện</TableCell>
+                                        <TableCell sx={{ width: "15%", px: 1 }} align="center">Sẵn có</TableCell>
+                                        <TableCell sx={{ width: "20%", px: 1 }} align="center">Xuất (qty)</TableCell>
+                                        <TableCell sx={{ width: "10%", px: 1 }} align="center">Thao tác</TableCell>
                                     </TableRow>
                                 </TableHead>
                                 <TableBody>
                                     {parts.map((p) => (
                                         <TableRow key={p.partId || p.partNo || p.partName}>
-                                            <TableCell>{p.partNo || "—"}</TableCell>
-                                            <TableCell>{p.partName || "—"}</TableCell>
-                                            <TableCell>
+                                            <TableCell sx={{ px: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: 0 }}>
+                                                <Tooltip title={p.partNo || "—"} arrow>
+                                                    <Typography variant="body2" noWrap>
+                                                        {p.partNo || "—"}
+                                                    </Typography>
+                                                </Tooltip>
+                                            </TableCell>
+                                            <TableCell sx={{ px: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: 0 }}>
+                                                <Tooltip title={p.partName || "—"} arrow>
+                                                    <Typography variant="body2" noWrap>
+                                                        {p.partName || "—"}
+                                                    </Typography>
+                                                </Tooltip>
+                                            </TableCell>
+                                            <TableCell align="center" sx={{ px: 1 }}>
                                                 <Typography variant="body2" fontWeight={600} color={p.availableQuantity > 0 ? "success.main" : "error.main"}>
                                                     {p.availableQuantity ?? 0}
                                                 </Typography>
                                             </TableCell>
-                                            <TableCell>
+                                            <TableCell align="center" sx={{ px: 1 }}>
                                                 <TextField
                                                     size="small"
                                                     type="number"
@@ -1253,12 +1471,12 @@ export default function InventoryMove() {
                                                         const v = Math.min(Number(e.target.value || 0), p.availableQuantity);
                                                         setSelectedParts((s) => ({ ...s, [p.partId]: v }));
                                                     }}
-                                                    sx={{ width: 100 }}
+                                                    sx={{ width: 70 }}
                                                     error={selectedParts[p.partId] > p.availableQuantity}
-                                                    helperText={selectedParts[p.partId] > p.availableQuantity ? "Vượt quá số lượng sẵn có" : ""}
+                                                    helperText={selectedParts[p.partId] > p.availableQuantity ? "Vượt quá" : ""}
                                                 />
                                             </TableCell>
-                                            <TableCell>
+                                            <TableCell align="center" sx={{ px: 1 }}>
                                                 <IconButton
                                                     size="small"
                                                     color="error"
@@ -1283,7 +1501,7 @@ export default function InventoryMove() {
                 </Grid>
 
                 {/* Return panel (use partLots from parts) */}
-                <Grid item xs={12} md={6}>
+                <Grid item xs={12} md={8}>
                     <Paper sx={{ p: 2, borderRadius: 2 }}>
                         <Typography variant="subtitle1" fontWeight={700}>Trả linh kiện (Return)</Typography>
                         <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
@@ -1299,61 +1517,91 @@ export default function InventoryMove() {
                                 </Typography>
                             </Box>
                         ) : (
-                            <Table size="small">
+                            <Table size="small" sx={{ tableLayout: "auto", width: "100%" }}>
                                 <TableHead>
                                     <TableRow>
-                                        <TableCell>Part No</TableCell>
-                                        <TableCell>Tên linh kiện</TableCell>
-                                        <TableCell>Serial</TableCell>
-                                        <TableCell>Batch</TableCell>
-                                        <TableCell>Số lượng</TableCell>
-                                        <TableCell>Ngày xuất</TableCell>
-                                        <TableCell>Trả (qty)</TableCell>
+                                        <TableCell sx={{ width: "11%", px: 1 }}>Part No</TableCell>
+                                        <TableCell sx={{ width: "20%", px: 1 }}>Tên linh kiện</TableCell>
+                                        <TableCell sx={{ width: "14%", px: 1 }}>Serial</TableCell>
+                                        <TableCell sx={{ width: "16%", px: 1 }}>Batch</TableCell>
+                                        <TableCell sx={{ width: "8%", px: 1 }} align="center">Số lượng</TableCell>
+                                        <TableCell sx={{ width: "16%", px: 1 }}>Ngày xuất</TableCell>
+                                        <TableCell sx={{ width: "15%", px: 1 }} align="center">Trả (qty)</TableCell>
                                     </TableRow>
                                 </TableHead>
-                                <TableBody>
-                                    {serviceOutItems.map((item, idx) => {
-                                        const lotId = item.partLotId || item.id || `lot_${idx}`;
-                                        const maxQty = item.quantity || 0;
-                                        // Lấy serialNo và batchNo từ nhiều nguồn có thể (bao gồm partLotSerialNo, partLotBatchNo)
-                                        const serialNo = item.serialNo || item.serial_no || item.serialNumber || item.serial 
-                                            || item.partLotSerialNo || item.partLotSerial_no || item.partLot?.serialNo || null;
-                                        const batchNo = item.batchNo || item.batch_no || item.batchNumber || item.batch 
-                                            || item.partLotBatchNo || item.partLotBatch_no || item.partLot?.batchNo || null;
-                                        
-                                        // Debug log
-                                        if (idx === 0) {
-                                            console.log("[InventoryMove] First serviceOutItem:", item);
-                                            console.log("[InventoryMove] Extracted serialNo:", serialNo, "batchNo:", batchNo);
-                                        }
-                                        
+                                    <TableBody>
+                                        {serviceOutItems.map((item, idx) => {
+                                            const lotId = item.partLotId || item.id || `lot_${idx}`;
+                                            const maxQty = item.quantity || 0;
+                                            // Lấy serialNo và batchNo từ nhiều nguồn có thể (bao gồm partLotSerialNo, partLotBatchNo)
+                                            const serialNo = item.serialNo || item.serial_no || item.serialNumber || item.serial 
+                                                || item.partLotSerialNo || item.partLotSerial_no || item.partLot?.serialNo || null;
+                                            const batchNo = item.batchNo || item.batch_no || item.batchNumber || item.batch 
+                                                || item.partLotBatchNo || item.partLotBatch_no || item.partLot?.batchNo || null;
+                                            
+                                            // Debug log
+                                            if (idx === 0) {
+                                                console.log("[InventoryMove] First serviceOutItem:", item);
+                                                console.log("[InventoryMove] Extracted serialNo:", serialNo, "batchNo:", batchNo);
+                                            }
+                                            
                                                 return (
-                                            <TableRow key={lotId}>
-                                                <TableCell>{item.partNo || "—"}</TableCell>
-                                                <TableCell>{item.partName || "—"}</TableCell>
-                                                <TableCell>{serialNo || "—"}</TableCell>
-                                                <TableCell>{batchNo || "—"}</TableCell>
-                                                <TableCell>{maxQty}</TableCell>
-                                                <TableCell>{fmtDate(item.movementDate)}</TableCell>
-                                                <TableCell>
+                                                <TableRow key={lotId}>
+                                                    <TableCell sx={{ px: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: 0 }}>
+                                                        <Tooltip title={item.partNo || "—"} arrow>
+                                                            <Typography variant="body2" noWrap>
+                                                                {item.partNo || "—"}
+                                                            </Typography>
+                                                        </Tooltip>
+                                                    </TableCell>
+                                                    <TableCell sx={{ px: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: 0 }}>
+                                                        <Tooltip title={item.partName || "—"} arrow>
+                                                            <Typography variant="body2" noWrap>
+                                                                {item.partName || "—"}
+                                                            </Typography>
+                                                        </Tooltip>
+                                                    </TableCell>
+                                                    <TableCell sx={{ px: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: 0 }}>
+                                                        <Tooltip title={serialNo || "—"} arrow>
+                                                            <Typography variant="body2" noWrap>
+                                                                {serialNo || "—"}
+                                                            </Typography>
+                                                        </Tooltip>
+                                                    </TableCell>
+                                                    <TableCell sx={{ px: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: 0 }}>
+                                                        <Tooltip title={batchNo || "—"} arrow>
+                                                            <Typography variant="body2" noWrap>
+                                                                {batchNo || "—"}
+                                                            </Typography>
+                                                        </Tooltip>
+                                                    </TableCell>
+                                                    <TableCell align="center" sx={{ px: 1 }}>{maxQty}</TableCell>
+                                                    <TableCell sx={{ px: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: 0 }}>
+                                                        <Tooltip title={fmtDate(item.movementDate)} arrow>
+                                                            <Typography variant="body2" noWrap>
+                                                                {fmtDate(item.movementDate)}
+                                                            </Typography>
+                                                        </Tooltip>
+                                                    </TableCell>
+                                                    <TableCell align="center" sx={{ px: 1 }}>
                                                             <TextField
                                                                 size="small"
                                                                 type="number"
-                                                        inputProps={{ min: 0, max: maxQty }}
+                                                            inputProps={{ min: 0, max: maxQty }}
                                                                 value={selectedPartLotsReturn[lotId] ?? 0}
                                                                 onChange={(e) => {
-                                                            const v = Math.min(Number(e.target.value || 0), maxQty);
+                                                                const v = Math.min(Number(e.target.value || 0), maxQty);
                                                                     setSelectedPartLotsReturn((s) => ({ ...s, [lotId]: v }));
                                                                 }}
-                                                        sx={{ width: 100 }}
-                                                        error={selectedPartLotsReturn[lotId] > maxQty}
-                                                    />
-                                                </TableCell>
-                                            </TableRow>
-                                        );
-                                    })}
-                                </TableBody>
-                            </Table>
+                                                            sx={{ width: 70 }}
+                                                            error={selectedPartLotsReturn[lotId] > maxQty}
+                                                        />
+                                                    </TableCell>
+                                                </TableRow>
+                                            );
+                                        })}
+                                    </TableBody>
+                                </Table>
                         )}
 
                         <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mt: 2 }}>
@@ -1388,8 +1636,8 @@ export default function InventoryMove() {
                                 <TextField
                                     {...params}
                                     size="small"
-                                    label="Tìm kiếm linh kiện"
-                                    placeholder="Nhập Part No hoặc tên linh kiện"
+                                    label="Chọn linh kiện"
+                                    placeholder="Tên linh kiện"
                                     InputProps={{
                                         ...params.InputProps,
                                         startAdornment: (

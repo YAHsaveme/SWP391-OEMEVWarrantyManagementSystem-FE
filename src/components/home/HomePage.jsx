@@ -2,7 +2,6 @@ import Header from './Header';
 import Hero from "./Hero";
 import About from "./About";
 import FeatureCard from "./FeatureCard";
-import Testimonials from "./Testimonials";
 import Footer from "./Footer";
 
 export default function HomePage() {
@@ -12,7 +11,6 @@ export default function HomePage() {
       <Hero />
       <About />
       <FeatureCard />
-      <Testimonials />
       <Footer />
     </div>
   );

@@ -159,7 +159,7 @@ function Login() {
                         <Box mb={6} display="flex" alignItems="center" gap={1}>
                             <ElectricBoltIcon sx={{ fontSize: 36 }} />
                             <Typography variant="h5" fontWeight="bold">
-                                EV Warranty Pro
+                                EVM Warranty Management System
                             </Typography>
                         </Box>
 
