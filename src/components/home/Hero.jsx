@@ -85,15 +85,7 @@ export default function Hero() {
       {/* Enhanced Content */}
       <div className="relative z-10 flex flex-col items-center justify-center min-h-screen text-center px-6 py-24">
 
-        {/* Hiển thị user info */}
-        <div className="mb-6">
-          <p className="text-xl md:text-2xl text-slate-200 font-semibold">
-            Xin chào, <span className="text-blue-400">{fullName}</span>
-          </p>
-          <p className="text-lg text-slate-400 italic">
-            Vai trò: <span className="font-bold text-purple-300">{role}</span>
-          </p>
-        </div>
+        
 
         {/* Premium Logo with glow effect */}
         <div className={`mb-10 transform transition-all duration-1200 ${isVisible ? 'translate-y-0 opacity-100 scale-100' : 'translate-y-12 opacity-0 scale-95'}`}>
@@ -111,7 +103,7 @@ export default function Hero() {
         <div className={`mb-8 transform transition-all duration-1200 delay-200 ${isVisible ? 'translate-y-0 opacity-100' : 'translate-y-12 opacity-0'}`}>
           <h1 className="text-5xl md:text-7xl lg:text-8xl font-black leading-none">
             <span className="block text-transparent bg-clip-text bg-gradient-to-r from-white via-blue-100 to-cyan-100 drop-shadow-2xl">
-              OEM EV
+              EVM 
             </span>
             <span className="block text-transparent bg-clip-text bg-gradient-to-r from-blue-400 via-purple-400 to-pink-400 mt-2 drop-shadow-xl">
               Warranty

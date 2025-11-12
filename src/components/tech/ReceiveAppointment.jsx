@@ -117,9 +117,45 @@ export default function ReceiveAppointment() {
       const res = await appointmentService.getByTechnician(idToUse);
       console.log("[ReceiveAppointment] loadAppointments: API response:", res);
       
+      // Check for 404 or not found errors
+      if (res.error) {
+        const errorStatus = res.error?.status || res.error?.response?.status;
+        const errorData = res.error?.response?.data || res.error;
+        
+        // If 404 and we have a fallback, try with fallback
+        if (errorStatus === 404 && techId && fallbackUserId && techId !== fallbackUserId) {
+          console.log("[ReceiveAppointment] loadAppointments: 404 error, retrying with fallback userId:", fallbackUserId);
+          return loadAppointments(null, fallbackUserId);
+        }
+        
+        // If still 404 or no fallback, show appropriate message
+        if (errorStatus === 404) {
+          const errorMsg = errorData?.message || "Không tìm thấy lịch hẹn cho kỹ thuật viên này";
+          console.warn("[ReceiveAppointment] loadAppointments: 404 -", errorMsg);
+          // Don't show error if no appointments found - just set empty array
+          setAppointments([]);
+          setFilteredAppointments([]);
+          return;
+        }
+        
+        // Other errors
+        const errorMsg = res.message || errorData?.message || errorData?.error || "Không thể tải danh sách lịch hẹn";
+        showSnackbar(errorMsg, "error");
+        setAppointments([]);
+        setFilteredAppointments([]);
+        return;
+      }
+      
       if (res.success) {
         const techAppointments = res.data || [];
         console.log("[ReceiveAppointment] loadAppointments: Loaded", techAppointments.length, "appointments");
+        
+        // If no appointments, just set empty arrays
+        if (techAppointments.length === 0) {
+          setAppointments([]);
+          setFilteredAppointments([]);
+          return;
+        }
         
         // Fetch claim details for each appointment to get VIN + customerName
         const enrichedAppointments = await Promise.all(
@@ -196,6 +232,10 @@ export default function ReceiveAppointment() {
         
         setAppointments(enrichedAppointments);
         setFilteredAppointments(enrichedAppointments);
+        // Clear any error snackbar when appointments load successfully
+        if (snackbar.open && snackbar.severity === "error") {
+          setSnackbar({ open: false, message: "", severity: "info" });
+        }
       } else {
         console.error("[ReceiveAppointment] loadAppointments: API returned success=false", res);
         
@@ -207,10 +247,26 @@ export default function ReceiveAppointment() {
         
         const errorMsg = res.message || res.error?.message || "Không thể tải danh sách lịch hẹn";
         showSnackbar(errorMsg, "error");
+        setAppointments([]);
+        setFilteredAppointments([]);
       }
     } catch (err) {
       console.error("[ReceiveAppointment] loadAppointments: Error:", err);
       console.error("[ReceiveAppointment] loadAppointments: Error response:", err?.response?.data);
+      
+      // Check for 404
+      if (err?.response?.status === 404) {
+        // If 404 and we have a fallback, try with fallback
+        if (techId && fallbackUserId && techId !== fallbackUserId) {
+          console.log("[ReceiveAppointment] loadAppointments: 404 error, retrying with fallback userId:", fallbackUserId);
+          return loadAppointments(null, fallbackUserId);
+        }
+        // If still 404, just set empty arrays (no error message needed)
+        console.warn("[ReceiveAppointment] loadAppointments: 404 - No appointments found");
+        setAppointments([]);
+        setFilteredAppointments([]);
+        return;
+      }
       
       // Nếu fail với techId và có fallbackUserId, thử lại với userId
       if (techId && fallbackUserId && techId !== fallbackUserId) {
@@ -220,6 +276,8 @@ export default function ReceiveAppointment() {
       
       const errorMsg = err?.response?.data?.message || err.message || "Lỗi khi tải dữ liệu";
       showSnackbar(errorMsg, "error");
+      setAppointments([]);
+      setFilteredAppointments([]);
     } finally {
       setLoading(false);
     }
@@ -238,44 +296,45 @@ export default function ReceiveAppointment() {
         const res = await technicianService.getById(currentUserId);
         console.log("[ReceiveAppointment] Technician API response (full):", JSON.stringify(res, null, 2));
         
-        // Thử nhiều cách lấy ID từ response - ưu tiên scheduleId, techScheduleId, sau đó mới đến technicianId
+        // Chỉ lấy technicianId từ response (không dùng id hoặc userId vì API appointments cần technicianId)
         const techId =
-          res?.scheduleId ||           // Có thể BE trả về scheduleId
+          res?.technicianId ||         // Ưu tiên technicianId (API appointments cần field này)
+          res?.data?.technicianId ||
+          res?.scheduleId ||           // Fallback: scheduleId (có thể BE dùng scheduleId)
           res?.techScheduleId ||      // Hoặc techScheduleId
           res?.techSchedule?.id ||    // Hoặc nested trong techSchedule object
-          res?.technicianId ||
-          res?.id ||
-          res?.techId ||
-          res?.userId ||
           res?.data?.scheduleId ||
           res?.data?.techScheduleId ||
-          res?.data?.technicianId ||
-          res?.data?.id ||
-          currentUserId; // Fallback: dùng userId nếu không tìm thấy
+          null; // Không fallback sang id hoặc userId vì API appointments không chấp nhận
         
         console.log("[ReceiveAppointment] Extracted technicianId/scheduleId:", techId);
         console.log("[ReceiveAppointment] All available fields in response:", Object.keys(res || {}));
+        console.log("[ReceiveAppointment] res.technicianId:", res?.technicianId);
+        console.log("[ReceiveAppointment] res.id:", res?.id);
+        console.log("[ReceiveAppointment] res.scheduleId:", res?.scheduleId);
         
-        if (!techId) {
-          console.error("[ReceiveAppointment] No technicianId/scheduleId found in response");
-          showSnackbar("Không tìm thấy kỹ thuật viên!", "error");
+        if (techId && techId !== currentUserId) {
+          // Chỉ set technicianId nếu tìm thấy và khác userId
+          console.log("[ReceiveAppointment] Using technicianId:", techId);
+          setTechnicianId(String(techId));
+        } else {
+          // Nếu không tìm thấy technicianId hợp lệ, để trống và dùng userId trực tiếp
+          console.warn("[ReceiveAppointment] No valid technicianId found, will use userId directly in API call");
           setTechnicianId("");
-          setLoading(false);
-          return;
+          // Không show error ở đây, để loadAppointments tự xử lý với userId
         }
-        
-        setTechnicianId(String(techId));
       } catch (err) {
         console.error("[ReceiveAppointment] Fetch technician failed:", err);
         console.error("[ReceiveAppointment] Error response:", err?.response?.data);
         const status = err?.response?.status;
         if (status === 404) {
-          showSnackbar("Không tìm thấy kỹ thuật viên! Vui lòng kiểm tra lại thông tin đăng nhập.", "error");
+          // 404 khi fetch technician - không show error, để loadAppointments tự xử lý với userId
+          console.warn("[ReceiveAppointment] Technician not found (404), will try with userId directly");
         } else {
           showSnackbar("Lỗi khi tải thông tin kỹ thuật viên: " + (err?.response?.data?.message || err.message), "error");
         }
         setTechnicianId("");
-        setLoading(false);
+        // Không set loading = false ở đây, để loadAppointments tự xử lý
       }
     };
 
@@ -322,6 +381,16 @@ export default function ReceiveAppointment() {
     setFilteredAppointments(filtered);
   }, [searchTerm, filterStatus, filterDate, appointments]);
 
+  // Auto-hide error snackbar after 5 seconds
+  useEffect(() => {
+    if (snackbar.open && snackbar.severity === "error") {
+      const timer = setTimeout(() => {
+        setSnackbar({ ...snackbar, open: false });
+      }, 5000);
+      return () => clearTimeout(timer);
+    }
+  }, [snackbar.open, snackbar.severity]);
+
   const showSnackbar = (message, severity = "info") => {
     setSnackbar({ open: true, message, severity });
   };
@@ -343,7 +412,7 @@ export default function ReceiveAppointment() {
       const res = await appointmentService.updateStatus(appointment.id, { status: "IN_PROGRESS" });
       if (res.success) {
         showSnackbar("Đã bắt đầu ca làm việc", "success");
-        loadAppointments(technicianId);
+        loadAppointments(technicianId, currentUserId);
       } else {
         const errorMsg = res.message || res.error?.message || "Cập nhật thất bại";
         showSnackbar(errorMsg, "error");
@@ -377,7 +446,7 @@ export default function ReceiveAppointment() {
       if (res.success) {
         showSnackbar("Cập nhật trạng thái thành công", "success");
         setStatusDialog({ open: false, appointment: null, newStatus: "" });
-        loadAppointments(technicianId);
+        loadAppointments(technicianId, currentUserId);
       } else {
         const errorMsg = res.message || res.error?.message || "Cập nhật thất bại";
         showSnackbar(errorMsg, "error");
@@ -625,7 +694,7 @@ export default function ReceiveAppointment() {
         <Button
           variant="contained"
           startIcon={<RefreshIcon />}
-          onClick={loadAppointments}
+          onClick={() => loadAppointments(technicianId, currentUserId)}
         >
           Làm mới
         </Button>

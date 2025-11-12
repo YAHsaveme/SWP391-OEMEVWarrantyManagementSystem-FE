@@ -104,7 +104,7 @@ export default function About() {
           
           <div className="max-w-4xl mx-auto">
             <p className="text-xl md:text-2xl text-slate-600 font-light leading-relaxed mb-6">
-              OEM EV Warranty Management System là{" "}
+              EVM Warranty Management System là{" "}
               <span className="font-semibold text-blue-600">nền tảng nội bộ hỗ trợ toàn diện</span>{" "}
               cho việc quản lý bảo hành xe điện từ hãng.
             </p>

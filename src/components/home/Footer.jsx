@@ -11,10 +11,10 @@ export default function Footer() {
   const contactItems = [
     {
       icon: Mail,
-      text: "support@oem-ev.vn",
+      text: "support@evm-warranty.vn",
       label: "Email hỗ trợ",
       gradient: "from-blue-400 to-cyan-400",
-      href: "mailto:support@oem-ev.vn"
+      href: "mailto:support@evm-warranty.vn"
     },
     {
       icon: Phone,
@@ -25,7 +25,7 @@ export default function Footer() {
     },
     {
       icon: Shield,
-      text: "Phòng CNTT - OEM EV",
+      text: "Phòng CNTT - EVM Warranty Management System",
       label: "Bộ phận",
       gradient: "from-purple-400 to-violet-400",
       href: "#"
@@ -65,7 +65,7 @@ export default function Footer() {
               </div>
               <div>
                 <h2 className="text-2xl font-bold bg-gradient-to-r from-white to-blue-200 bg-clip-text text-transparent">
-                  OEM EV
+                  EVM
                 </h2>
                 <p className="text-sm text-slate-300">Warranty Management</p>
               </div>
@@ -74,7 +74,7 @@ export default function Footer() {
             {/* Description */}
             <div className="space-y-4">
               <p className="text-slate-300 leading-relaxed">
-                Phần mềm nội bộ hỗ trợ quản lý bảo hành xe điện từ hãng một cách{" "}
+                Phần mềm nội bộ hỗ trợ quản lý bảo hành xe máy điện từ hãng một cách{" "}
                 <span className="text-blue-400 font-semibold">hiệu quả</span> và{" "}
                 <span className="text-purple-400 font-semibold">chuyên nghiệp</span>.
               </p>
@@ -175,11 +175,11 @@ export default function Footer() {
             <div className="text-center md:text-left">
               <p className="text-slate-400">
                 © {new Date().getFullYear()}{" "}
-                <span className="text-white font-semibold">OEM EV Warranty Management</span>.{" "}
+                <span className="text-white font-semibold">EVM Warranty Management System</span>.{" "}
                 All rights reserved.
               </p>
               <p className="text-sm text-slate-500 mt-1">
-                Phát triển bởi Phòng CNTT - OEM EV
+                Phát triển bởi Phòng CNTT - EVM Warranty Management System
               </p>
             </div>
 

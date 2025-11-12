@@ -169,7 +169,32 @@ export default function Estimates() {
         try {
             setLoading(true);
             const detail = await claimService.getById(claim.id);
-            setActiveClaim(detail || claim);
+            let enrichedClaim = detail || claim;
+            
+            // Enrich with customer name if VIN exists
+            if (enrichedClaim.vin) {
+                try {
+                    const vehicle = await vehicleService.getByVin(enrichedClaim.vin);
+                    enrichedClaim.intakeContactName =
+                        vehicle?.intakeContactName ||
+                        vehicle?.intake_contact_name ||
+                        vehicle?.customerName ||
+                        vehicle?.ownerName ||
+                        claim?.intakeContactName ||
+                        "Không rõ";
+                } catch (error) {
+                    if (error.message?.includes("VIN không hợp lệ")) {
+                        console.info(`⚠️ VIN ${enrichedClaim.vin} không tồn tại trong hệ thống.`);
+                    } else {
+                        console.warn(`❌ Lỗi khi lấy thông tin khách hàng VIN: ${enrichedClaim.vin}`, error);
+                    }
+                    enrichedClaim.intakeContactName = claim?.intakeContactName || "Không rõ";
+                }
+            } else {
+                enrichedClaim.intakeContactName = claim?.intakeContactName || "Không rõ";
+            }
+            
+            setActiveClaim(enrichedClaim);
             setEstimatesOpen(true);
         } catch (err) {
             console.error("Load claim for estimates failed:", err);
@@ -976,7 +1001,18 @@ function EstimatesDialog({ open, onClose, claim, parts, partsLoading, setSnack }
                                         </Grid>
 
                                         <Grid item xs={3} md={2}>
-                                            <TextField size="small" label="Số lượng" type="number" value={it.quantity} onChange={(e) => updateItem(idx, { quantity: Number(e.target.value || 0) })} />
+                                            <TextField 
+                                                size="small" 
+                                                label="Số lượng" 
+                                                type="number" 
+                                                value={it.quantity} 
+                                                inputProps={{ min: 0 }}
+                                                onChange={(e) => {
+                                                    const val = Number(e.target.value || 0);
+                                                    const finalVal = val < 0 ? 0 : val;
+                                                    updateItem(idx, { quantity: finalVal });
+                                                }}
+                                            />
                                         </Grid>
 
                                         <Grid item xs={3} md={3}>
@@ -998,7 +1034,19 @@ function EstimatesDialog({ open, onClose, claim, parts, partsLoading, setSnack }
                             <Typography variant="subtitle2" color="primary" gutterBottom>Chi phí nhân công & Ghi chú</Typography>
                             <Grid container spacing={1}>
                                 <Grid item xs={6}>
-                                    <TextField label="Số giờ công" size="small" type="number" fullWidth value={form.laborSlots} onChange={(e) => setForm((f) => ({ ...f, laborSlots: Number(e.target.value || 0) }))} />
+                                    <TextField 
+                                        label="Số giờ công" 
+                                        size="small" 
+                                        type="number" 
+                                        fullWidth 
+                                        value={form.laborSlots} 
+                                        inputProps={{ min: 0 }}
+                                        onChange={(e) => {
+                                            const val = Number(e.target.value || 0);
+                                            const finalVal = val < 0 ? 0 : val;
+                                            setForm((f) => ({ ...f, laborSlots: finalVal }));
+                                        }}
+                                    />
                                 </Grid>
                                 <Grid item xs={6}>
                                     <TextField label="Đơn giá công (VNĐ)" size="small" type="number" fullWidth value={form.laborRateVND} InputProps={{ readOnly: true }} />

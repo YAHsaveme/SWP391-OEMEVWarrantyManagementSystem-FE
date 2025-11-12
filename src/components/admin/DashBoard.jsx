@@ -152,7 +152,7 @@ export default function Dashboard() {
               </Avatar>
               <Box>
                 <Typography variant="h6" fontWeight={800} letterSpacing={0.3}>
-                  OEM EV Warranty System
+                 EVM Warranty Management System
                 </Typography>
                 <Typography variant="caption" sx={{ opacity: 0.9 }}>
                   Admin Dashboard
