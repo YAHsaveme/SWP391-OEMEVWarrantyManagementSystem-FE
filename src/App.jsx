@@ -31,6 +31,7 @@ import TechniciansPage from "./components/staff/TechniciansPage";
 import EvModelsPage from "./components/staff/EvModelsPage";
 import ServiceCentersPage from "./components/staff/ServiceCentersPage";
 import Appointment from "./components/staff/Appointment";
+import ScDispatch from "./components/staff/ScDispatch";
 
 function AutoLogoutWrapper() {
   useAutoLogout();
@@ -101,6 +102,7 @@ export default function App() {
           <Route path="vehicles/:vin" element={<VehicleDetailPage />} />
           <Route path="claims" element={<WarrantyClaimsPage />} />
           <Route path="claim-report" element={<ClaimReport />} />
+          <Route path="dispatch" element={<ScDispatch />} />
           <Route path="technicians" element={<TechniciansPage />} />
           <Route path="ev-models" element={<EvModelsPage />} />
           <Route path="centers" element={<ServiceCentersPage />} />

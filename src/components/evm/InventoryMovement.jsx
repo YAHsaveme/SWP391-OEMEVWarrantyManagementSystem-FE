@@ -55,7 +55,7 @@ const directionColors = {
 };
 
 const reasonLabels = {
-    SHIPMENT_IN: "Nhập từ nhà máy",
+    SHIPMENT_IN: "Nhập từ hãng",
     SHIPMENT_OUT: "Xuất đi trung tâm",
     SERVICE_USE: "Xuất cho kỹ thuật viên",
     RETURN: "Trả linh kiện",
@@ -400,8 +400,7 @@ export default function InventoryMovement() {
             <Paper sx={{ p: 3, borderRadius: 3 }}>
                 <Typography variant="h6" fontWeight={700} gutterBottom>
                     Lịch sử luân chuyển kho
-                </Typography>
-                
+                </Typography>               
 
                 <Table size="small">
                     <TableHead>
@@ -501,7 +500,7 @@ export default function InventoryMovement() {
                 maxWidth="md"
                 fullWidth
             >
-                <DialogTitle>Chi tiết nghiệp vụ</DialogTitle>
+                <DialogTitle>Chi tiết</DialogTitle>
                 <DialogContent dividers>
                     {detailLoading || !detailMovement ? (
                         <Box display="flex" justifyContent="center" py={3}>

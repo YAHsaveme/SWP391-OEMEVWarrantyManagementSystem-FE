@@ -290,12 +290,17 @@ export default function ShipmentDetailPage({ id: idProp }) {
         return <Chip color={m.color} label={m.label} size="small" />;
     };
 
-    const canDispatch = ["REQUESTED"].includes(data?.status);
-    // canReceive removed - only sc-staff can receive
-    const canClose = ["DELIVERED", "RECEIVED"].includes(data?.status); // Allow close after RECEIVED status
+    const isCenterToCenter = Boolean(data?.fromCenterId);
+    const statusUpper = (data?.status || "").toUpperCase();
+    const canDispatch = statusUpper === "REQUESTED" && !isCenterToCenter;
+    const canClose = ["DELIVERED", "RECEIVED", "DELIVERED_WITH_ISSUE"].includes(statusUpper);
 
     // === ACTIONS ===
     async function doDispatch() {
+        if (!canDispatch) {
+            setSnack({ open: true, sev: "warning", msg: "Shipment Center → Center sẽ do trung tâm nguồn dispatch." });
+            return;
+        }
         if (!trackingNo.trim()) {
             setSnack({ open: true, sev: "warning", msg: "Vui lòng nhập Tracking No trước khi Dispatch" });
             return;
@@ -521,23 +526,39 @@ export default function ShipmentDetailPage({ id: idProp }) {
                 <Divider sx={{ my: 2 }} />
 
                 <Stack direction={{ xs: "column", sm: "row" }} spacing={1} alignItems="center">
-                    <TextField
-                        label="Tracking No"
-                        value={trackingNo}
-                        onChange={(e) => setTrackingNo(e.target.value)}
-                        size="small"
-                        disabled={!canDispatch || busy}
-                        helperText={canDispatch ? "Nhập mã vận đơn trước khi Dispatch" : ""}
-                        sx={{ minWidth: 260 }}
-                    />
-                    <Tooltip title="Bắt đầu vận chuyển">
-                        <span>
-                            <Button variant="contained" onClick={doDispatch} disabled={!canDispatch || busy || !trackingNo.trim()}>
-                                Dispatch
-                            </Button>
-                        </span>
-                    </Tooltip>
-                    <Tooltip title="Đóng shipment (chỉ sau khi sc-staff đã receive)">
+                    {!isCenterToCenter && (
+                        <TextField
+                            label="Tracking No"
+                            value={trackingNo}
+                            onChange={(e) => setTrackingNo(e.target.value)}
+                            size="small"
+                            disabled={!canDispatch || busy}
+                            helperText={canDispatch ? "Nhập mã vận đơn trước khi Dispatch" : ""}
+                            sx={{ minWidth: 260 }}
+                        />
+                    )}
+                    {isCenterToCenter && (
+                        <TextField
+                            label="Tracking No"
+                            value={trackingNo}
+                            size="small"
+                            disabled
+                            helperText="Tracking sẽ được trung tâm nguồn nhập khi dispatch"
+                            sx={{ minWidth: 260 }}
+                        />
+                    )}
+
+                    {!isCenterToCenter && (
+                        <Tooltip title="Bắt đầu vận chuyển">
+                            <span>
+                                <Button variant="contained" onClick={doDispatch} disabled={!canDispatch || busy || !trackingNo.trim()}>
+                                    Dispatch
+                                </Button>
+                            </span>
+                        </Tooltip>
+                    )}
+
+                    <Tooltip title="Đóng shipment (sau khi trung tâm đích đã receive)">
                         <span>
                             <Button color="inherit" variant="contained" onClick={doClose} disabled={!canClose || busy}>
                                 Close
@@ -545,6 +566,11 @@ export default function ShipmentDetailPage({ id: idProp }) {
                         </span>
                     </Tooltip>
                 </Stack>
+                {isCenterToCenter && (
+                    <Typography variant="caption" color="text.secondary" sx={{ mt: 1 }}>
+                        Shipment Center → Center sẽ do trung tâm nguồn dispatch. Khi trung tâm đích đã nhận, bạn có thể bấm Close để hoàn tất.
+                    </Typography>
+                )}
             </Paper>
 
             <Snackbar

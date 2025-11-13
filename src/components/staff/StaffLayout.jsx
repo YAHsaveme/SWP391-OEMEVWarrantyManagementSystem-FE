@@ -10,6 +10,7 @@ import useScrollTrigger from "@mui/material/useScrollTrigger";
 import DirectionsCarIcon from "@mui/icons-material/DirectionsCar";
 import AssignmentIcon from "@mui/icons-material/Assignment";
 import Inventory2Icon from "@mui/icons-material/Inventory2";
+import LocalShippingIcon from "@mui/icons-material/LocalShipping";
 import GroupsIcon from "@mui/icons-material/Groups";
 import StoreMallDirectoryIcon from "@mui/icons-material/StoreMallDirectory";
 import EventIcon from "@mui/icons-material/Event";
@@ -41,6 +42,7 @@ const NAV_ITEMS = [
     { label: "Vehicles", path: "/staff/vehicles", icon: <DirectionsCarIcon /> },
     { label: "Claims", path: "/staff/claims", icon: <AssignmentIcon /> },
     { label: "Claim Report", path: "/staff/claim-report", icon: <DescriptionIcon /> },
+    { label: "Dispatch", path: "/staff/dispatch", icon: <LocalShippingIcon /> },
     { label: "Inventory", path: "/staff/inventory", icon: <Inventory2Icon /> },
     { label: "Technicians", path: "/staff/technicians", icon: <GroupsIcon /> },
     { label: "Service Centers", path: "/staff/centers", icon: <StoreMallDirectoryIcon /> },

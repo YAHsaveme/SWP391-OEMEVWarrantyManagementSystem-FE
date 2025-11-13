@@ -60,11 +60,16 @@ function InlineShipmentPanel({ shipmentId }) {
 
     useEffect(() => { reload(); }, [shipmentId]);
 
-    const canDispatch = data?.status === "REQUESTED";
-    const canReceive = data?.status === "IN_TRANSIT" || data?.status === "DISPATCHED"; // legacy safe
-    const canClose = data?.status === "DELIVERED";
+    const isCenterToCenter = Boolean(data?.fromCenterId || data?.fromCenter?.id);
+    const canDispatch = data?.status === "REQUESTED" && !isCenterToCenter;
+    const canReceive = !isCenterToCenter && (data?.status === "IN_TRANSIT" || data?.status === "DISPATCHED");
+    const canClose = !isCenterToCenter && data?.status === "DELIVERED";
 
     const doDispatch = async () => {
+        if (!canDispatch) {
+            setSnack({ open: true, sev: "warning", msg: "Shipment Center → Center sẽ được trung tâm nguồn dispatch." });
+            return;
+        }
         if (!trackingNo.trim()) {
             setSnack({ open: true, sev: "warning", msg: "Nhập Tracking No trước khi Dispatch" });
             return;
@@ -82,6 +87,7 @@ function InlineShipmentPanel({ shipmentId }) {
     };
 
     const doReceive = async () => {
+        if (!canReceive) return;
         setBusy(true);
         try {
             await shipmentService.receive(shipmentId);
@@ -95,6 +101,7 @@ function InlineShipmentPanel({ shipmentId }) {
     };
 
     const doClose = async () => {
+        if (!canClose) return;
         setBusy(true);
         try {
             await shipmentService.close(shipmentId);
@@ -127,13 +134,31 @@ function InlineShipmentPanel({ shipmentId }) {
                             helperText={canDispatch ? "Điền mã vận đơn rồi bấm Dispatch" : ""}
                             InputProps={{ readOnly: !canDispatch }}
                         />
-                        <Button variant="contained" onClick={doDispatch} disabled={!canDispatch || busy}>Dispatch</Button>
-                        <Button color="success" variant="contained" onClick={doReceive} disabled={!canReceive || busy}>Receive</Button>
-                        <Button color="inherit" variant="contained" onClick={doClose} disabled={!canClose || busy}>Close</Button>
-                        {data?.status && <Chip size="small" label={data.status === "DISPATCHED" ? "IN_TRANSIT" : data.status} color={data.status === "IN_TRANSIT" ? "info" : data.status === "DELIVERED" ? "success" : "default"} />}
+                        {!isCenterToCenter && (
+                            <>
+                                <Button variant="contained" onClick={doDispatch} disabled={!canDispatch || busy}>Dispatch</Button>
+                                <Button color="success" variant="contained" onClick={doReceive} disabled={!canReceive || busy}>Receive</Button>
+                                <Button color="inherit" variant="contained" onClick={doClose} disabled={!canClose || busy}>Close</Button>
+                            </>
+                        )}
+                        <Chip size="small" label={data?.status || "—"} color={data?.status === "IN_TRANSIT" ? "info" : data?.status === "DELIVERED" ? "success" : "default"} />
                     </Stack>
+                    {isCenterToCenter && (
+                        <Typography variant="caption" color="text.secondary">
+                            Shipment Center → Center sẽ được trung tâm nguồn dispatch và nhận hàng. EVM chỉ theo dõi tiến độ tại đây.
+                        </Typography>
+                    )}
                 </Stack>
             )}
+            <Snackbar
+                open={snack.open}
+                autoHideDuration={3000}
+                onClose={() => setSnack({ ...snack, open: false })}
+            >
+                <Alert severity={snack.sev} onClose={() => setSnack({ ...snack, open: false })}>
+                    {snack.msg}
+                </Alert>
+            </Snackbar>
         </Paper>
     );
 }
@@ -292,31 +317,78 @@ function ReplenishmentTicketList() {
                     });
                     console.log("[suggest-center] Response:", response);
 
-                    // Parse response: { multiCenterSuggestions: [{ centerIds: [...], centerNames: [...], items: [...] }] }
-                    const suggestions = response?.multiCenterSuggestions || [];
-                    const centersList = [];
+                    const centerMap = new Map();
+                    const pushCenter = (id, name, items) => {
+                        const cid = String(id || "").trim();
+                        if (!cid) return;
+                        if (!centerMap.has(cid)) {
+                            centerMap.set(cid, {
+                                id: cid,
+                                centerId: cid,
+                                name: name || `Center ${cid}`,
+                                centerName: name || `Center ${cid}`,
+                                items: Array.isArray(items) ? items : [],
+                            });
+                        }
+                    };
 
-                    const centerMap = new Map(); // Dùng Map để tránh duplicate centers
+                    const pushFromEntry = (entry) => {
+                        if (!entry) return;
 
-                    suggestions.forEach((suggestion, idx) => {
-                        const centerIds = Array.isArray(suggestion.centerIds) ? suggestion.centerIds : [];
-                        const centerNames = Array.isArray(suggestion.centerNames) ? suggestion.centerNames : [];
+                        if (Array.isArray(entry)) {
+                            entry.forEach(pushFromEntry);
+                            return;
+                        }
 
-                        // Tạo center objects từ arrays
-                        centerIds.forEach((centerId, i) => {
-                            const centerIdStr = String(centerId);
-                            // Chỉ thêm nếu chưa có (tránh duplicate)
-                            if (!centerMap.has(centerIdStr)) {
-                                centerMap.set(centerIdStr, {
-                                    id: centerId,
-                                    centerId: centerId,
-                                    name: centerNames[i] || `Center ${centerId}`,
-                                    centerName: centerNames[i] || `Center ${centerId}`,
-                                    items: suggestion.items || [], // Giữ lại items để có availableQuantity
-                                });
-                            }
-                        });
-                    });
+                        // Common fields
+                        const baseItems = entry.items || entry.partLots || entry.availableParts || entry.parts || [];
+
+                        if (entry.centerId || entry.id) {
+                            pushCenter(entry.centerId || entry.id, entry.centerName || entry.name, baseItems);
+                        }
+
+                        if (Array.isArray(entry.centerIds)) {
+                            entry.centerIds.forEach((id, idx) => {
+                                const name = Array.isArray(entry.centerNames)
+                                    ? entry.centerNames[idx]
+                                    : entry.centerName || entry.name;
+                                const bucketItems = Array.isArray(entry.itemsPerCenter)
+                                    ? entry.itemsPerCenter[idx]
+                                    : baseItems;
+                                pushCenter(id, name, bucketItems);
+                            });
+                        }
+
+                        if (Array.isArray(entry.centers)) {
+                            entry.centers.forEach((center) => {
+                                pushCenter(center.id || center.centerId, center.name || center.centerName, center.items || center.availableParts || baseItems);
+                            });
+                        }
+
+                        if (Array.isArray(entry.availableCenters)) {
+                            entry.availableCenters.forEach((center) => {
+                                if (typeof center === "string" || typeof center === "number") {
+                                    pushCenter(center, null, baseItems);
+                                } else {
+                                    pushCenter(center.id || center.centerId, center.name || center.centerName, center.items || center.availableParts || baseItems);
+                                }
+                            });
+                        }
+
+                        if (Array.isArray(entry.centerSuggestions)) {
+                            entry.centerSuggestions.forEach(pushFromEntry);
+                        }
+
+                        if (Array.isArray(entry.multiCenterSuggestions)) {
+                            entry.multiCenterSuggestions.forEach(pushFromEntry);
+                        }
+
+                        if (Array.isArray(entry.suggestions)) {
+                            entry.suggestions.forEach(pushFromEntry);
+                        }
+                    };
+
+                    pushFromEntry(response);
 
                     const uniqueCenters = Array.from(centerMap.values());
                     console.log("[suggest-center] Parsed centers (unique):", uniqueCenters);
@@ -327,6 +399,27 @@ function ReplenishmentTicketList() {
 
                     const filteredCenters = uniqueCenters.filter(center => String(center.id ?? center.centerId) !== ticketDestinationCenterId);
                     console.log("[suggest-center] Centers after excluding destination:", filteredCenters);
+                    if (filteredCenters.length === 0) {
+                        try {
+                            const allCenters = await centerService.getAll();
+                            const normalized = (Array.isArray(allCenters) ? allCenters : []).map((c) => ({
+                                id: c.id || c.centerId,
+                                centerId: c.id || c.centerId,
+                                name: c.name || c.centerName,
+                                centerName: c.name || c.centerName,
+                                items: [],
+                            }));
+                            const fallbackCenters = normalized.filter(c => String(c.centerId) !== ticketDestinationCenterId);
+                            if (fallbackCenters.length > 0) {
+                                console.log("[suggest-center] Fallback to all centers:", fallbackCenters);
+                                setShipmentCenters(fallbackCenters);
+                                setLoadingCenters(false);
+                                return;
+                            }
+                        } catch (fallbackErr) {
+                            console.warn("[suggest-center] Fallback load centers failed:", fallbackErr);
+                        }
+                    }
                     setShipmentCenters(filteredCenters);
 
                     // Tự động chọn center đầu tiên và load lots luôn
@@ -1209,7 +1302,11 @@ function ReplenishmentTicketList() {
                     navigate(`/overview`);
                 }
             }
-            notify("✅ Tạo shipment thành công!", "success");
+
+            const successMessage = shipmentType === "center"
+                ? "✅ Tạo shipment thành công! Trung tâm nguồn sẽ dispatch shipment này."
+                : "✅ Tạo shipment thành công!";
+            notify(successMessage, "success");
 
             // Đóng dialog
             setShipmentDialogOpen(false);
@@ -1545,7 +1642,7 @@ function ReplenishmentTicketList() {
                                         {!loadingCenters && shipmentCenters.length === 0 && selectedPartIds.size > 0 && (
                                             <Typography variant="caption" color="warning.main" sx={{ mt: 0.5 }}>
                                                 {viewData?.centerId
-                                                    ? "Không tìm thấy center nguồn khác với center đích của ticket"
+                                                    ? "Không tìm thấy center nguồn phù hợp"
                                                     : "Vui lòng chọn phụ tùng bên phải để hiển thị center nguồn"}
                                             </Typography>
                                         )}

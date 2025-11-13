@@ -12,6 +12,7 @@ import DeleteOutlineIcon from "@mui/icons-material/DeleteOutline";
 import staffInventory from "../../services/staffInventoryFacade";
 import authService from "../../services/authService";
 import axiosInstance from "../../services/axiosInstance";
+import inventoryLotService from "../../services/inventoryLotService";
 
 /* ===== Helpers ===== */
 const noSelect = { userSelect: "none", cursor: "default" };
@@ -79,6 +80,7 @@ export default function Inventory() {
     const [shipOpen, setShipOpen] = useState(false);
     const [shipLoading, setShipLoading] = useState(false);
     const [shipRows, setShipRows] = useState([]);
+    const [shipNeedsReload, setShipNeedsReload] = useState(false);
 
     // === LẤY centerId từ /me nếu token không có ===
     useEffect(() => {
@@ -112,7 +114,43 @@ export default function Inventory() {
                 (r) => String(r.centerId ?? r.center?.id) === String(centerId)
             );
             const fb = onlyMine[0]?.centerName || "Trung tâm";
-            const norm = onlyMine.map((r) => normalizePart(r, fb));
+            let aggregatedByPart = {};
+            try {
+                const lotsRes = await inventoryLotService.listByCenterWithId(centerId);
+                const lotsRaw = Array.isArray(lotsRes?.inventoryLots)
+                    ? lotsRes.inventoryLots
+                    : Array.isArray(lotsRes)
+                        ? lotsRes
+                        : [];
+                lotsRaw.forEach((lot) => {
+                    const partId = lot.partId || lot.partLotPartId || lot.part?.id || lot.partLot?.partId;
+                    if (!partId) return;
+                    const isSerialized =
+                        lot.isSerialized ??
+                        lot.part?.isSerialized ??
+                        Boolean(lot.serialNo || lot.partLotSerialNo || lot.partLot?.serialNo);
+                    const rawQty = lot.quantity;
+                    let qty = Number(rawQty);
+                    if (Number.isNaN(qty)) {
+                        qty = isSerialized ? 1 : 0;
+                    }
+                    if (isSerialized) {
+                        if (rawQty === undefined || rawQty === null || Number.isNaN(Number(rawQty))) {
+                            qty = 1;
+                        }
+                    }
+                    aggregatedByPart[partId] = (aggregatedByPart[partId] || 0) + (Number.isNaN(qty) ? 0 : qty);
+                });
+            } catch (err) {
+                console.warn("[Inventory] sync quantity with lots failed:", err);
+            }
+
+            const norm = onlyMine.map((r) => {
+                const partId = r.partId ?? r.part?.id ?? r.uuid ?? r.id ?? null;
+                const overrideQty = partId ? aggregatedByPart[partId] : undefined;
+                const merged = overrideQty !== undefined ? { ...r, quantity: overrideQty } : r;
+                return normalizePart(merged, fb);
+            });
             setParts(norm);
             setCenterName(norm[0]?.centerName || fb);
         } catch (e) {
@@ -167,22 +205,30 @@ export default function Inventory() {
 
     useEffect(() => {
         if (shipOpen) loadShipments();
-    }, [shipOpen, centerId]);
+        else if (shipNeedsReload) {
+            loadShipments();
+            setShipNeedsReload(false);
+        }
+    }, [shipOpen, centerId, shipNeedsReload]);
 
     // Listen for shipment-close event từ EVM
     useEffect(() => {
-        const handleShipmentClose = () => {
-            // Reload shipments khi EVM close shipment (kể cả khi dialog đóng, sẽ reload khi mở lại)
-            // Reload ngay lập tức nếu dialog đang mở
+        const handleShipmentEvent = () => {
             if (shipOpen) {
                 loadShipments();
+            } else {
+                setShipNeedsReload(true);
             }
-            // Nếu dialog đóng, khi mở lại sẽ tự động reload (useEffect [shipOpen])
         };
-        
-        window.addEventListener("shipment-close", handleShipmentClose);
+
+        window.addEventListener("shipment-dispatch", handleShipmentEvent);
+        window.addEventListener("shipment-received", handleShipmentEvent);
+        window.addEventListener("shipment-close", handleShipmentEvent);
+
         return () => {
-            window.removeEventListener("shipment-close", handleShipmentClose);
+            window.removeEventListener("shipment-dispatch", handleShipmentEvent);
+            window.removeEventListener("shipment-received", handleShipmentEvent);
+            window.removeEventListener("shipment-close", handleShipmentEvent);
         };
     }, [shipOpen]);
 
@@ -199,25 +245,7 @@ export default function Inventory() {
 
             // Refetch shipments
             await loadShipments();
-
-            // Refetch inventory với no-cache → cập nhật tồn kho ngay
-            const invRes = await axiosInstance.get(`/inventory-parts/${centerId}/list-by-center`, {
-                headers: {
-                    'Cache-Control': 'no-cache, no-store, must-revalidate',
-                    'Pragma': 'no-cache',
-                    'Expires': '0'
-                }
-            });
-
-            const raw = unwrap(invRes);
-            const onlyMine = raw.filter(
-                (r) => String(r.centerId ?? r.center?.id) === String(centerId)
-            );
-            const fb = onlyMine[0]?.centerName || centerName || "Trung tâm";
-            const norm = onlyMine.map((r) => normalizePart(r, fb));
-
-            setParts(norm);
-            setCenterName(norm[0]?.centerName || fb);
+            await load(); // refresh lại sau khi gửi
 
         } catch (e) {
             const m = e?.response?.data?.message || "Receive thất bại";
