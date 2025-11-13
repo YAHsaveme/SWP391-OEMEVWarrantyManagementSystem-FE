@@ -106,7 +106,7 @@ export default function About() {
             <p className="text-xl md:text-2xl text-slate-600 font-light leading-relaxed mb-6">
               EVM Warranty Management System là{" "}
               <span className="font-semibold text-blue-600">nền tảng nội bộ hỗ trợ toàn diện</span>{" "}
-              cho việc quản lý bảo hành xe điện từ hãng.
+              cho việc quản lý bảo hành xe máy điện từ hãng.
             </p>
             <p className="text-lg text-slate-500">
               Hệ thống giúp tối ưu quy trình tiếp nhận, xử lý, và giám sát yêu cầu bảo hành một cách hiệu quả và chuyên nghiệp.
