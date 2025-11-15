@@ -33,6 +33,9 @@ import ServiceCentersPage from "./components/staff/ServiceCentersPage";
 import Appointment from "./components/staff/Appointment";
 import ScDispatch from "./components/staff/ScDispatch";
 
+//SC_MANAGER
+import OverviewManager from "./components/manager/OverviewManager";
+
 function AutoLogoutWrapper() {
   useAutoLogout();
   return null;
@@ -108,6 +111,17 @@ export default function App() {
           <Route path="centers" element={<ServiceCentersPage />} />
           <Route path="appointments" element={<Appointment />} />
         </Route>
+
+        {/* ===== SC MANAGER ===== */}
+        <Route
+          path="/manager"
+          element={
+            <PrivateRoute roles={["SC_MANAGER"]}>
+              <OverviewManager />
+            </PrivateRoute>
+          }
+        />
+
 
         {/* ===== 404 ===== */}
         <Route path="*" element={<NotFound />} />
