@@ -34,6 +34,17 @@ const partService = {
         return Array.isArray(data) ? data : [];
     },
 
+    // Thử endpoint cơ bản không có suffix
+    list: async () => {
+        try {
+            const { data } = await axiosInstance.get(`${API_BASE}`);
+            return Array.isArray(data) ? data : (Array.isArray(data?.data) ? data.data : []);
+        } catch (err) {
+            console.warn("[partService] list() failed:", err);
+            return [];
+        }
+    },
+
     search: async (keyword) => {
         const { data } = await axiosInstance.get(`${API_BASE}/search`, { params: { keyword } });
         return Array.isArray(data) ? data : [];

@@ -179,7 +179,14 @@ export default function ScDispatch() {
         try {
             await shipmentService.dispatch(shipment.id, tracking);
             setSnack({ open: true, message: "Đã dispatch shipment", severity: "success" });
-            window.dispatchEvent(new CustomEvent("shipment-dispatch", { detail: { id: shipment.id } }));
+            // Truyền fromCenterId để EVM biết chỉ reload kho nguồn, không reload kho đích
+            window.dispatchEvent(new CustomEvent("shipment-dispatch", { 
+                detail: { 
+                    id: shipment.id,
+                    fromCenterId: shipment.fromCenterId || centerId,
+                    toCenterId: shipment.toCenterId
+                } 
+            }));
             await loadShipments();
         } catch (err) {
             setSnack({ open: true, message: err?.response?.data?.message || err.message || "Dispatch thất bại", severity: "error" });
