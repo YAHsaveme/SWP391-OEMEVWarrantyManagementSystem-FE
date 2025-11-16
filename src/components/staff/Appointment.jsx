@@ -32,6 +32,12 @@ const SKILLS = [
     "SOFTWARE_FIRMWARE",
 ];
 
+const STATUS_LABELS = {
+    BOOKED: "Đã đặt lịch hẹn",
+    IN_PROGRESS: "Đang xử lý",
+    DONE: "Hoàn thành",
+    CANCELLED: "Đã hủy"
+};
 
 const pad = (n) => String(n).padStart(2, "0");
 const fmtDate = (d) => dayjs(d).format("YYYY-MM-DD");
@@ -216,7 +222,7 @@ export default function Appointment() {
         try {
             const apt = editDialog.appointment;
             const payload = {};
-            
+
             // Theo API: claimId, requiredSkill, technicianId, slotIds, note, workingStartTime, workingEndTime
             // Bắt buộc phải có các field này
             if (!apt.claimId) {
@@ -225,7 +231,7 @@ export default function Appointment() {
                 return;
             }
             payload.claimId = apt.claimId;
-            
+
             // requiredSkill - lấy từ form hoặc appointment hiện tại
             if (editForm.requiredSkill && editForm.requiredSkill.trim()) {
                 payload.requiredSkill = editForm.requiredSkill.trim();
@@ -236,7 +242,7 @@ export default function Appointment() {
                 setEditLoading(false);
                 return;
             }
-            
+
             // technicianId - bắt buộc
             if (!apt.technicianId) {
                 showSnack("error", "Thiếu technicianId");
@@ -244,7 +250,7 @@ export default function Appointment() {
                 return;
             }
             payload.technicianId = apt.technicianId;
-            
+
             // slotIds - bắt buộc phải là array
             if (apt.slotIds && Array.isArray(apt.slotIds) && apt.slotIds.length > 0) {
                 payload.slotIds = apt.slotIds;
@@ -263,15 +269,15 @@ export default function Appointment() {
                 setEditLoading(false);
                 return;
             }
-            
+
             // note - có thể để trống
             payload.note = editForm.note !== undefined ? (editForm.note || "") : (apt.note || "");
-            
+
             // exclusions - giữ nguyên từ appointment hiện có (không cho edit)
             if (apt.exclusions && Array.isArray(apt.exclusions) && apt.exclusions.length > 0) {
                 payload.exclusions = apt.exclusions;
             }
-            
+
             // workingStartTime và workingEndTime từ slots đầu tiên và cuối cùng
             if (apt.slots && Array.isArray(apt.slots) && apt.slots.length > 0) {
                 const sortedSlots = [...apt.slots].sort((a, b) => {
@@ -284,7 +290,7 @@ export default function Appointment() {
                 });
                 const firstSlot = sortedSlots[0];
                 const lastSlot = sortedSlots[sortedSlots.length - 1];
-                
+
                 if (firstSlot && (firstSlot.slotDate || firstSlot.workDate) && firstSlot.startTime) {
                     const dateStr = firstSlot.slotDate || firstSlot.workDate;
                     const timeStr = firstSlot.startTime;
@@ -298,7 +304,7 @@ export default function Appointment() {
                         console.warn("Error parsing workingStartTime:", e);
                     }
                 }
-                
+
                 if (lastSlot && (lastSlot.slotDate || lastSlot.workDate) && lastSlot.endTime) {
                     const dateStr = lastSlot.slotDate || lastSlot.workDate;
                     const timeStr = lastSlot.endTime;
@@ -330,7 +336,7 @@ export default function Appointment() {
             // Kiểm tra xem có phải lỗi authentication không
             const errorData = err.response?.data || err.error || {};
             const errorMessage = errorData.message || errorData.error || err.message || "Lỗi khi cập nhật appointment";
-            
+
             // Chỉ hiển thị lỗi, không tự động đăng xuất (để interceptor xử lý)
             if (err.response?.status === 401 || errorMessage.toLowerCase().includes("token")) {
                 // Interceptor sẽ xử lý đăng xuất
@@ -903,14 +909,14 @@ export default function Appointment() {
                     >
                         Làm mới
                     </Button>
-                <Button
-                    variant="contained"
-                    startIcon={<AddIcon />}
-                    onClick={() => setOpen(true)}
-                    sx={{ textTransform: "none" }}
-                >
-                    Tạo lịch hẹn
-                </Button>
+                    <Button
+                        variant="contained"
+                        startIcon={<AddIcon />}
+                        onClick={() => setOpen(true)}
+                        sx={{ textTransform: "none" }}
+                    >
+                        Tạo lịch hẹn
+                    </Button>
                 </Box>
             </Paper>
 
@@ -945,10 +951,10 @@ export default function Appointment() {
                                 onChange={(e) => setFilterStatus(e.target.value)}
                             >
                                 <MenuItem value="ALL">Tất cả</MenuItem>
-                                <MenuItem value="BOOKED">BOOKED</MenuItem>
-                                <MenuItem value="IN_PROGRESS">IN_PROGRESS</MenuItem>
-                                <MenuItem value="DONE">DONE</MenuItem>
-                                <MenuItem value="CANCELLED">CANCELLED</MenuItem>
+                                <MenuItem value="BOOKED">Đã đặt lịch hẹn</MenuItem>
+                                <MenuItem value="IN_PROGRESS">Đang xử lý</MenuItem>
+                                <MenuItem value="DONE">Hoàn thành</MenuItem>
+                                <MenuItem value="CANCELLED">Đã hủy</MenuItem>
                             </Select>
                         </FormControl>
                     </Grid>
@@ -985,8 +991,8 @@ export default function Appointment() {
                             ) : (
                                 allAppointments.map((apt) => {
                                     const claim = claims.find(c => c.id === apt.claimId);
-                                    const technician = technicians.find(t => 
-                                        t.id === apt.technicianId || 
+                                    const technician = technicians.find(t =>
+                                        t.id === apt.technicianId ||
                                         t.userId === apt.technicianId ||
                                         t.technicianId === apt.technicianId
                                     );
@@ -999,12 +1005,12 @@ export default function Appointment() {
                                             <TableCell>{apt.requiredSkill || "—"}</TableCell>
                                             <TableCell>
                                                 <Chip
-                                                    label={apt.status || "BOOKED"}
+                                                    label={STATUS_LABELS[apt.status] || STATUS_LABELS["BOOKED"]}
                                                     size="small"
                                                     color={
                                                         apt.status === "DONE" ? "success" :
-                                                        apt.status === "IN_PROGRESS" ? "warning" :
-                                                        apt.status === "CANCELLED" ? "error" : "info"
+                                                            apt.status === "IN_PROGRESS" ? "warning" :
+                                                                apt.status === "CANCELLED" ? "error" : "info"
                                                     }
                                                 />
                                             </TableCell>
@@ -1226,8 +1232,8 @@ export default function Appointment() {
                         (() => {
                             const apt = detailDialog.appointment;
                             const claim = claims.find(c => c.id === apt.claimId);
-                            const technician = technicians.find(t => 
-                                t.id === apt.technicianId || 
+                            const technician = technicians.find(t =>
+                                t.id === apt.technicianId ||
                                 t.userId === apt.technicianId ||
                                 t.technicianId === apt.technicianId
                             );
@@ -1254,12 +1260,12 @@ export default function Appointment() {
                                         <Typography variant="caption" color="text.secondary">Status</Typography>
                                         <Box mt={0.5}>
                                             <Chip
-                                                label={apt.status || "BOOKED"}
+                                                label={STATUS_LABELS[apt.status] || STATUS_LABELS["BOOKED"]}
                                                 size="small"
                                                 color={
                                                     apt.status === "DONE" ? "success" :
-                                                    apt.status === "IN_PROGRESS" ? "warning" :
-                                                    apt.status === "CANCELLED" ? "error" : "info"
+                                                        apt.status === "IN_PROGRESS" ? "warning" :
+                                                            apt.status === "CANCELLED" ? "error" : "info"
                                                 }
                                             />
                                         </Box>
@@ -1322,8 +1328,8 @@ export default function Appointment() {
                         (() => {
                             const apt = editDialog.appointment;
                             const claim = claims.find(c => c.id === apt.claimId);
-                            const technician = technicians.find(t => 
-                                t.id === apt.technicianId || 
+                            const technician = technicians.find(t =>
+                                t.id === apt.technicianId ||
                                 t.userId === apt.technicianId ||
                                 t.technicianId === apt.technicianId
                             );
@@ -1352,12 +1358,12 @@ export default function Appointment() {
                                         <Typography variant="caption" color="text.secondary">Status</Typography>
                                         <Box mt={0.5}>
                                             <Chip
-                                                label={apt.status || "BOOKED"}
+                                                label={STATUS_LABELS[apt.status] || STATUS_LABELS["BOOKED"]}
                                                 size="small"
                                                 color={
                                                     apt.status === "DONE" ? "success" :
-                                                    apt.status === "IN_PROGRESS" ? "warning" :
-                                                    apt.status === "CANCELLED" ? "error" : "info"
+                                                        apt.status === "IN_PROGRESS" ? "warning" :
+                                                            apt.status === "CANCELLED" ? "error" : "info"
                                                 }
                                             />
                                         </Box>
@@ -1378,11 +1384,11 @@ export default function Appointment() {
                                             )}
                                         </Box>
                                     </Grid>
-                                    
+
                                     <Grid item xs={12}>
                                         <Divider sx={{ my: 1 }} />
                                     </Grid>
-                                    
+
                                     {/* Các field có thể chỉnh sửa */}
                                     <Grid item xs={12}>
                                         <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 1.5, color: "primary.main" }}>

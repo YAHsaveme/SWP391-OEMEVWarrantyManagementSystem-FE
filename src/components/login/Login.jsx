@@ -17,6 +17,10 @@ import {
     Link,
     Fade,
     Alert,
+    Dialog,
+    DialogTitle,
+    DialogContent,
+    DialogActions,
 } from "@mui/material"
 import { Visibility, VisibilityOff } from "@mui/icons-material"
 import ElectricBoltIcon from "@mui/icons-material/ElectricBolt"
@@ -28,9 +32,9 @@ import { useNavigate } from "react-router-dom"
 
 function Login() {
     const [showPassword, setShowPassword] = useState(false)
-    const [rememberMe, setRememberMe] = useState(true)
     const [email, setEmail] = useState("")
     const [password, setPassword] = useState("")
+    const [forgotPasswordOpen, setForgotPasswordOpen] = useState(false)
     const [error, setError] = useState("")
     const [loading, setLoading] = useState(false)
     const inputRef = useRef(null)
@@ -294,12 +298,16 @@ function Login() {
 
                                 {error && <Alert severity="error">{error}</Alert>}
 
-                                <Box display="flex" justifyContent="space-between" alignItems="center">
-                                    <FormControlLabel
-                                        control={<Checkbox checked={rememberMe} onChange={(e) => setRememberMe(e.target.checked)} />}
-                                        label="Ghi nhớ tôi"
-                                    />
-                                    <Link href="#" underline="hover" variant="body2">
+                                <Box display="flex" justifyContent="flex-end" alignItems="center">
+                                    <Link
+                                        href="#"
+                                        underline="hover"
+                                        variant="body2"
+                                        onClick={(e) => {
+                                            e.preventDefault()
+                                            setForgotPasswordOpen(true)
+                                        }}
+                                    >
                                         Quên mật khẩu ?
                                     </Link>
                                 </Box>
@@ -325,6 +333,46 @@ function Login() {
                     </Grid>
                 </Grid>
             </Card>
+            {/* Dialog Quên mật khẩu */}
+            <Dialog
+                open={forgotPasswordOpen}
+                onClose={() => setForgotPasswordOpen(false)}
+                maxWidth="sm"
+                fullWidth
+            >
+                <DialogTitle>
+                    <Typography variant="h6" fontWeight={700}>
+                        Quên mật khẩu?
+                    </Typography>
+                </DialogTitle>
+                <DialogContent>
+                    <Box sx={{ pt: 2 }}>
+                        <Alert severity="info" sx={{ mb: 2 }}>
+                            Vui lòng liên hệ với quản trị viên hệ thống để được hỗ trợ đặt lại mật khẩu.
+                        </Alert>
+
+                        <Typography variant="body2" color="text.secondary" paragraph>
+                            📧 Email: kakaka@gmail.com
+                        </Typography>
+
+                        <Typography variant="body2" color="text.secondary" paragraph>
+                            📞 Hotline: 0811111111
+                        </Typography>
+
+                        <Typography variant="body2" color="text.secondary">
+                            ⏰ Thời gian hỗ trợ: 8:00 - 17:00 (Thứ 2 - Thứ 7)
+                        </Typography>
+                    </Box>
+                </DialogContent>
+                <DialogActions>
+                    <Button
+                        onClick={() => setForgotPasswordOpen(false)}
+                        variant="contained"
+                    >
+                        Đóng
+                    </Button>
+                </DialogActions>
+            </Dialog>
         </Box>
     )
 }

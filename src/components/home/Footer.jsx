@@ -39,7 +39,7 @@ export default function Footer() {
         {/* Floating orbs */}
         <div className="absolute top-10 left-10 w-64 h-64 bg-blue-500 rounded-full mix-blend-multiply filter blur-xl opacity-20 animate-pulse"></div>
         <div className="absolute bottom-10 right-10 w-80 h-80 bg-purple-500 rounded-full mix-blend-multiply filter blur-xl opacity-20 animate-pulse delay-1000"></div>
-        
+
         {/* Grid pattern */}
         <div className="absolute inset-0 opacity-5">
           <div className="absolute inset-0" style={{
@@ -55,7 +55,7 @@ export default function Footer() {
       {/* Main content */}
       <div className="relative z-10 max-w-7xl mx-auto px-6 py-16">
         <div className="grid gap-12 md:grid-cols-3 mb-12">
-          
+
           {/* Company Info */}
           <div className="space-y-6">
             {/* Logo */}
@@ -65,12 +65,12 @@ export default function Footer() {
               </div>
               <div>
                 <h2 className="text-2xl font-bold bg-gradient-to-r from-white to-blue-200 bg-clip-text text-transparent">
-                  EVM
+                  Hệ thống
                 </h2>
-                <p className="text-sm text-slate-300">Warranty Management</p>
+                <p className="text-sm text-slate-300">Quản lý bảo hành xe máy điện</p>
               </div>
             </div>
-            
+
             {/* Description */}
             <div className="space-y-4">
               <p className="text-slate-300 leading-relaxed">
@@ -78,11 +78,11 @@ export default function Footer() {
                 <span className="text-blue-400 font-semibold">hiệu quả</span> và{" "}
                 <span className="text-purple-400 font-semibold">chuyên nghiệp</span>.
               </p>
-              
+
               {/* Role tags */}
               <div className="flex flex-wrap gap-2">
-                {['SC Staff', 'SC Technician', 'EVM Staff', 'Admin'].map((role, index) => (
-                  <span 
+                {['Nhân viên trung tâm dịch vụ', 'Kỹ thuật viên trung tâm dịch vụ', 'Nhân viên hãng sản xuất', 'Người quản trị hệ thống'].map((role, index) => (
+                  <span
                     key={role}
                     className="px-3 py-1 bg-white/10 backdrop-blur-sm text-xs font-medium rounded-full border border-white/20 hover:bg-white/20 transition-colors duration-300"
                   >
@@ -101,12 +101,12 @@ export default function Footer() {
               </div>
               Liên hệ nội bộ
             </h3>
-            
+
             <div className="space-y-4">
               {contactItems.map((item, index) => {
                 const IconComponent = item.icon;
                 const isHovered = hoveredContact === index;
-                
+
                 return (
                   <a
                     key={index}
@@ -140,7 +140,7 @@ export default function Footer() {
               </div>
               Thông tin hệ thống
             </h3>
-            
+
             {/* System status */}
             <div className="space-y-3">
               <div className="flex items-center justify-between p-3 bg-white/5 rounded-lg border border-white/10">
@@ -150,7 +150,7 @@ export default function Footer() {
                   <span className="text-green-400 text-sm font-medium">Hoạt động</span>
                 </div>
               </div>
-              
+
               <div className="flex items-center justify-between p-3 bg-white/5 rounded-lg border border-white/10">
                 <span className="text-slate-300">Phiên bản</span>
                 <span className="text-blue-400 font-medium">v2.1.0</span>
@@ -189,7 +189,7 @@ export default function Footer() {
                 <Shield className="w-4 h-4 text-green-400" />
                 <span className="text-green-400 font-medium text-sm">Bảo mật SSL</span>
               </div>
-              
+
               <div className="px-4 py-2 bg-blue-500/20 border border-blue-500/30 rounded-lg flex items-center gap-2">
                 <Zap className="w-4 h-4 text-blue-400" />
                 <span className="text-blue-400 font-medium text-sm">Nội bộ</span>

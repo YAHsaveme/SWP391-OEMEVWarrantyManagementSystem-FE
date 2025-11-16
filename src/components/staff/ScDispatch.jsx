@@ -180,12 +180,12 @@ export default function ScDispatch() {
             await shipmentService.dispatch(shipment.id, tracking);
             setSnack({ open: true, message: "Đã dispatch shipment", severity: "success" });
             // Truyền fromCenterId để EVM biết chỉ reload kho nguồn, không reload kho đích
-            window.dispatchEvent(new CustomEvent("shipment-dispatch", { 
-                detail: { 
+            window.dispatchEvent(new CustomEvent("shipment-dispatch", {
+                detail: {
                     id: shipment.id,
                     fromCenterId: shipment.fromCenterId || centerId,
                     toCenterId: shipment.toCenterId
-                } 
+                }
             }));
             await loadShipments();
         } catch (err) {
@@ -209,10 +209,10 @@ export default function ScDispatch() {
                 <Stack direction={{ xs: "column", md: "row" }} spacing={2} alignItems={{ xs: "flex-start", md: "center" }} justifyContent="space-between">
                     <Stack spacing={0.5}>
                         <Typography variant="h5" fontWeight={700}>
-                            Dispatch Shipment (Nguồn: {centerMap[centerId] || centerName || "Center"})
+                            Giao hàng (Nguồn: {centerMap[centerId] || centerName || "Center"})
                         </Typography>
                         <Typography color="text.secondary">
-                            Xử lý các shipment Center → Center đang chờ dispatch từ trung tâm của bạn.
+                            Xử lý các lô hàng giữa các trung tâm đang chờ điều phối từ trung tâm của bạn.
                         </Typography>
                     </Stack>
                     <Tooltip title="Tải lại">
@@ -227,14 +227,14 @@ export default function ScDispatch() {
 
             <Paper sx={{ p: 3, borderRadius: 3 }}>
                 <Typography variant="subtitle1" fontWeight={700} sx={{ mb: 2 }}>
-                    Chờ dispatch ({awaitingDispatch.length})
+                    Chờ điều phối ({awaitingDispatch.length})
                 </Typography>
                 {loading ? (
                     <Box sx={{ py: 3, textAlign: "center" }}>
                         <CircularProgress />
                     </Box>
                 ) : awaitingDispatch.length === 0 ? (
-                    <Typography color="text.secondary">Không có shipment nào đang chờ dispatch.</Typography>
+                    <Typography color="text.secondary">Không có lô hàng nào đang chờ điều phối.</Typography>
                 ) : (
                     <Table size="small">
                         <TableHead>
@@ -300,7 +300,7 @@ export default function ScDispatch() {
                         <CircularProgress />
                     </Box>
                 ) : inTransit.length === 0 ? (
-                    <Typography color="text.secondary">Không có shipment nào đang vận chuyển từ trung tâm của bạn.</Typography>
+                    <Typography color="text.secondary">Không có lô hàng nào đang được vận chuyển từ trung tâm của bạn.</Typography>
                 ) : (
                     <Table size="small">
                         <TableHead>

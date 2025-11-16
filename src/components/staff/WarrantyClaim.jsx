@@ -59,6 +59,15 @@ const vehiclesService = {
   },
 };
 
+const STATUS_LABELS = {
+  DIAGNOSING: "Chẩn đoán",
+  ESTIMATING: "Báo giá",
+  UNDER_REVIEW: "Đang xem xét",
+  APPROVED: "Đã chấp thuận",
+  COMPLETED: "Đã hoàn thành",
+  REJECTED: "Đã từ chối"
+};
+
 const statusColor = {
   DIAGNOSING: "warning",
   ESTIMATING: "info",
@@ -75,6 +84,14 @@ const EXCLUSIONS = [
   "LACK_OF_MAINTENANCE",
   "WEAR_AND_TEAR",
 ];
+
+const EXCLUSION_LABELS = {
+  ACCIDENT_DAMAGE: "Hư hỏng do tai nạn",
+  WATER_INGRESSION: "Ngấm nước",
+  UNAUTHORIZED_MOD: "Cải tạo trái phép",
+  LACK_OF_MAINTENANCE: "Thiếu bảo dưỡng",
+  WEAR_AND_TEAR: "Hao mòn tự nhiên"
+};
 
 /** ---- Stat Card ---- */
 function StatCard({ icon, label, value }) {
@@ -260,7 +277,7 @@ export default function WarrantyClaimsPage() {
             <TextField
               fullWidth
               size="small"
-              placeholder="Search by VIN, summary, or claim ID..."
+              placeholder="Tìm kiếm bằng VIN, tóm tắt"
               value={q}
               onChange={(e) => setQ(e.target.value)}
               InputProps={{
@@ -281,20 +298,20 @@ export default function WarrantyClaimsPage() {
         <Grid item xs={12} md={5}>
           <Stack direction="row" spacing={1.5} alignItems="center">
             <FormControl fullWidth size="small">
-              <InputLabel id="status-label">Filter by status</InputLabel>
+              <InputLabel id="status-label">Lọc theo trạng thái</InputLabel>
               <Select
                 labelId="status-label"
                 label="Filter by status"
                 value={statusFilter}
                 onChange={(e) => setStatusFilter(e.target.value)}
               >
-                <MenuItem value="all">All Status</MenuItem>
-                <MenuItem value={CLAIM_STATUS.DIAGNOSING}>Diagnosing</MenuItem>
-                <MenuItem value={CLAIM_STATUS.ESTIMATING}>Estimating</MenuItem>
-                <MenuItem value={CLAIM_STATUS.UNDER_REVIEW}>Under Review</MenuItem>
-                <MenuItem value={CLAIM_STATUS.APPROVED}>Approved</MenuItem>
-                <MenuItem value={CLAIM_STATUS.COMPLETED}>Completed</MenuItem>
-                <MenuItem value={CLAIM_STATUS.REJECTED}>Rejected</MenuItem>
+                <MenuItem value="all">Tất cả trạng thái</MenuItem>
+                <MenuItem value={CLAIM_STATUS.DIAGNOSING}>Chẩn đoán</MenuItem>
+                <MenuItem value={CLAIM_STATUS.ESTIMATING}>Báo giá</MenuItem>
+                <MenuItem value={CLAIM_STATUS.UNDER_REVIEW}>Đang xem xét</MenuItem>
+                <MenuItem value={CLAIM_STATUS.APPROVED}>Đã chấp thuận</MenuItem>
+                <MenuItem value={CLAIM_STATUS.COMPLETED}>Đã hoàn thành</MenuItem>
+                <MenuItem value={CLAIM_STATUS.REJECTED}>Đã từ chối</MenuItem>
               </Select>
             </FormControl>
 
@@ -305,7 +322,7 @@ export default function WarrantyClaimsPage() {
               onClick={() => setCreateOpen(true)}
               sx={{ whiteSpace: "nowrap", minWidth: 130 }}
             >
-              Create Claim
+              Tạo bảo hành
             </Button>
           </Stack>
         </Grid>
@@ -324,7 +341,7 @@ export default function WarrantyClaimsPage() {
                     </Typography>
                     <Chip
                       size="small"
-                      label={claim.status}
+                      label={STATUS_LABELS[claim.status] || claim.status}
                       color={statusColor[claim.status] || "default"}
                       variant={claim.status === "APPROVED" ? "filled" : "outlined"}
                       sx={{ fontWeight: 700 }}
@@ -333,9 +350,9 @@ export default function WarrantyClaimsPage() {
 
                   <Stack spacing={1} sx={{ mt: 1 }}>
                     <Row label="VIN" value={<Mono>{claim.vin}</Mono>} />
-                    <Row label="Summary" value={claim.summary || "—"} />
+                    <Row label="Tóm tắt" value={claim.summary || "—"} />
                     <Row
-                      label="Created"
+                      label="Ngày tạo"
                       value={new Date(claim.openedAt || claim.createdAt || claim.errorDate || Date.now()).toLocaleDateString()}
                     />
                   </Stack>
@@ -910,7 +927,11 @@ function CreateClaimDialog({ open, onClose, onCreate, setSnack }) {
                   value={exclusions}
                   label="Exclusions (Optional)"
                   onChange={(e) => setExclusions(e.target.value)}
-                  renderValue={(selected) => selected.length > 0 ? selected.join(", ") : "Chọn exclusions (tùy chọn)"}
+                  renderValue={(selected) =>
+                    selected.length > 0
+                      ? selected.map(ex => EXCLUSION_LABELS[ex] || ex).join(", ")
+                      : "Chọn exclusions (tùy chọn)"
+                  }
                   MenuProps={{
                     PaperProps: {
                       style: {
@@ -922,7 +943,9 @@ function CreateClaimDialog({ open, onClose, onCreate, setSnack }) {
                   {EXCLUSIONS.map((exclusion) => (
                     <MenuItem key={exclusion} value={exclusion}>
                       <Checkbox checked={exclusions.indexOf(exclusion) > -1} />
-                      <Typography variant="body2">{exclusion}</Typography>
+                      <Typography variant="body2">
+                        {EXCLUSION_LABELS[exclusion] || exclusion}
+                      </Typography>
                     </MenuItem>
                   ))}
                 </Select>
@@ -1186,13 +1209,17 @@ function ViewOnlyDialog({ open, onClose, claim }) {
                   {renderListItem("Service Center", centerName)}
                   {renderListItem("Opened By", currentUser && claim.openedBy === currentUser.id ? currentUser.fullName : claim.openedBy || "—")}
                   {renderListItem("Claim Type", claim.claimType || "—")}
-                  {renderListItem("Status", claim.status || "—")}
+                  {renderListItem("Status", STATUS_LABELS[claim.status] || claim.status || "—")}
                   {renderListItem("Opened At", claim.openedAt ? new Date(claim.openedAt).toLocaleString("vi-VN") : "—")}
                   {renderListItem("Error Date", claim.errorDate ? new Date(claim.errorDate).toLocaleString("vi-VN") : "—")}
                   {renderListItem("Coverage Type", claim.coverageType || "—")}
                   {renderListItem("Odometer (km)", claim.odometerKm || "—")}
                   {renderListItem("Summary", claim.summary || "—")}
-                  {renderListItem("Exclusion", claim.exclusion || "—")}
+                  {renderListItem("Exclusion",
+                    claim.exclusion
+                      ? claim.exclusion.split(", ").map(ex => EXCLUSION_LABELS[ex.trim()] || ex).join(", ")
+                      : "—"
+                  )}
                 </Box>
 
                 {/* Attachments */}
@@ -1550,12 +1577,12 @@ function UpdateClaimDialog({ open, onClose, claim, onUpdateStatus, onUpdateClaim
                 fullWidth
                 select
               >
-                <MenuItem value={CLAIM_STATUS.DIAGNOSING}>Diagnosing</MenuItem>
-                <MenuItem value={CLAIM_STATUS.ESTIMATING}>Estimating</MenuItem>
-                <MenuItem value={CLAIM_STATUS.UNDER_REVIEW}>Under Review</MenuItem>
-                <MenuItem value={CLAIM_STATUS.APPROVED}>Approved</MenuItem>
-                <MenuItem value={CLAIM_STATUS.COMPLETED}>Completed</MenuItem>
-                <MenuItem value={CLAIM_STATUS.REJECTED}>Rejected</MenuItem>
+                <MenuItem value={CLAIM_STATUS.DIAGNOSING}>Chẩn đoán</MenuItem>
+                <MenuItem value={CLAIM_STATUS.ESTIMATING}>Báo giá</MenuItem>
+                <MenuItem value={CLAIM_STATUS.UNDER_REVIEW}>Đang xem xét</MenuItem>
+                <MenuItem value={CLAIM_STATUS.APPROVED}>Đã chấp thuận</MenuItem>
+                <MenuItem value={CLAIM_STATUS.COMPLETED}>Đã hoàn thành</MenuItem>
+                <MenuItem value={CLAIM_STATUS.REJECTED}>Đã từ chối</MenuItem>
               </TextField>
             </Grid>
 

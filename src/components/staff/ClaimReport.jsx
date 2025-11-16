@@ -504,12 +504,12 @@ export default function ClaimReport() {
                 if (mounted) {
                     const reportsArray = Array.isArray(reportsData) ? reportsData : [];
                     const claimsArray = Array.isArray(claimsData) ? claimsData : [];
-                    
+
                     // Filter chỉ lấy claims có status là COMPLETED
                     const completedClaims = claimsArray.filter(
                         (claim) => claim.status === CLAIM_STATUS.COMPLETED || claim.status === "COMPLETED"
                     );
-                    
+
                     setReports(reportsArray);
                     setClaims(completedClaims);
 
@@ -698,10 +698,10 @@ export default function ClaimReport() {
             <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center", mb: 3 }}>
                 <Box>
                     <Typography variant="h5" fontWeight={800} gutterBottom>
-                        Quản lý Claim Reports
+                        Quản lý báo cáo yêu cầu bảo hành
                     </Typography>
                     <Typography variant="body2" color="text.secondary">
-                        Tạo, xem và quản lý báo cáo claims
+                        Tạo, xem và quản lý báo cáo yêu cầu bảo hành
                     </Typography>
                 </Box>
                 <Stack direction="row" spacing={2}>
@@ -710,7 +710,7 @@ export default function ClaimReport() {
                         startIcon={<AddIcon />}
                         onClick={() => setCreateOpen(true)}
                     >
-                        Tạo Report
+                        Tạo báo cáo
                     </Button>
                 </Stack>
             </Box>
@@ -719,7 +719,7 @@ export default function ClaimReport() {
             <Grid container spacing={2} sx={{ mb: 3 }}>
                 <Grid item xs={12} sm={6} md={4}>
                     <MetricCard
-                        label="Tổng số Reports"
+                        label="Tổng số báo cáo"
                         value={stats.total}
                         icon={ReceiptIcon}
                         color="primary"
@@ -804,7 +804,7 @@ export default function ClaimReport() {
             <Card variant="outlined">
                 <CardContent>
                     <Typography variant="h6" fontWeight={700} sx={{ mb: 2 }}>
-                        Danh sách Reports ({filteredReports.length})
+                        Danh sách báo cáo ({filteredReports.length})
                     </Typography>
                     <TableContainer>
                         <Table>

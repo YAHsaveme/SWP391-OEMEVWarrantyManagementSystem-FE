@@ -58,6 +58,17 @@ export default function Diagnostics() {
     FAULT_CONFIRMED: "FAULT_CONFIRMED",
   };
 
+  // ✅ Mapping hiển thị tiếng Việt
+  const PHASE_LABELS = {
+    PRE_REPAIR: "Trước sửa chữa",
+    POST_REPAIR: "Sau sửa chữa",
+  };
+
+  const OUTCOME_LABELS = {
+    NO_FAULT_FOUND: "Không tìm thấy lỗi",
+    FAULT_CONFIRMED: "Lỗi đã được xác nhận",
+  };
+
   // ✅ Lấy userId hiện tại từ localStorage
   const currentUserId = localStorage.getItem("userId");
 
@@ -254,7 +265,7 @@ export default function Diagnostics() {
     try {
       const resp = await diagnosticsService.getById(id);
       setDetailData(resp);
-      
+
       // Load recall events for this diagnostic's claim VIN
       if (resp?.claimVin) {
         setLoadingEvents(true);
@@ -500,12 +511,12 @@ export default function Diagnostics() {
   return (
     <Box>
       <Stack direction="row" justifyContent="space-between" alignItems="center" mb={2}>
-        <Typography variant="h5">Diagnostics</Typography>
+        <Typography variant="h5">Đánh giá sau sửa chữa</Typography>
 
         <Stack direction="row" spacing={1} alignItems="center">
           <TextField
             size="small"
-            label="Tìm theo VIN / Tên kỹ thuật / Notes"
+            label="Tìm theo VIN / Tên kỹ thuật / Ghi chú"
             variant="outlined"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
@@ -513,20 +524,20 @@ export default function Diagnostics() {
           />
 
           <FormControl size="small" sx={{ minWidth: 140 }}>
-            <InputLabel>Phase</InputLabel>
+            <InputLabel>Giai đoạn</InputLabel>
             <Select value={filterPhase} onChange={(e) => setFilterPhase(e.target.value)} label="Phase">
               <MenuItem value="ALL">Tất cả</MenuItem>
-              <MenuItem value="PRE_REPAIR">PRE_REPAIR</MenuItem>
-              <MenuItem value="POST_REPAIR">POST_REPAIR</MenuItem>
+              <MenuItem value="PRE_REPAIR">Trước sửa chữa</MenuItem>
+              <MenuItem value="POST_REPAIR">Sau sửa chữa</MenuItem>
             </Select>
           </FormControl>
 
           <FormControl size="small" sx={{ minWidth: 160 }}>
-            <InputLabel>Outcome</InputLabel>
+            <InputLabel>Kết quả</InputLabel>
             <Select value={filterOutcome} onChange={(e) => setFilterOutcome(e.target.value)} label="Outcome">
               <MenuItem value="ALL">Tất cả</MenuItem>
-              <MenuItem value="NO_FAULT_FOUND">No Fault Found</MenuItem>
-              <MenuItem value="FAULT_CONFIRMED">Fault Confirmed</MenuItem>
+              <MenuItem value="NO_FAULT_FOUND">Không tìm thấy lỗi</MenuItem>
+              <MenuItem value="FAULT_CONFIRMED">Lỗi đã được xác nhận</MenuItem>
             </Select>
           </FormControl>
 
@@ -537,7 +548,7 @@ export default function Diagnostics() {
           </Tooltip>
 
           <Button variant="contained" startIcon={<AddIcon />} onClick={handleOpenCreate}>
-            New
+            Tạo mới
           </Button>
 
           <Button
@@ -575,7 +586,7 @@ export default function Diagnostics() {
                       direction={sortColumn === "claimVin" ? sortDirection : "asc"}
                       onClick={() => handleSort("claimVin")}
                     >
-                      Claim VIN
+                      VIN
                     </TableSortLabel>
                   </TableCell>
                   <TableCell>
@@ -596,21 +607,21 @@ export default function Diagnostics() {
                       SOH / SOC
                     </TableSortLabel>
                   </TableCell>
-                  <TableCell>Pack Voltage</TableCell>
-                  <TableCell>Cell Delta (mV)</TableCell>
-                  <TableCell>Cycles</TableCell>
+                  <TableCell>Điện áp của bộ pin</TableCell>
+                  <TableCell>Độ chênh lệch điện áp giữa các cell (mV)</TableCell>
+                  <TableCell>Số chu kỳ sạc–xả của pin</TableCell>
                   <TableCell>
                     <TableSortLabel
                       active={sortColumn === "recordedAt"}
                       direction={sortColumn === "recordedAt" ? sortDirection : "asc"}
                       onClick={() => handleSort("recordedAt")}
                     >
-                      Recorded At
+                      Được ghi nhận vào lúc
                     </TableSortLabel>
                   </TableCell>
-                  <TableCell>Phase</TableCell>
-                  <TableCell>Outcome</TableCell>
-                  <TableCell align="center">Actions</TableCell>
+                  <TableCell>Giai đoạn</TableCell>
+                  <TableCell>Kết quả</TableCell>
+                  <TableCell align="center">Thao tác</TableCell>
                 </TableRow>
               </TableHead>
               <TableBody>
@@ -636,11 +647,11 @@ export default function Diagnostics() {
                         {r.recordedAt ? new Date(r.recordedAt).toLocaleString("vi-VN") : "-"}
                       </TableCell>
                       <TableCell>
-                        <Chip label={r.phase || "-"} color={phaseColor(r.phase)} size="small" />
+                        <Chip label={PHASE_LABELS[r.phase] || r.phase || "-"} color={phaseColor(r.phase)} size="small" />
                       </TableCell>
                       <TableCell>
                         <Chip
-                          label={r.outcome || "-"}
+                          label={OUTCOME_LABELS[r.outcome] || r.outcome || "-"}
                           color={outcomeColor(r.outcome)}
                           size="small"
                           variant="outlined"
@@ -725,34 +736,34 @@ export default function Diagnostics() {
                   <Typography variant="body1">{detailData.socPct ?? "-"}</Typography>
                 </Grid>
                 <Grid item xs={6}>
-                  <Typography variant="caption" color="text.secondary">Pack Voltage</Typography>
+                  <Typography variant="caption" color="text.secondary">Điện áp của bộ pin</Typography>
                   <Typography variant="body1">{detailData.packVoltage ?? "-"}</Typography>
                 </Grid>
                 <Grid item xs={6}>
-                  <Typography variant="caption" color="text.secondary">Cell Delta (mV)</Typography>
+                  <Typography variant="caption" color="text.secondary">Độ chênh lệch điện áp giữa các cell (mV)</Typography>
                   <Typography variant="body1">{detailData.cellDeltaMv ?? "-"}</Typography>
                 </Grid>
                 <Grid item xs={6}>
-                  <Typography variant="caption" color="text.secondary">Cycles</Typography>
+                  <Typography variant="caption" color="text.secondary">Số chu kỳ sạc–xả của pin</Typography>
                   <Typography variant="body1">{detailData.cycles ?? "-"}</Typography>
                 </Grid>
                 <Grid item xs={6}>
-                  <Typography variant="caption" color="text.secondary">Recorded At</Typography>
+                  <Typography variant="caption" color="text.secondary">Được ghi nhận vào lúc</Typography>
                   <Typography variant="body1">
                     {detailData.recordedAt ? new Date(detailData.recordedAt).toLocaleString("vi-VN") : "-"}
                   </Typography>
                 </Grid>
                 <Grid item xs={6}>
-                  <Typography variant="caption" color="text.secondary">Phase</Typography>
+                  <Typography variant="caption" color="text.secondary">Giai đoạn</Typography>
                   <Box mt={0.5}>
-                    <Chip label={detailData.phase || "-"} color={phaseColor(detailData.phase)} size="small" />
+                    <Chip label={PHASE_LABELS[detailData.phase] || detailData.phase || "-"} color={phaseColor(detailData.phase)} size="small" />
                   </Box>
                 </Grid>
                 <Grid item xs={6}>
-                  <Typography variant="caption" color="text.secondary">Outcome</Typography>
+                  <Typography variant="caption" color="text.secondary">Kết quả</Typography>
                   <Box mt={0.5}>
                     <Chip
-                      label={detailData.outcome || "-"}
+                      label={OUTCOME_LABELS[detailData.outcome] || detailData.outcome || "-"}
                       color={outcomeColor(detailData.outcome)}
                       size="small"
                       variant="outlined"
@@ -760,11 +771,11 @@ export default function Diagnostics() {
                   </Box>
                 </Grid>
                 <Grid item xs={12}>
-                  <Typography variant="caption" color="text.secondary">Notes</Typography>
+                  <Typography variant="caption" color="text.secondary">Ghi chú</Typography>
                   <Typography variant="body1">{detailData.notes || "Không có ghi chú"}</Typography>
                 </Grid>
               </Grid>
-              
+
               {/* Recall Events Section */}
               {detailData?.claimVin && (
                 <>
@@ -778,7 +789,7 @@ export default function Diagnostics() {
                         <CircularProgress />
                       </Box>
                     ) : recallEvents.length === 0 ? (
-                      <Typography color="text.secondary">Không có recall events cho VIN này</Typography>
+                      <Typography color="text.secondary">Không có sự kiện RECALL cho VIN này</Typography>
                     ) : (
                       <Stack spacing={2}>
                         {recallEvents.map((event) => (
@@ -787,28 +798,28 @@ export default function Diagnostics() {
                               <Stack spacing={1}>
                                 <Grid container spacing={2}>
                                   <Grid item xs={6}>
-                                    <Typography variant="caption" color="text.secondary">Event Name</Typography>
+                                    <Typography variant="caption" color="text.secondary">Tên sự kiện</Typography>
                                     <Typography variant="body1">{event.name || "—"}</Typography>
                                   </Grid>
                                   <Grid item xs={6}>
-                                    <Typography variant="caption" color="text.secondary">Type</Typography>
+                                    <Typography variant="caption" color="text.secondary">Loại</Typography>
                                     <Typography variant="body1">{event.type || "—"}</Typography>
                                   </Grid>
                                   <Grid item xs={12}>
-                                    <Typography variant="caption" color="text.secondary">Reason</Typography>
+                                    <Typography variant="caption" color="text.secondary">Lý do</Typography>
                                     <Typography variant="body1">{event.reason || "—"}</Typography>
                                   </Grid>
                                   <Grid item xs={6}>
-                                    <Typography variant="caption" color="text.secondary">Start Date</Typography>
+                                    <Typography variant="caption" color="text.secondary">Ngày bắt đầu</Typography>
                                     <Typography variant="body1">{event.startDate ? new Date(event.startDate).toLocaleString("vi-VN") : "—"}</Typography>
                                   </Grid>
                                   <Grid item xs={6}>
-                                    <Typography variant="caption" color="text.secondary">End Date</Typography>
+                                    <Typography variant="caption" color="text.secondary">Ngày kết thúc</Typography>
                                     <Typography variant="body1">{event.endDate ? new Date(event.endDate).toLocaleString("vi-VN") : "—"}</Typography>
                                   </Grid>
                                   {event.affectedParts && event.affectedParts.length > 0 && (
                                     <Grid item xs={12}>
-                                      <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 600 }}>Affected Parts:</Typography>
+                                      <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 600 }}>Những phụ tùng bị ảnh hưởng:</Typography>
                                       <Stack spacing={0.5} sx={{ mt: 0.5 }}>
                                         {event.affectedParts.map((part, idx) => (
                                           <Typography key={idx} variant="body2" sx={{ pl: 2 }}>
@@ -820,7 +831,7 @@ export default function Diagnostics() {
                                   )}
                                   {event.exclusions && event.exclusions.length > 0 && (
                                     <Grid item xs={12}>
-                                      <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 600 }}>Exclusions:</Typography>
+                                      <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 600 }}>Không áp dụng:</Typography>
                                       <Stack spacing={0.5} sx={{ mt: 0.5 }}>
                                         {event.exclusions.map((excl, idx) => (
                                           <Typography key={idx} variant="body2" sx={{ pl: 2 }}>
@@ -851,7 +862,7 @@ export default function Diagnostics() {
       {/* Form Create/Edit */}
       <Dialog open={formOpen} onClose={() => setFormOpen(false)} fullWidth maxWidth="sm">
         <DialogTitle>
-          {formMode === "create" ? "Tạo Diagnostic mới" : "Chỉnh sửa Diagnostic"}
+          {formMode === "create" ? "Tạo đánh giá mới" : "Chỉnh sửa đánh giá"}
         </DialogTitle>
         <DialogContent dividers>
           <Grid container spacing={2}>
@@ -867,12 +878,12 @@ export default function Diagnostics() {
               />
               {createPhaseHint && (
                 <Alert severity="info" sx={{ mt: 1 }}>
-                  Claim này đã có {createPhaseCount} diagnostic. Sẽ tạo {createPhaseHint}.
+                  Claim này đã có {createPhaseCount} đánh giá. Sẽ tạo {createPhaseHint}.
                 </Alert>
               )}
               {createPhaseCount >= 2 && (
                 <Alert severity="warning" sx={{ mt: 1 }}>
-                  Claim này đã có đủ 2 diagnostic (PRE & POST).
+                  Claim này đã có đủ 2 đánh giá (Trước & Sau).
                 </Alert>
               )}
             </Grid>
@@ -901,7 +912,7 @@ export default function Diagnostics() {
 
             <Grid item xs={6}>
               <TextField
-                label="Pack Voltage"
+                label="Điện áp của bộ pin"
                 fullWidth
                 type="number"
                 inputProps={{ step: "0.1" }}
@@ -912,7 +923,7 @@ export default function Diagnostics() {
 
             <Grid item xs={6}>
               <TextField
-                label="Cell Delta (mV)"
+                label="Độ chênh lệch điện áp giữa các cell (mV)"
                 fullWidth
                 type="number"
                 inputProps={{ step: "0.1" }}
@@ -923,7 +934,7 @@ export default function Diagnostics() {
 
             <Grid item xs={6}>
               <TextField
-                label="Cycles"
+                label="Số chu kỳ sạc–xả của pin"
                 fullWidth
                 type="number"
                 inputProps={{ step: "1", min: "0" }}
@@ -934,28 +945,28 @@ export default function Diagnostics() {
 
             <Grid item xs={6}>
               <FormControl fullWidth>
-                <InputLabel>Outcome</InputLabel>
+                <InputLabel>Kết quả</InputLabel>
                 <Select
                   value={formValues.outcome}
                   onChange={(e) => setFormValues({ ...formValues, outcome: e.target.value })}
                   label="Outcome"
                 >
                   <MenuItem value="">-- Không chọn --</MenuItem>
-                  <MenuItem value="NO_FAULT_FOUND">No Fault Found</MenuItem>
-                  <MenuItem value="FAULT_CONFIRMED">Fault Confirmed</MenuItem>
+                  <MenuItem value="NO_FAULT_FOUND">Không tìm thấy lỗi</MenuItem>
+                  <MenuItem value="FAULT_CONFIRMED">Lỗi đã được xác nhận</MenuItem>
                 </Select>
               </FormControl>
             </Grid>
 
             <Grid item xs={12}>
               <TextField
-                label="Notes"
+                label="Ghi chú"
                 multiline
                 fullWidth
                 rows={4}
                 value={formValues.notes}
                 onChange={(e) => setFormValues({ ...formValues, notes: e.target.value })}
-                placeholder="Nhập ghi chú chi tiết về chẩn đoán..."
+                placeholder="Nhập ghi chú chi tiết về đánh giá..."
               />
             </Grid>
           </Grid>
@@ -974,10 +985,10 @@ export default function Diagnostics() {
 
       {/* Confirm Complete */}
       <Dialog open={confirmOpen} onClose={() => setConfirmOpen(false)} fullWidth maxWidth="xs">
-        <DialogTitle>Xác nhận Diagnostic</DialogTitle>
+        <DialogTitle>Xác nhận đánh giá</DialogTitle>
         <DialogContent>
           <Typography>
-            Bạn có chắc chắn muốn xác nhận diagnostic này?
+            Bạn có chắc chắn muốn xác nhận đánh giá này?
           </Typography>
           <Alert severity="info" sx={{ mt: 2 }}>
             Sau khi xác nhận, bạn vẫn có thể chỉnh sửa các thông số kỹ thuật.

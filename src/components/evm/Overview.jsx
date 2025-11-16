@@ -17,7 +17,7 @@ import InventoryMovement from "./InventoryMovement";
 import {
     AppBar, Toolbar, Typography, Container, Box, Avatar, Tabs, Tab,
     Paper, IconButton, Tooltip, CssBaseline, Badge,
-    Divider, Chip, Menu, MenuItem,
+    Divider, Chip, Menu, MenuItem, Button,
 } from "@mui/material";
 import {
     DirectionsCar as CarIcon,
@@ -153,10 +153,10 @@ export default function Overview() {
                                 </Avatar>
                                 <Box>
                                     <Typography variant="h6" fontWeight={900} letterSpacing={.3}>
-                                        EVM Warranty Management System
+                                        Hệ thống quản lý bảo hành xe điện
                                     </Typography>
                                     <Typography variant="caption" color="text.secondary">
-                                        Hệ thống quản lý bảo hành xe điện
+                                        Nhân viên Hãng sản xuất
                                     </Typography>
                                 </Box>
                             </Box>
@@ -164,13 +164,6 @@ export default function Overview() {
                             {/* ❌ ĐÃ XOÁ THANH TÌM KIẾM */}
 
                             <Box sx={{ display: "flex", alignItems: "center", gap: .5 }}>
-                                <Tooltip title="Thông báo">
-                                    <IconButton>
-                                        <Badge color="secondary" variant="dot" overlap="circular">
-                                            <NotificationsIcon />
-                                        </Badge>
-                                    </IconButton>
-                                </Tooltip>
                                 <Tooltip title="Chuyển giao diện">
                                     <IconButton onClick={() => setMode(m => (m === "light" ? "dark" : "light"))}>
                                         {mode === "light" ? <DarkModeIcon /> : <LightModeIcon />}
@@ -181,65 +174,83 @@ export default function Overview() {
                                         <AddIcon />
                                     </IconButton>
                                 </Tooltip>
-                                <IconButton onClick={(e) => setAnchorMore(e.currentTarget)}>
-                                    <MoreIcon />
-                                </IconButton>
-                                <Menu anchorEl={anchorMore} open={Boolean(anchorMore)} onClose={() => setAnchorMore(null)}>
-                                    <MenuItem onClick={() => setAnchorMore(null)}>Nhập dữ liệu CSV</MenuItem>
-                                    <MenuItem onClick={() => setAnchorMore(null)}>Xuất báo cáo PDF</MenuItem>
-                                </Menu>
 
-                                {/* Avatar người dùng (có dropdown) */}
-                                <Avatar
+                                {/* User Info & Actions */}
+                                <Box
                                     sx={{
-                                        bgcolor: "primary.main",
-                                        fontWeight: "bold",
-                                        cursor: "pointer",
-                                        width: 42,
-                                        height: 42,
-                                    }}
-                                    onClick={(e) => setAnchorUser(e.currentTarget)}
-                                >
-                                    {user.fullName ? user.fullName.charAt(0).toUpperCase() : "A"}
-                                </Avatar>
-
-                                <Menu
-                                    anchorEl={anchorUser}
-                                    open={Boolean(anchorUser)}
-                                    onClose={() => setAnchorUser(null)}
-                                    PaperProps={{
-                                        sx: {
-                                            mt: 1,
-                                            borderRadius: 2,
-                                            minWidth: 220,
-                                            boxShadow: "0 6px 20px rgba(0,0,0,0.15)",
-                                        },
+                                        display: "flex",
+                                        alignItems: "center",
+                                        gap: 1.5,
+                                        px: 2,
+                                        py: 0.75,
+                                        borderRadius: 2,
+                                        border: (t) => `1px solid ${alpha(t.palette.divider, 0.5)}`,
+                                        backgroundColor: (t) => alpha(t.palette.background.paper, 0.8),
                                     }}
                                 >
-                                    <Box sx={{ px: 2, py: 1.5 }}>
-                                        <Typography variant="subtitle1" fontWeight={700} noWrap>
+                                    <Avatar
+                                        sx={{
+                                            bgcolor: "primary.main",
+                                            fontWeight: "bold",
+                                            width: 38,
+                                            height: 38,
+                                        }}
+                                    >
+                                        {user.fullName ? user.fullName.charAt(0).toUpperCase() : "A"}
+                                    </Avatar>
+                                    <Box sx={{ display: { xs: "none", md: "block" } }}>
+                                        <Typography variant="body2" fontWeight={700} noWrap>
                                             {user.fullName}
                                         </Typography>
-                                        <Typography variant="body2" color="text.secondary" noWrap>
+                                        <Typography variant="caption" color="text.secondary" noWrap>
                                             {user.role}
                                         </Typography>
                                     </Box>
-                                    <Divider />
-                                    <MenuItem onClick={() => (window.location.href = "/profile")}>
-                                        Hồ sơ cá nhân
-                                    </MenuItem>
-                                    <MenuItem onClick={() => (window.location.href = "/")}>Về trang chủ</MenuItem>
-                                    <Divider />
-                                    <MenuItem
-                                        onClick={() => {
-                                            authService.logout();
-                                            setAnchorUser(null);
-                                        }}
-                                        sx={{ color: "error.main" }}
-                                    >
-                                        Đăng xuất
-                                    </MenuItem>
-                                </Menu>
+                                </Box>
+
+                                <Divider orientation="vertical" flexItem sx={{ mx: 0.5 }} />
+
+                                {/* Về trang chủ button */}
+                                <Button
+                                    variant="outlined"
+                                    onClick={() => (window.location.href = "/")}
+                                    sx={{
+                                        borderRadius: 2,
+                                        textTransform: "none",
+                                        fontWeight: 600,
+                                        px: 2.5,
+                                        borderColor: (t) => alpha(t.palette.primary.main, 0.3),
+                                        color: "primary.main",
+                                        backgroundColor: (t) => alpha(t.palette.primary.main, 0.05),
+                                        "&:hover": {
+                                            backgroundColor: (t) => alpha(t.palette.primary.main, 0.12),
+                                            borderColor: "primary.main",
+                                        },
+                                    }}
+                                >
+                                    Về trang chủ
+                                </Button>
+
+                                {/* Đăng xuất button */}
+                                <Button
+                                    variant="outlined"
+                                    onClick={() => authService.logout()}
+                                    sx={{
+                                        borderRadius: 2,
+                                        textTransform: "none",
+                                        fontWeight: 600,
+                                        px: 2.5,
+                                        borderColor: (t) => alpha(t.palette.error.main, 0.3),
+                                        color: "error.main",
+                                        backgroundColor: (t) => alpha(t.palette.error.main, 0.05),
+                                        "&:hover": {
+                                            backgroundColor: (t) => alpha(t.palette.error.main, 0.12),
+                                            borderColor: "error.main",
+                                        },
+                                    }}
+                                >
+                                    Đăng xuất
+                                </Button>
                             </Box>
                         </Toolbar>
                     </AppBar>

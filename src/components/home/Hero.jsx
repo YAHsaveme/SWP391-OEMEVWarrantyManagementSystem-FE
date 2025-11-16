@@ -101,7 +101,7 @@ export default function Hero() {
 
         {/* Epic main heading with better typography */}
         <div className={`mb-8 transform transition-all duration-1200 delay-200 ${isVisible ? 'translate-y-0 opacity-100' : 'translate-y-12 opacity-0'}`}>
-          <h1 className="text-5xl md:text-7xl lg:text-8xl font-black leading-none">
+          <h1 className="text-2xl md:text-7xl lg:text-7xl font-light text-slate-300 mt-4 tracking-wide">
             <span className="block text-transparent bg-clip-text bg-gradient-to-r from-white via-blue-100 to-cyan-100 drop-shadow-2xl">
               Hệ thống
             </span>
@@ -121,7 +121,7 @@ export default function Hero() {
           </p>
 
           {/* Premium role badges with animations */}
-          <div className="flex flex-nowrap justify-center gap-4 mb-12">
+          <div className="flex flex-wrap justify-center gap-4 md:gap-6 mb-12">
             {[
               { name: 'Nhân viên Trung tâm dịch vụ', color: 'from-blue-500 via-blue-600 to-cyan-500', shadow: 'shadow-blue-500/40' },
               { name: 'Kỹ thuật viên Trung tâm dịch vụ', color: 'from-emerald-500 via-green-600 to-teal-500', shadow: 'shadow-emerald-500/40' },

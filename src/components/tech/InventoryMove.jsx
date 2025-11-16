@@ -37,7 +37,7 @@ import inventoryLotService from "../../services/inventoryLotService";
  *
  * - Trang quản lý Luân chuyển kho (Inventory Movements) cho Technician
  * - Tự động load claims/appointments (không hiện ID), load các part liên quan khi chọn claim
- * - Cho phép tạo Service Use (xuất kho) và Return (trả linh kiện)
+ * - Cho phép tạo Service Use (xuất kho) và Return (trả phụ tùng)
  * - Hiển thị lịch sử movement (search)
  * - Hỗ trợ filter parts theo recall events cho xe thuộc RECALL
  *
@@ -104,14 +104,14 @@ export default function InventoryMove() {
     const [parts, setParts] = useState([]); // parts selected for export (with available quantity)
     const [selectedParts, setSelectedParts] = useState({}); // partId -> qty to use
     const [selectedPartLotsReturn, setSelectedPartLotsReturn] = useState({}); // partLotId -> qty to return
-    
+
     // Available parts for selection
     const [availablePartsList, setAvailablePartsList] = useState([]); // all parts that can be selected
     const [partCatalog, setPartCatalog] = useState({}); // map partId -> part info (for name lookup)
     const [loadingAvailableParts, setLoadingAvailableParts] = useState(false);
     const [openAddPartDialog, setOpenAddPartDialog] = useState(false);
     const [centerId, setCenterId] = useState("");
-    
+
     // Service out items for return
     const [serviceOutItems, setServiceOutItems] = useState([]); // items from SERVICE_USE movements
     const [loadingServiceOut, setLoadingServiceOut] = useState(false);
@@ -187,7 +187,7 @@ export default function InventoryMove() {
                 console.log("[InventoryMove] Fetching technician for userId:", currentUserId);
                 const res = await technicianService.getById(currentUserId);
                 console.log("[InventoryMove] Technician API response:", res);
-                
+
                 // Thử nhiều cách lấy technicianId từ response
                 const techId =
                     res?.scheduleId ||
@@ -202,9 +202,9 @@ export default function InventoryMove() {
                     res?.data?.technicianId ||
                     res?.data?.id ||
                     currentUserId; // Fallback
-                
+
                 console.log("[InventoryMove] Extracted technicianId:", techId);
-                
+
                 if (techId) {
                     setTechnicianId(String(techId));
                 } else {
@@ -222,7 +222,7 @@ export default function InventoryMove() {
     // Load appointments when technicianId is available
     useEffect(() => {
         if (technicianId) {
-        loadClaims();
+            loadClaims();
         }
     }, [technicianId]);
 
@@ -242,16 +242,16 @@ export default function InventoryMove() {
             console.log("[InventoryMove] Loading appointments for technicianId:", technicianId);
             const res = await appointmentService.getByTechnician(technicianId);
             console.log("[InventoryMove] Appointments API response:", res);
-            
+
             if (!res.success) {
                 throw new Error(res.message || "Không thể tải appointments");
             }
 
             const raw = Array.isArray(res.data) ? res.data : (res.data?.content || res.data?.data || []);
-            
+
             console.log("[InventoryMove] Raw appointments count:", raw.length);
             console.log("[InventoryMove] Sample appointment:", raw[0] ? JSON.stringify(raw[0], null, 2) : "No appointments");
-            
+
             // Filter only IN_PROGRESS appointments
             const inProgressAppointments = (raw || []).filter(r => {
                 const status = (r.status || r.appointmentStatus || r.state || r.appointment?.status || "").toString().toUpperCase().trim();
@@ -265,45 +265,45 @@ export default function InventoryMove() {
                 }
                 return isInProgress;
             });
-            
+
             console.log("[InventoryMove] Total appointments:", raw.length, "IN_PROGRESS:", inProgressAppointments.length);
             if (inProgressAppointments.length > 0) {
                 console.log("[InventoryMove] First IN_PROGRESS appointment:", JSON.stringify(inProgressAppointments[0], null, 2));
             }
-            
+
             // Normalize to a friendly shape and fetch claim details to get VIN + Intake contactName
             const normalized = await Promise.all(
                 inProgressAppointments.map(async (r) => {
                     const appId = r.id || r.appointmentId;
                     const appAt = r.appointmentAt || r.appointmentDate || r.createdAt || r.workingStartTime;
                     const claimId = r.claimId || r.claim?.id;
-                    
+
                     let vin = "";
                     let intakeContactName = "";
-                    
+
                     // Always fetch claim details if claimId exists to get VIN and intakeContactName
                     if (claimId) {
                         try {
                             console.log("[InventoryMove] Fetching claim details for claimId:", claimId);
                             const claimData = await claimService.getById(claimId);
                             console.log("[InventoryMove] Claim data:", claimData);
-                            
+
                             // Extract VIN from claim
-                            vin = claimData?.vin || 
-                                claimData?.vehicleVin || 
+                            vin = claimData?.vin ||
+                                claimData?.vehicleVin ||
                                 claimData?.vehicle?.vin ||
                                 claimData?.vehicle?.vehicleVin ||
                                 claimData?.vehicleVinCode ||
                                 "";
-                            
+
                             // Extract intakeContactName from claim
-                            intakeContactName = claimData?.intakeContactName || 
+                            intakeContactName = claimData?.intakeContactName ||
                                 claimData?.contactName ||
                                 claimData?.customerName ||
                                 claimData?.customer?.name ||
                                 claimData?.ownerName ||
                                 "";
-                            
+
                             // If intakeContactName is not in claim, try to get from vehicle
                             if (!intakeContactName || intakeContactName.trim().length === 0) {
                                 if (vin && vin.trim().length > 0) {
@@ -311,7 +311,7 @@ export default function InventoryMove() {
                                         console.log("[InventoryMove] Fetching vehicle details for VIN:", vin);
                                         const vehicleData = await vehicleService.getByVin(vin);
                                         console.log("[InventoryMove] Vehicle data:", vehicleData);
-                                        
+
                                         intakeContactName = vehicleData?.intakeContactName ||
                                             vehicleData?.contactName ||
                                             vehicleData?.ownerName ||
@@ -322,7 +322,7 @@ export default function InventoryMove() {
                                     }
                                 }
                             }
-                            
+
                             console.log("[InventoryMove] Extracted - VIN:", vin, "Intake contactName:", intakeContactName);
                         } catch (err) {
                             console.warn("[InventoryMove] Failed to fetch claim details for claimId:", claimId, err);
@@ -335,16 +335,16 @@ export default function InventoryMove() {
                         vin = r.vin || r.vehicleVin || r.vehicle?.vin || r.claim?.vin || "";
                         intakeContactName = r.intakeContactName || r.claim?.intakeContactName || r.customerName || "";
                     }
-                    
+
                     // Normalize (trim and validate)
                     vin = vin && vin !== "—" ? String(vin).trim() : "";
                     intakeContactName = intakeContactName && intakeContactName !== "—" ? String(intakeContactName).trim() : "";
-                    
+
                     // Build label: VIN • Intake contactName
                     const labelParts = [];
                     if (vin && vin.length > 0) labelParts.push(vin);
                     if (intakeContactName && intakeContactName.length > 0) labelParts.push(intakeContactName);
-                    
+
                     let label = "";
                     if (labelParts.length > 0) {
                         label = labelParts.join(" • ");
@@ -354,31 +354,31 @@ export default function InventoryMove() {
                     } else {
                         label = "Appointment";
                     }
-                    
+
                     console.log("[InventoryMove] Normalized appointment:", { appId, claimId, vin, intakeContactName, label, status: r.status || r.appointmentStatus || r.state });
-                    
-                return {
-                    raw: r,
+
+                    return {
+                        raw: r,
                         id: appId,
-                    vin: vin || "—",
+                        vin: vin || "—",
                         customerName: intakeContactName || "—", // Store intakeContactName as customerName for consistency
                         intakeContactName: intakeContactName || "—",
-                    appointmentId: appId,
+                        appointmentId: appId,
                         claimId: claimId,
-                    appointmentAt: appAt,
+                        appointmentAt: appAt,
                         status: r.status || r.appointmentStatus || r.state,
                         label: label, // VIN • Intake contactName
-                };
+                    };
                 })
             );
-            
+
             setClaims(normalized);
             console.log("[InventoryMove] Loaded", normalized.length, "IN_PROGRESS appointments");
             console.log("[InventoryMove] Normalized claims data:", JSON.stringify(normalized, null, 2));
-            
+
             // Clear selectedClaim if it's not in the new list
             if (selectedClaim) {
-                const stillExists = normalized.find(c => 
+                const stillExists = normalized.find(c =>
                     String(c.appointmentId || c.id) === String(selectedClaim.appointmentId || selectedClaim.id)
                 );
                 if (!stillExists) {
@@ -386,11 +386,11 @@ export default function InventoryMove() {
                     setSelectedClaim(null);
                 }
             }
-            
+
             if (normalized.length > 0) {
-                setSnack({ open: true, message: `Tìm thấy ${normalized.length} appointment IN_PROGRESS`, severity: "success" });
+                setSnack({ open: true, message: `Tìm thấy ${normalized.length} cuộc hẹn Đang xử lý`, severity: "success" });
             } else {
-                setSnack({ open: true, message: "Không có appointment IN_PROGRESS nào được gán cho bạn", severity: "info" });
+                setSnack({ open: true, message: "Không có cuộc hẹn Đang xử lý nào được gán cho bạn", severity: "info" });
                 // Clear selection if no appointments
                 if (selectedClaim) {
                     setSelectedClaim(null);
@@ -538,7 +538,7 @@ export default function InventoryMove() {
     // Load available parts from inventory with quantities
     async function loadAvailableParts(centerIdParam) {
         if (!centerIdParam) return;
-        
+
         setLoadingAvailableParts(true);
         try {
             // Get all active parts
@@ -554,11 +554,11 @@ export default function InventoryMove() {
                     };
                 }
             });
-            
+
             // Get inventory for this center
             const inventoryRes = await inventoryPartService.listByCenter(centerIdParam);
             const inventoryParts = Array.isArray(inventoryRes) ? inventoryRes : (inventoryRes?.inventoryParts || inventoryRes?.content || []);
-            
+
             // Create a map of partId -> available quantity
             const inventoryMap = {};
             inventoryParts.forEach(inv => {
@@ -567,7 +567,7 @@ export default function InventoryMove() {
                     inventoryMap[pid] = (inventoryMap[pid] || 0) + (inv.quantity || 0);
                 }
             });
-            
+
             // Combine parts with available quantities
             const partsWithQty = allParts.map(p => {
                 const partId = p.id || p.partId;
@@ -579,7 +579,7 @@ export default function InventoryMove() {
                     raw: p
                 };
             });
-            
+
             setPartCatalog((prev) => ({ ...prev, ...catalogUpdate }));
             setAvailablePartsList(partsWithQty);
         } catch (err) {
@@ -675,44 +675,44 @@ export default function InventoryMove() {
         try {
             const res = await inventoryMovementService.listByAppointment(appointmentId);
             const movements = Array.isArray(res.data) ? res.data : (res.data?.content || []);
-            
+
             // Filter only SERVICE_USE movements (OUT direction)
-            const serviceOutMovements = movements.filter(m => 
+            const serviceOutMovements = movements.filter(m =>
                 m.reason === "SERVICE_USE" && m.direction === "OUT"
             );
-            
+
             // Extract part lots from these movements
             const serviceOutLots = [];
             const partLotIdsToFetch = new Set();
-            
+
             // Bước 1: Extract thông tin cơ bản và thu thập partLotIds cần fetch
             serviceOutMovements.forEach(movement => {
                 // Log để debug cấu trúc movement
                 console.log("[InventoryMove] Movement structure:", movement);
-                
+
                 if (movement.partLots && Array.isArray(movement.partLots)) {
                     movement.partLots.forEach(lot => {
                         // Log để debug cấu trúc dữ liệu
                         console.log("[InventoryMove] PartLot structure:", lot);
-                        
+
                         const partLotId = lot.id || lot.partLotId || lot.partLot_id || lot.partLot?.id;
                         if (partLotId) {
                             partLotIdsToFetch.add(partLotId);
                         }
-                        
+
                         // Tìm serialNo và batchNo từ nhiều nguồn có thể
                         // 1. Trực tiếp từ lot object (có thể là partLotSerialNo, partLotBatchNo)
                         // 2. Từ nested partLot object
                         // 3. Từ nested part object
-                        const serialNo = lot.serialNo || lot.serial_no || lot.serialNumber || lot.serial 
-                            || lot.partLotSerialNo || lot.partLotSerial_no || lot.partLot?.serialNo || lot.partLot?.serial_no 
+                        const serialNo = lot.serialNo || lot.serial_no || lot.serialNumber || lot.serial
+                            || lot.partLotSerialNo || lot.partLotSerial_no || lot.partLot?.serialNo || lot.partLot?.serial_no
                             || lot.part?.serialNo || lot.part?.serial_no
                             || null;
-                        const batchNo = lot.batchNo || lot.batch_no || lot.batchNumber || lot.batch 
-                            || lot.partLotBatchNo || lot.partLotBatch_no || lot.partLot?.batchNo || lot.partLot?.batch_no 
+                        const batchNo = lot.batchNo || lot.batch_no || lot.batchNumber || lot.batch
+                            || lot.partLotBatchNo || lot.partLotBatch_no || lot.partLot?.batchNo || lot.partLot?.batch_no
                             || lot.part?.batchNo || lot.part?.batch_no
                             || null;
-                        
+
                         serviceOutLots.push({
                             ...lot,
                             movementId: movement.id,
@@ -732,21 +732,21 @@ export default function InventoryMove() {
                     });
                 }
             });
-            
+
             // Bước 2: Fetch thông tin chi tiết partLot để lấy serialNo và batchNo
             if (partLotIdsToFetch.size > 0 && centerId) {
                 console.log("[InventoryMove] Fetching partLot details for:", Array.from(partLotIdsToFetch));
                 console.log("[InventoryMove] Center ID:", centerId);
-                
+
                 try {
                     // Fetch tất cả inventoryLots của center để tìm theo partLotId
                     const allLots = await inventoryLotService.listByCenterWithId(centerId);
-                    const inventoryLots = Array.isArray(allLots?.inventoryLots) 
-                        ? allLots.inventoryLots 
+                    const inventoryLots = Array.isArray(allLots?.inventoryLots)
+                        ? allLots.inventoryLots
                         : (Array.isArray(allLots) ? allLots : []);
-                    
+
                     console.log("[InventoryMove] Fetched inventoryLots:", inventoryLots);
-                    
+
                     // Tạo map partLotId -> inventoryLot
                     const partLotMap = {};
                     inventoryLots.forEach(il => {
@@ -758,23 +758,23 @@ export default function InventoryMove() {
                             partLotMap[ilPartLotId].push(il);
                         }
                     });
-                    
+
                     console.log("[InventoryMove] PartLot map:", partLotMap);
-                    
+
                     // Bước 3: Merge thông tin serialNo và batchNo vào serviceOutLots
                     serviceOutLots.forEach(lot => {
                         const matchingLots = partLotMap[lot.partLotId];
                         if (matchingLots && matchingLots.length > 0) {
                             // Lấy lot đầu tiên (hoặc có thể cần logic phức tạp hơn)
                             const inventoryLot = matchingLots[0];
-                            
+
                             if (!lot.serialNo) {
                                 lot.serialNo = inventoryLot.serialNo || inventoryLot.serial_no || inventoryLot.serialNumber || null;
                             }
                             if (!lot.batchNo) {
                                 lot.batchNo = inventoryLot.batchNo || inventoryLot.batch_no || inventoryLot.batchNumber || null;
                             }
-                            
+
                             console.log(`[InventoryMove] Updated lot ${lot.partLotId}: serialNo=${lot.serialNo}, batchNo=${lot.batchNo}`);
                         } else {
                             console.warn(`[InventoryMove] No inventoryLot found for partLotId: ${lot.partLotId}`);
@@ -786,9 +786,9 @@ export default function InventoryMove() {
             } else {
                 console.warn("[InventoryMove] Cannot fetch partLot details: missing partLotIds or centerId");
             }
-            
+
             console.log("[InventoryMove] Service out lots (final):", serviceOutLots);
-            
+
             setServiceOutItems(serviceOutLots);
         } catch (err) {
             console.error("[InventoryMove] Load service out items failed:", err);
@@ -803,7 +803,7 @@ export default function InventoryMove() {
         setHistoryLoading(true);
         try {
             const appointmentId = (overrides.appointmentId ?? searchParams.appointmentId) || undefined;
-            
+
             // Ưu tiên dùng listByAppointment nếu có appointmentId
             if (appointmentId) {
                 try {
@@ -885,7 +885,7 @@ export default function InventoryMove() {
             }
         }
         if (!partQuantities.length) {
-            setSnack({ open: true, message: "Chọn ít nhất 1 linh kiện và số lượng > 0", severity: "warning" });
+            setSnack({ open: true, message: "Chọn ít nhất 1 phụ tùng và số lượng > 0", severity: "warning" });
             return;
         }
         setBusy(true);
@@ -923,7 +923,7 @@ export default function InventoryMove() {
                     const itemLotId = item.partLotId || item.id || `lot_${serviceOutItems.indexOf(item)}`;
                     return String(itemLotId) === String(lotId);
                 });
-                
+
                 if (item) {
                     const actualPartLotId = item.partLotId || item.id;
                     if (actualPartLotId) {
@@ -937,18 +937,18 @@ export default function InventoryMove() {
                 }
             }
         });
-        
+
         if (!partLotQuantities.length) {
             setSnack({ open: true, message: "Chọn ít nhất 1 lot để trả (qty > 0)", severity: "warning" });
             return;
         }
-        
+
         setBusy(true);
         try {
             const payload = { appointmentId, partLotQuantities, note: `Return từ appointment (${selectedClaim.label})` };
             console.log("[InventoryMove] Return payload:", JSON.stringify(payload, null, 2));
             await inventoryMovementService.returnParts(payload);
-            setSnack({ open: true, message: "Trả linh kiện thành công", severity: "success" });
+            setSnack({ open: true, message: "Trả phụ tùng thành công", severity: "success" });
             // refresh service out items & history
             loadServiceOutItems(appointmentId);
             loadHistory({ appointmentId, page: 0 });
@@ -1019,13 +1019,13 @@ export default function InventoryMove() {
     // Add part to export list
     const handleAddPart = (part) => {
         if (!part || !part.partId) return;
-        
+
         // Check if part already added
         if (parts.find(p => p.partId === part.partId)) {
-            setSnack({ open: true, message: "Linh kiện này đã được thêm", severity: "warning" });
+            setSnack({ open: true, message: "Phụ tùng này đã được thêm", severity: "warning" });
             return;
         }
-        
+
         // Add part with available quantity
         setParts([...parts, {
             ...part,
@@ -1077,11 +1077,11 @@ export default function InventoryMove() {
         if (!recallEvents || recallEvents.length === 0) return { ids: [], names: [] };
         const allAffectedPartIds = [];
         const allAffectedPartNames = [];
-        
+
         recallEvents.forEach(event => {
             // Try to get affectedParts from multiple possible fields
             let partIds = [];
-            
+
             // Try affectedParts (array)
             if (event.affectedParts && Array.isArray(event.affectedParts)) {
                 partIds = event.affectedParts;
@@ -1089,8 +1089,8 @@ export default function InventoryMove() {
             // Try affectedPartsJson (JSON string)
             else if (event.affectedPartsJson) {
                 try {
-                    const parsed = typeof event.affectedPartsJson === 'string' 
-                        ? JSON.parse(event.affectedPartsJson) 
+                    const parsed = typeof event.affectedPartsJson === 'string'
+                        ? JSON.parse(event.affectedPartsJson)
                         : event.affectedPartsJson;
                     if (Array.isArray(parsed)) {
                         partIds = parsed;
@@ -1103,13 +1103,13 @@ export default function InventoryMove() {
             else if (event.affected_parts && Array.isArray(event.affected_parts)) {
                 partIds = event.affected_parts;
             }
-            
+
             if (partIds.length > 0) {
                 partIds.forEach(partId => {
                     const partIdStr = String(partId).trim();
                     // Kiểm tra xem có phải là UUID (ID) không
                     const isUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(partIdStr);
-                    
+
                     if (isUUID) {
                         // Lưu ID
                         allAffectedPartIds.push(partIdStr);
@@ -1126,11 +1126,11 @@ export default function InventoryMove() {
                 });
             }
         });
-        
+
         // Remove duplicates
         const uniqueIds = [...new Set(allAffectedPartIds)];
         const uniqueNames = [...new Set(allAffectedPartNames)];
-        
+
         return { ids: uniqueIds, names: uniqueNames };
     }, [recallEvents, availablePartsList]);
 
@@ -1146,15 +1146,15 @@ export default function InventoryMove() {
             const partId = String(part.partId || part.id);
             const partNameLower = (part.partName || "").toLowerCase();
             const partNoLower = (part.partNo || "").toLowerCase();
-            
+
             // Kiểm tra theo ID trước (chính xác nhất)
             if (affectedPartsFromRecall.ids.includes(partId)) {
                 return true;
             }
-            
+
             // Kiểm tra theo tên (fallback)
-            return affectedPartsFromRecall.names.some(affectedName => 
-                partNameLower.includes(affectedName) || 
+            return affectedPartsFromRecall.names.some(affectedName =>
+                partNameLower.includes(affectedName) ||
                 affectedName.includes(partNameLower) ||
                 partNoLower.includes(affectedName) ||
                 affectedName.includes(partNoLower)
@@ -1165,7 +1165,7 @@ export default function InventoryMove() {
     // Map affected part IDs to names for display
     const affectedPartsDisplayNames = useMemo(() => {
         if (!affectedPartsFromRecall || affectedPartsFromRecall.ids.length === 0) return [];
-        
+
         return affectedPartsFromRecall.ids.map(id => {
             // Tìm part trong availablePartsList (availablePartsList có partId, không phải id)
             const part = availablePartsList.find(p => String(p.partId) === id || String(p.id) === id);
@@ -1180,7 +1180,7 @@ export default function InventoryMove() {
     // Filter available parts (exclude already added AND filter by recall events if applicable)
     const availablePartsForSelection = useMemo(() => {
         const addedPartIds = new Set(parts.map(p => p.partId));
-        
+
         // First, filter by recall events if applicable (same logic as availableParts)
         let filteredByRecall = availablePartsList;
         if (recallEvents.length > 0) {
@@ -1188,22 +1188,22 @@ export default function InventoryMove() {
                 const partId = String(part.partId || part.id);
                 const partNameLower = (part.partName || "").toLowerCase();
                 const partNoLower = (part.partNo || "").toLowerCase();
-                
+
                 // Kiểm tra theo ID trước (chính xác nhất)
                 if (affectedPartsFromRecall.ids.includes(partId)) {
                     return true;
                 }
-                
+
                 // Kiểm tra theo tên (fallback)
-                return affectedPartsFromRecall.names.some(affectedName => 
-                    partNameLower.includes(affectedName) || 
+                return affectedPartsFromRecall.names.some(affectedName =>
+                    partNameLower.includes(affectedName) ||
                     affectedName.includes(partNameLower) ||
                     partNoLower.includes(affectedName) ||
                     affectedName.includes(partNoLower)
                 );
             });
         }
-        
+
         // Then, exclude already added parts
         return filteredByRecall.filter(p => !addedPartIds.has(p.partId));
     }, [availablePartsList, parts, recallEvents, affectedPartsFromRecall]);
@@ -1226,7 +1226,7 @@ export default function InventoryMove() {
                                 // open create service use dialog: we'll rely on parts table inputs (no separate dialog)
                                 if (!selectedClaim) return setSnack({ open: true, message: "Chọn claim trước", severity: "warning" });
                                 // scroll to parts? no-op
-                                setSnack({ open: true, message: "Chọn linh kiện rồi nhấn 'Tạo Xuất kho'", severity: "info" });
+                                setSnack({ open: true, message: "Chọn phụ tùng rồi nhấn 'Tạo Xuất kho'", severity: "info" });
                             }}>
                                 Xuất kho
                             </Button>
@@ -1279,13 +1279,13 @@ export default function InventoryMove() {
                                 console.log("[InventoryMove] Selected claim label:", newValue?.label);
                                 setSelectedClaim(newValue);
                             }}
-                            noOptionsText={loadingClaims ? "Đang tải..." : claims.length === 0 ? "Không có appointment IN_PROGRESS" : "Không tìm thấy"}
+                            noOptionsText={loadingClaims ? "Đang tải..." : claims.length === 0 ? "Không có cuộc hẹn Đang xử lý" : "Không tìm thấy"}
                             renderInput={(params) => (
                                 <TextField
                                     {...params}
                                     size="small"
-                                    label="Chọn claim / appointment (IN_PROGRESS)"
-                                    placeholder={loadingClaims ? "Đang tải..." : claims.length === 0 ? "Không có appointment IN_PROGRESS" : "Chọn appointment (VIN • Tên liên hệ)"}
+                                    label="Chọn đơn bảo hành / cuộc hẹn (Đang xử lý)"
+                                    placeholder={loadingClaims ? "Đang tải..." : claims.length === 0 ? "Không có cuộc hẹn Đang xử lý" : "Chọn cuộc hẹn (VIN • Tên liên hệ)"}
                                     InputProps={{
                                         ...params.InputProps,
                                         startAdornment: (
@@ -1320,7 +1320,7 @@ export default function InventoryMove() {
                                         label = "Appointment";
                                     }
                                 }
-                                
+
                                 return (
                                     <li {...props} key={option.appointmentId || option.id}>
                                         <Typography variant="body2">{label}</Typography>
@@ -1355,7 +1355,7 @@ export default function InventoryMove() {
                 <Grid item xs={12} md={4}>
                     <Paper sx={{ p: 2, borderRadius: 2 }}>
                         <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 1 }}>
-                            <Typography variant="subtitle1" fontWeight={700}>Linh kiện thuộc cuộc hẹn</Typography>
+                            <Typography variant="subtitle1" fontWeight={700}>Phụ tùng thuộc cuộc hẹn</Typography>
                             {recallEvents.length > 0 && (
                                 <Chip
                                     label="RECALL - Chỉ chọn phụ tùng trong events"
@@ -1365,7 +1365,7 @@ export default function InventoryMove() {
                             )}
                         </Stack>
                         <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
-                            Thêm linh kiện và nhập số lượng cần xuất.
+                            Thêm phụ tùng và nhập số lượng cần xuất.
                         </Typography>
                         {selectedClaim?.claimId && (
                             loadingEstimateParts ? (
@@ -1416,7 +1416,7 @@ export default function InventoryMove() {
                                 disabled={!selectedClaim || loadingAvailableParts}
                                 size="small"
                             >
-                                Thêm linh kiện
+                                Thêm phụ tùng
                             </Button>
                         </Box>
 
@@ -1425,7 +1425,7 @@ export default function InventoryMove() {
                         ) : parts.length === 0 ? (
                             <Box p={2}>
                                 <Typography color="text.secondary">
-                                    Chưa có linh kiện nào được thêm. Nhấn "Thêm linh kiện" để bắt đầu.
+                                    Chưa có phụ tùng nào được thêm. Nhấn "Thêm phụ tùng" để bắt đầu.
                                 </Typography>
                             </Box>
                         ) : (
@@ -1433,7 +1433,7 @@ export default function InventoryMove() {
                                 <TableHead>
                                     <TableRow>
                                         <TableCell sx={{ width: "20%", px: 1 }}>Part No</TableCell>
-                                        <TableCell sx={{ width: "35%", px: 1 }}>Tên linh kiện</TableCell>
+                                        <TableCell sx={{ width: "35%", px: 1 }}>Tên phụ tùng</TableCell>
                                         <TableCell sx={{ width: "15%", px: 1 }} align="center">Sẵn có</TableCell>
                                         <TableCell sx={{ width: "20%", px: 1 }} align="center">Xuất (qty)</TableCell>
                                         <TableCell sx={{ width: "10%", px: 1 }} align="center">Thao tác</TableCell>
@@ -1503,7 +1503,7 @@ export default function InventoryMove() {
                 {/* Return panel (use partLots from parts) */}
                 <Grid item xs={12} md={8}>
                     <Paper sx={{ p: 2, borderRadius: 2 }}>
-                        <Typography variant="subtitle1" fontWeight={700}>Trả linh kiện (Return)</Typography>
+                        <Typography variant="subtitle1" fontWeight={700}>Trả phụ tùng (Return)</Typography>
                         <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
                             Chọn các lot hợp lệ để trả
                         </Typography>
@@ -1513,7 +1513,7 @@ export default function InventoryMove() {
                         ) : serviceOutItems.length === 0 ? (
                             <Box p={2}>
                                 <Typography color="text.secondary">
-                                    Không có linh kiện nào đã xuất (service out) để trả lại.
+                                    Không có phụ tùng nào đã xuất (service out) để trả lại.
                                 </Typography>
                             </Box>
                         ) : (
@@ -1521,7 +1521,7 @@ export default function InventoryMove() {
                                 <TableHead>
                                     <TableRow>
                                         <TableCell sx={{ width: "11%", px: 1 }}>Part No</TableCell>
-                                        <TableCell sx={{ width: "20%", px: 1 }}>Tên linh kiện</TableCell>
+                                        <TableCell sx={{ width: "20%", px: 1 }}>Tên phụ tùng</TableCell>
                                         <TableCell sx={{ width: "14%", px: 1 }}>Serial</TableCell>
                                         <TableCell sx={{ width: "16%", px: 1 }}>Batch</TableCell>
                                         <TableCell sx={{ width: "8%", px: 1 }} align="center">Số lượng</TableCell>
@@ -1529,79 +1529,79 @@ export default function InventoryMove() {
                                         <TableCell sx={{ width: "15%", px: 1 }} align="center">Trả (qty)</TableCell>
                                     </TableRow>
                                 </TableHead>
-                                    <TableBody>
-                                        {serviceOutItems.map((item, idx) => {
-                                            const lotId = item.partLotId || item.id || `lot_${idx}`;
-                                            const maxQty = item.quantity || 0;
-                                            // Lấy serialNo và batchNo từ nhiều nguồn có thể (bao gồm partLotSerialNo, partLotBatchNo)
-                                            const serialNo = item.serialNo || item.serial_no || item.serialNumber || item.serial 
-                                                || item.partLotSerialNo || item.partLotSerial_no || item.partLot?.serialNo || null;
-                                            const batchNo = item.batchNo || item.batch_no || item.batchNumber || item.batch 
-                                                || item.partLotBatchNo || item.partLotBatch_no || item.partLot?.batchNo || null;
-                                            
-                                            // Debug log
-                                            if (idx === 0) {
-                                                console.log("[InventoryMove] First serviceOutItem:", item);
-                                                console.log("[InventoryMove] Extracted serialNo:", serialNo, "batchNo:", batchNo);
-                                            }
-                                            
-                                                return (
-                                                <TableRow key={lotId}>
-                                                    <TableCell sx={{ px: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: 0 }}>
-                                                        <Tooltip title={item.partNo || "—"} arrow>
-                                                            <Typography variant="body2" noWrap>
-                                                                {item.partNo || "—"}
-                                                            </Typography>
-                                                        </Tooltip>
-                                                    </TableCell>
-                                                    <TableCell sx={{ px: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: 0 }}>
-                                                        <Tooltip title={item.partName || "—"} arrow>
-                                                            <Typography variant="body2" noWrap>
-                                                                {item.partName || "—"}
-                                                            </Typography>
-                                                        </Tooltip>
-                                                    </TableCell>
-                                                    <TableCell sx={{ px: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: 0 }}>
-                                                        <Tooltip title={serialNo || "—"} arrow>
-                                                            <Typography variant="body2" noWrap>
-                                                                {serialNo || "—"}
-                                                            </Typography>
-                                                        </Tooltip>
-                                                    </TableCell>
-                                                    <TableCell sx={{ px: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: 0 }}>
-                                                        <Tooltip title={batchNo || "—"} arrow>
-                                                            <Typography variant="body2" noWrap>
-                                                                {batchNo || "—"}
-                                                            </Typography>
-                                                        </Tooltip>
-                                                    </TableCell>
-                                                    <TableCell align="center" sx={{ px: 1 }}>{maxQty}</TableCell>
-                                                    <TableCell sx={{ px: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: 0 }}>
-                                                        <Tooltip title={fmtDate(item.movementDate)} arrow>
-                                                            <Typography variant="body2" noWrap>
-                                                                {fmtDate(item.movementDate)}
-                                                            </Typography>
-                                                        </Tooltip>
-                                                    </TableCell>
-                                                    <TableCell align="center" sx={{ px: 1 }}>
-                                                            <TextField
-                                                                size="small"
-                                                                type="number"
-                                                            inputProps={{ min: 0, max: maxQty }}
-                                                                value={selectedPartLotsReturn[lotId] ?? 0}
-                                                                onChange={(e) => {
-                                                                const v = Math.min(Number(e.target.value || 0), maxQty);
-                                                                    setSelectedPartLotsReturn((s) => ({ ...s, [lotId]: v }));
-                                                                }}
-                                                            sx={{ width: 70 }}
-                                                            error={selectedPartLotsReturn[lotId] > maxQty}
-                                                        />
-                                                    </TableCell>
-                                                </TableRow>
-                                            );
-                                        })}
-                                    </TableBody>
-                                </Table>
+                                <TableBody>
+                                    {serviceOutItems.map((item, idx) => {
+                                        const lotId = item.partLotId || item.id || `lot_${idx}`;
+                                        const maxQty = item.quantity || 0;
+                                        // Lấy serialNo và batchNo từ nhiều nguồn có thể (bao gồm partLotSerialNo, partLotBatchNo)
+                                        const serialNo = item.serialNo || item.serial_no || item.serialNumber || item.serial
+                                            || item.partLotSerialNo || item.partLotSerial_no || item.partLot?.serialNo || null;
+                                        const batchNo = item.batchNo || item.batch_no || item.batchNumber || item.batch
+                                            || item.partLotBatchNo || item.partLotBatch_no || item.partLot?.batchNo || null;
+
+                                        // Debug log
+                                        if (idx === 0) {
+                                            console.log("[InventoryMove] First serviceOutItem:", item);
+                                            console.log("[InventoryMove] Extracted serialNo:", serialNo, "batchNo:", batchNo);
+                                        }
+
+                                        return (
+                                            <TableRow key={lotId}>
+                                                <TableCell sx={{ px: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: 0 }}>
+                                                    <Tooltip title={item.partNo || "—"} arrow>
+                                                        <Typography variant="body2" noWrap>
+                                                            {item.partNo || "—"}
+                                                        </Typography>
+                                                    </Tooltip>
+                                                </TableCell>
+                                                <TableCell sx={{ px: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: 0 }}>
+                                                    <Tooltip title={item.partName || "—"} arrow>
+                                                        <Typography variant="body2" noWrap>
+                                                            {item.partName || "—"}
+                                                        </Typography>
+                                                    </Tooltip>
+                                                </TableCell>
+                                                <TableCell sx={{ px: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: 0 }}>
+                                                    <Tooltip title={serialNo || "—"} arrow>
+                                                        <Typography variant="body2" noWrap>
+                                                            {serialNo || "—"}
+                                                        </Typography>
+                                                    </Tooltip>
+                                                </TableCell>
+                                                <TableCell sx={{ px: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: 0 }}>
+                                                    <Tooltip title={batchNo || "—"} arrow>
+                                                        <Typography variant="body2" noWrap>
+                                                            {batchNo || "—"}
+                                                        </Typography>
+                                                    </Tooltip>
+                                                </TableCell>
+                                                <TableCell align="center" sx={{ px: 1 }}>{maxQty}</TableCell>
+                                                <TableCell sx={{ px: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: 0 }}>
+                                                    <Tooltip title={fmtDate(item.movementDate)} arrow>
+                                                        <Typography variant="body2" noWrap>
+                                                            {fmtDate(item.movementDate)}
+                                                        </Typography>
+                                                    </Tooltip>
+                                                </TableCell>
+                                                <TableCell align="center" sx={{ px: 1 }}>
+                                                    <TextField
+                                                        size="small"
+                                                        type="number"
+                                                        inputProps={{ min: 0, max: maxQty }}
+                                                        value={selectedPartLotsReturn[lotId] ?? 0}
+                                                        onChange={(e) => {
+                                                            const v = Math.min(Number(e.target.value || 0), maxQty);
+                                                            setSelectedPartLotsReturn((s) => ({ ...s, [lotId]: v }));
+                                                        }}
+                                                        sx={{ width: 70 }}
+                                                        error={selectedPartLotsReturn[lotId] > maxQty}
+                                                    />
+                                                </TableCell>
+                                            </TableRow>
+                                        );
+                                    })}
+                                </TableBody>
+                            </Table>
                         )}
 
                         <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mt: 2 }}>
@@ -1616,14 +1616,14 @@ export default function InventoryMove() {
 
             {/* Dialog to add part */}
             <Dialog open={openAddPartDialog} onClose={() => setOpenAddPartDialog(false)} maxWidth="sm" fullWidth>
-                <DialogTitle>Chọn linh kiện</DialogTitle>
+                <DialogTitle>Chọn phụ tùng</DialogTitle>
                 <DialogContent dividers>
                     {loadingAvailableParts ? (
                         <Box display="flex" justifyContent="center" p={2}>
                             <CircularProgress />
                         </Box>
                     ) : availablePartsForSelection.length === 0 ? (
-                        <Typography color="text.secondary">Không còn linh kiện nào để thêm</Typography>
+                        <Typography color="text.secondary">Không còn phụ tùng nào để thêm</Typography>
                     ) : (
                         <Autocomplete
                             options={availablePartsForSelection}
@@ -1636,8 +1636,8 @@ export default function InventoryMove() {
                                 <TextField
                                     {...params}
                                     size="small"
-                                    label="Chọn linh kiện"
-                                    placeholder="Tên linh kiện"
+                                    label="Chọn phụ tùng"
+                                    placeholder="Tên phụ tùng"
                                     InputProps={{
                                         ...params.InputProps,
                                         startAdornment: (
@@ -1723,11 +1723,11 @@ export default function InventoryMove() {
                     <Table size="small">
                         <TableHead>
                             <TableRow>
-                                <TableCell>Center</TableCell>
-                                <TableCell>Appointment</TableCell>
-                                <TableCell>Part</TableCell>
-                                <TableCell>Direction</TableCell>
-                                <TableCell>Reason</TableCell>
+                                <TableCell>Trung tâm</TableCell>
+                                <TableCell>Cuộc hẹn</TableCell>
+                                <TableCell>Phụ tùng</TableCell>
+                                <TableCell>Hướng</TableCell>
+                                <TableCell>Lý do</TableCell>
                                 <TableCell>Số lượng</TableCell>
                                 <TableCell>Thời gian</TableCell>
                                 <TableCell>Ghi chú</TableCell>
@@ -1769,11 +1769,11 @@ export default function InventoryMove() {
                 <DialogContent dividers>
                     {detailMovement ? (
                         <Box>
-                            <Typography variant="subtitle2">Center: {detailMovement.centerName || detailMovement.centerId}</Typography>
-                            <Typography variant="subtitle2">Appointment note: {detailMovement.appointmentNote || "—"}</Typography>
-                            <Typography variant="subtitle2">Part: {detailMovement.partName || detailMovement.partNo || "—"}</Typography>
+                            <Typography variant="subtitle2">Trung tâm: {detailMovement.centerName || detailMovement.centerId}</Typography>
+                            <Typography variant="subtitle2">Ghi chú cuộc hẹn: {detailMovement.appointmentNote || "—"}</Typography>
+                            <Typography variant="subtitle2">Phụ tùng: {detailMovement.partName || detailMovement.partNo || "—"}</Typography>
                             <Typography variant="body2">Lý do: {detailMovement.reason}</Typography>
-                            <Typography variant="body2">Direction: {detailMovement.direction}</Typography>
+                            <Typography variant="body2">Hướng: {detailMovement.direction}</Typography>
                             <Typography variant="body2">Tổng: {detailMovement.totalQuantity}</Typography>
                             <Typography variant="body2">Thời gian: {fmtDate(detailMovement.movedAt)}</Typography>
 
@@ -1834,7 +1834,7 @@ export default function InventoryMove() {
                                             {part.batchNo && <Typography variant="body2"><strong>Batch No:</strong> {part.batchNo}</Typography>}
                                             {part.productionDate && <Typography variant="body2"><strong>Ngày SX:</strong> {fmtDate(part.productionDate)}</Typography>}
                                             {part.supplier && <Typography variant="body2"><strong>Nhà cung cấp:</strong> {part.supplier}</Typography>}
-                                            
+
                                             {part.movements && part.movements.length > 0 && (
                                                 <Box sx={{ mt: 2 }}>
                                                     <Typography variant="subtitle2" sx={{ mb: 1 }}>Lịch sử di chuyển:</Typography>

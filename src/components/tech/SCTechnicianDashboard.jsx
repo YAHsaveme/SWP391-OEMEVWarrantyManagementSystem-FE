@@ -34,15 +34,13 @@ import {
   Brightness4 as Brightness4Icon,
   Brightness7 as Brightness7Icon,
   Notifications as NotificationsIcon,
-  DirectionsCar as DirectionsCarIcon,
+  TwoWheeler as TwoWheelerIcon,
   Assignment,
 } from "@mui/icons-material";
 import { Routes, Route, Navigate, useNavigate, useLocation, Link } from "react-router-dom";
 
 import Diagnostics from "./Diagnostics";
-import InventoryParts from "./InventoryParts";
 import ReceiveAppointment from "./ReceiveAppointment";
-import WarrantyClaims from "./WarrantyClaims";
 import Estimates from "./Estimates";
 import InventoryMove from "./InventoryMove";
 const drawerWidth = 264;
@@ -155,10 +153,8 @@ export default function SCTechnicianDashboard() {
 
   // 📋 Sidebar menu - ĐÃ THAY THẾ TAB WARRANTY-CLAIMS BẰNG RECEIVE-APPOINTMENT
   const menuItems = [
-    { label: "Chẩn đoán", icon: <Build />, path: "/tech/diagnostics", key: "diagnostics" },
-    { label: "Kho phụ tùng", icon: <Inventory />, path: "/tech/inventory", key: "inventory" },
+    { label: "Đánh giá sau sửa chữa", icon: <Build />, path: "/tech/diagnostics", key: "diagnostics" },
     { label: "Quản lý Lịch Hẹn", icon: <CalendarToday />, path: "/tech/receive-appointment", key: "receive-appointment" },
-    { label: "Yêu cầu bảo hành", icon: <Assignment />, path: "/tech/warranty-claims", key: "warranty-claims" },
     { label: "Báo giá", icon: <Receipt />, path: "/tech/estimates", key: "estimates" },
     { label: "Di chuyển kho", icon: <Inventory />, path: "/tech/inventory-movement", key: "inventory-movement" },
   ];
@@ -185,70 +181,97 @@ export default function SCTechnicianDashboard() {
       {/* Avatar + User Info at bottom */}
       <Box>
         <Divider sx={{ my: 1.5 }} />
-        <Box
-          sx={{
-            p: 2,
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "flex-start",
-            cursor: "pointer",
-            borderRadius: 2,
-            "&:hover": {
-              backgroundColor: (theme) => alpha(theme.palette.primary.main, 0.08),
-            },
-            transition: "all 0.2s ease",
-          }}
-          onClick={(e) => setAnchorEl(e.currentTarget)}
-        >
-          <Avatar
+        <Box sx={{ p: 2 }}>
+          {/* User Info */}
+          <Box
             sx={{
-              bgcolor: "primary.main",
-              color: "white",
-              fontWeight: 600,
-              width: 42,
-              height: 42,
-              mr: 1.5,
-              flexShrink: 0,
+              display: "flex",
+              alignItems: "center",
+              mb: 2,
+              p: 1.5,
+              borderRadius: 2,
+              border: (theme) => `1px solid ${alpha(theme.palette.divider, 0.5)}`,
+              backgroundColor: (theme) => alpha(theme.palette.primary.main, 0.03),
             }}
           >
-            {user?.fullName?.charAt(0).toUpperCase() || "K"}
-          </Avatar>
-
-          <Box sx={{ overflow: "hidden" }}>
-            <Typography
-              variant="subtitle2"
-              noWrap
-              sx={{ fontWeight: 600, lineHeight: 1.2 }}
+            <Avatar
+              sx={{
+                bgcolor: "primary.main",
+                color: "white",
+                fontWeight: 600,
+                width: 42,
+                height: 42,
+                mr: 1.5,
+                flexShrink: 0,
+              }}
             >
-              {user?.fullName || "Kỹ thuật viên"}
-            </Typography>
-            <Typography variant="caption" color="text.secondary" noWrap>
-              {user?.role === "SC_TECHNICIAN" ? "Kỹ thuật viên" : user?.role || "Vai trò"}
-            </Typography>
-          </Box>
-        </Box>
+              {user?.fullName?.charAt(0).toUpperCase() || "K"}
+            </Avatar>
 
-        {/* User Menu */}
-        <Menu
-          anchorEl={anchorEl}
-          open={Boolean(anchorEl)}
-          onClose={() => setAnchorEl(null)}
-          PaperProps={{
-            sx: {
-              mt: 1,
-              borderRadius: 2,
-              minWidth: 180,
-              boxShadow: "0 6px 20px rgba(0,0,0,0.15)",
-            },
-          }}
-        >
-          <MenuItem onClick={handleProfile}>Hồ sơ</MenuItem>
-          <MenuItem onClick={handleHome}>Về trang chủ</MenuItem>
-          <Divider />
-          <MenuItem onClick={handleLogoutMenu} sx={{ color: "error.main" }}>
-            Đăng xuất
-          </MenuItem>
-        </Menu>
+            <Box sx={{ overflow: "hidden" }}>
+              <Typography
+                variant="subtitle2"
+                noWrap
+                sx={{ fontWeight: 600, lineHeight: 1.2 }}
+              >
+                {user?.fullName || "Kỹ thuật viên"}
+              </Typography>
+              <Typography variant="caption" color="text.secondary" noWrap>
+                {user?.role === "SC_TECHNICIAN" ? "Kỹ thuật viên" : user?.role || "Vai trò"}
+              </Typography>
+            </Box>
+          </Box>
+
+          {/* Action Buttons */}
+          <Stack spacing={1}>
+            <ListItemButton
+              onClick={handleHome}
+              sx={{
+                borderRadius: 2,
+                py: 1,
+                border: (theme) => `1px solid ${alpha(theme.palette.primary.main, 0.3)}`,
+                backgroundColor: (theme) => alpha(theme.palette.primary.main, 0.05),
+                "&:hover": {
+                  backgroundColor: (theme) => alpha(theme.palette.primary.main, 0.12),
+                  borderColor: (theme) => theme.palette.primary.main,
+                },
+              }}
+            >
+              <ListItemText
+                primary="Về trang chủ"
+                primaryTypographyProps={{
+                  fontWeight: 500,
+                  color: "primary.main"
+                }}
+              />
+            </ListItemButton>
+
+            <ListItemButton
+              onClick={handleLogout}
+              sx={{
+                borderRadius: 2,
+                py: 1,
+                border: (theme) => `1px solid ${alpha(theme.palette.error.main, 0.3)}`,
+                backgroundColor: (theme) => alpha(theme.palette.error.main, 0.05),
+                color: "error.main",
+                "&:hover": {
+                  backgroundColor: (theme) => alpha(theme.palette.error.main, 0.12),
+                  borderColor: (theme) => theme.palette.error.main,
+                },
+              }}
+            >
+              <ListItemIcon sx={{ minWidth: 40, color: "error.main" }}>
+                <Logout />
+              </ListItemIcon>
+              <ListItemText
+                primary="Đăng xuất"
+                primaryTypographyProps={{
+                  fontWeight: 500
+                }}
+              />
+            </ListItemButton>
+          </Stack>
+        </Box>
       </Box>
     </Box>
   );
@@ -284,14 +307,14 @@ export default function SCTechnicianDashboard() {
                 </IconButton>
               )}
               <Avatar sx={{ bgcolor: "#0ea5e9" }}>
-                <DirectionsCarIcon />
+                <TwoWheelerIcon />
               </Avatar>
               <Box>
                 <Typography variant="h6" fontWeight={800} letterSpacing={0.3}>
-                   EVM Warranty Management System
+                  Hệ thống quản lý bảo hành xe máy điện
                 </Typography>
                 <Typography variant="caption" sx={{ opacity: 0.9 }}>
-                  Technician Dashboard
+                  Kỹ thuật viên trung tâm dịch vụ
                 </Typography>
               </Box>
             </Stack>
@@ -300,14 +323,6 @@ export default function SCTechnicianDashboard() {
               <Tooltip title={`Chế độ ${mode === "light" ? "tối" : "sáng"}`}>
                 <IconButton color="inherit" onClick={toggleTheme}>
                   {mode === "light" ? <Brightness4Icon /> : <Brightness7Icon />}
-                </IconButton>
-              </Tooltip>
-
-              <Tooltip title="Thông báo">
-                <IconButton color="inherit">
-                  <Badge color="error" variant="dot">
-                    <NotificationsIcon />
-                  </Badge>
                 </IconButton>
               </Tooltip>
             </Stack>
@@ -368,9 +383,7 @@ export default function SCTechnicianDashboard() {
         >
           <Routes>
             <Route path="diagnostics" element={<Diagnostics />} />
-            <Route path="inventory" element={<InventoryParts />} />
             <Route path="receive-appointment" element={<ReceiveAppointment />} />
-            <Route path="warranty-claims" element={<WarrantyClaims />} />
             <Route path="estimates" element={<Estimates />} />
             <Route path="inventory-movement" element={<InventoryMove />} />
             <Route index element={<Navigate to="diagnostics" replace />} />

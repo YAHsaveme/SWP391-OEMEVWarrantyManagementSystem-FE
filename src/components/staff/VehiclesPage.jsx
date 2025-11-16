@@ -260,7 +260,7 @@ export default function VehiclesPage() {
         }
         try {
             setCheckingRecall(true);
-            
+
             // Log vehicle data để debug
             console.log("🔍 Check Recall by VIN - Vehicle data:", {
                 vin: vehicle.vin,
@@ -269,16 +269,16 @@ export default function VehiclesPage() {
                 productionDateRaw: vehicle.productionDate,
                 productionDateParsed: vehicle.productionDate ? new Date(vehicle.productionDate) : null
             });
-            
+
             const res = await eventService.checkRecallByVin(vehicle.vin);
             console.log("📋 Raw recall check response:", res);
-            
+
             const data = Array.isArray(res) ? res : (res?.data || res);
-            
+
             console.log("📋 Recall check result (processed):", data);
             console.log("📋 Has recall:", data?.hasRecall);
             console.log("📋 Events:", data?.events);
-            
+
             if (!data || (Array.isArray(data) && data.length === 0)) {
                 setSnack({ open: true, message: `VIN ${vehicle.vin}: Không thuộc chiến dịch recall nào.`, severity: "success" });
             } else {
@@ -359,7 +359,7 @@ export default function VehiclesPage() {
             >
                 {/* 🔍 Search */}
                 <TextField
-                    placeholder="Search by VIN, model, model code, contact name or phone..."
+                    placeholder="Tìm kiếm bằng VIN, mẫu xe, mẫu mã xe, tên liên hệ hoặc SĐT..."
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
                     size="small"
@@ -386,8 +386,8 @@ export default function VehiclesPage() {
                         onChange={(e) => setSortOrder(e.target.value)}
                         sx={{ minWidth: 150, "& .MuiInputBase-root": { borderRadius: 2 } }}
                     >
-                        <MenuItem value="newest">Newest first</MenuItem>
-                        <MenuItem value="oldest">Oldest first</MenuItem>
+                        <MenuItem value="newest">Mới nhất</MenuItem>
+                        <MenuItem value="oldest">Cũ nhất</MenuItem>
                     </TextField>
 
                     <Button
@@ -396,7 +396,7 @@ export default function VehiclesPage() {
                         onClick={() => setCreateOpen(true)}
                         sx={{ borderRadius: 2, px: 2.5, whiteSpace: "nowrap", fontWeight: 600 }}
                     >
-                        Register Vehicle
+                        Đăng ký VIN
                     </Button>
                 </Stack>
             </Stack>
@@ -427,7 +427,7 @@ export default function VehiclesPage() {
                                 <HeadCell>Số điện thoại</HeadCell>
                                 <HeadCell>Trạng thái bảo hành</HeadCell>
                                 <HeadCell>Ngày tạo</HeadCell>
-                                <HeadCell align="right">Actions</HeadCell>
+                                <HeadCell align="right">Hành động</HeadCell>
                             </TableRow>
                         </TableHead>
                         <TableBody>
@@ -466,7 +466,7 @@ export default function VehiclesPage() {
                                                 const status = v.warrantyStatus || v.status || v.warranty?.status || null;
                                                 const statusUpper = status ? String(status).toUpperCase() : "";
                                                 const isActivated = statusUpper === "ACTIVE" || statusUpper === "ACTIVATED" || statusUpper === "ACTIVE_WARRANTY";
-                                                
+
                                                 // Chỉ hiển thị nút kích hoạt nếu chưa được kích hoạt
                                                 if (!isActivated) {
                                                     return (
@@ -565,7 +565,7 @@ export default function VehiclesPage() {
                     {Array.isArray(recallDialog.data) ? (
                         recallDialog.data.map((ev, idx) => (
                             <Box key={idx} sx={{ mb: 1.5 }}>
-                                <Typography variant="subtitle2" fontWeight={700}>{ev.title || ev.name || ev.code || `Event #${idx+1}`}</Typography>
+                                <Typography variant="subtitle2" fontWeight={700}>{ev.title || ev.name || ev.code || `Event #${idx + 1}`}</Typography>
                                 <Typography variant="body2" color="text.secondary">
                                     {ev.description || ev.desc || "Thuộc chiến dịch recall."}
                                 </Typography>

@@ -20,17 +20,17 @@ import {
   Stack,
   useMediaQuery,
   CssBaseline,
-  Menu,
-  MenuItem,
+  Button,
 } from "@mui/material";
 import { createTheme, ThemeProvider, alpha, styled } from "@mui/material/styles";
 
-import DirectionsCarIcon from "@mui/icons-material/DirectionsCar";
+import TwoWheelerIcon from "@mui/icons-material/TwoWheeler";
 import BuildIcon from "@mui/icons-material/Build";
-import NotificationsIcon from "@mui/icons-material/Notifications";
 import PeopleAltIcon from "@mui/icons-material/PeopleAlt";
 import Brightness4Icon from "@mui/icons-material/Brightness4";
 import Brightness7Icon from "@mui/icons-material/Brightness7";
+import HomeIcon from "@mui/icons-material/Home";
+import LogoutIcon from "@mui/icons-material/Logout";
 
 import UserManagement from "./UserManagement";
 import TechnicianManagement from "./TechnicianManagement";
@@ -52,7 +52,6 @@ export default function Dashboard() {
   const [mode, setMode] = useState(prefersDark ? "dark" : "light");
   const [activeTab, setActiveTab] = useState("users");
   const [search, setSearch] = useState("");
-  const [anchorEl, setAnchorEl] = useState(null);
   const [user, setUser] = useState(null);
 
   useEffect(() => {
@@ -78,18 +77,11 @@ export default function Dashboard() {
     fetchUser();
   }, []);
 
-  const handleProfile = () => {
-    setAnchorEl(null);
-    window.location.href = "/profile";
-  };
-
   const handleHome = () => {
-    setAnchorEl(null);
     window.location.href = "/";
   };
 
   const handleLogout = () => {
-    setAnchorEl(null);
     localStorage.removeItem("token");
     localStorage.removeItem("user");
     window.location.href = "/login";
@@ -148,14 +140,14 @@ export default function Dashboard() {
           <Toolbar sx={{ display: "flex", justifyContent: "space-between", px: 2 }}>
             <Stack direction="row" spacing={1.5} alignItems="center">
               <Avatar sx={{ bgcolor: "#0ea5e9" }}>
-                <DirectionsCarIcon />
+                <TwoWheelerIcon />
               </Avatar>
               <Box>
                 <Typography variant="h6" fontWeight={800} letterSpacing={0.3}>
-                 EVM Warranty Management System
+                  Hệ thống quản lý bảo hành xe máy điện
                 </Typography>
                 <Typography variant="caption" sx={{ opacity: 0.9 }}>
-                  Admin Dashboard
+                  Trang quản trị hệ thống
                 </Typography>
               </Box>
             </Stack>
@@ -164,14 +156,6 @@ export default function Dashboard() {
               <Tooltip title="Chế độ sáng/tối">
                 <IconButton color="inherit" onClick={() => setMode((m) => (m === "light" ? "dark" : "light"))}>
                   {mode === "light" ? <Brightness4Icon /> : <Brightness7Icon />}
-                </IconButton>
-              </Tooltip>
-
-              <Tooltip title="Thông báo">
-                <IconButton color="inherit">
-                  <Badge color="error" variant="dot">
-                    <NotificationsIcon />
-                  </Badge>
                 </IconButton>
               </Tooltip>
             </Stack>
@@ -227,14 +211,8 @@ export default function Dashboard() {
                 display: "flex",
                 alignItems: "center",
                 justifyContent: "flex-start",
-                cursor: "pointer",
                 borderRadius: 2,
-                "&:hover": {
-                  backgroundColor: (theme) => alpha(theme.palette.primary.main, 0.08),
-                },
-                transition: "all 0.2s ease",
               }}
-              onClick={(e) => setAnchorEl(e.currentTarget)}
             >
               <Avatar
                 sx={{
@@ -268,27 +246,38 @@ export default function Dashboard() {
               </Box>
             </Box>
 
-            {/* Menu bật ra khi click avatar */}
-            <Menu
-              anchorEl={anchorEl}
-              open={Boolean(anchorEl)}
-              onClose={() => setAnchorEl(null)}
-              PaperProps={{
-                sx: {
-                  mt: 1,
+            {/* Action Buttons */}
+            <Stack spacing={1} sx={{ px: 1, pb: 1 }}>
+              <Button
+                fullWidth
+                variant="outlined"
+                startIcon={<HomeIcon />}
+                onClick={handleHome}
+                sx={{
+                  justifyContent: "flex-start",
                   borderRadius: 2,
-                  minWidth: 180,
-                  boxShadow: "0 6px 20px rgba(0,0,0,0.15)",
-                },
-              }}
-            >
-              <MenuItem onClick={handleProfile}>Hồ sơ</MenuItem>
-              <MenuItem onClick={handleHome}>Về trang chủ</MenuItem>
-              <Divider />
-              <MenuItem onClick={handleLogout} sx={{ color: "error.main" }}>
+                  textTransform: "none",
+                  py: 1,
+                }}
+              >
+                Về trang chủ
+              </Button>
+              <Button
+                fullWidth
+                variant="outlined"
+                color="error"
+                startIcon={<LogoutIcon />}
+                onClick={handleLogout}
+                sx={{
+                  justifyContent: "flex-start",
+                  borderRadius: 2,
+                  textTransform: "none",
+                  py: 1,
+                }}
+              >
                 Đăng xuất
-              </MenuItem>
-            </Menu>
+              </Button>
+            </Stack>
           </Box>
         </Drawer>
 

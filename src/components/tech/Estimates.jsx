@@ -170,7 +170,7 @@ export default function Estimates() {
             setLoading(true);
             const detail = await claimService.getById(claim.id);
             let enrichedClaim = detail || claim;
-            
+
             // Enrich with customer name if VIN exists
             if (enrichedClaim.vin) {
                 try {
@@ -193,7 +193,7 @@ export default function Estimates() {
             } else {
                 enrichedClaim.intakeContactName = claim?.intakeContactName || "Không rõ";
             }
-            
+
             setActiveClaim(enrichedClaim);
             setEstimatesOpen(true);
         } catch (err) {
@@ -243,7 +243,7 @@ export default function Estimates() {
                         Quản lý Báo giá (Estimates)
                     </Typography>
                     <Typography variant="body2" color="text.secondary">
-                        Tạo, xem, và quản lý nhiều version báo giá cho mỗi claim. (Không hiển thị ID trên giao diện)
+                        Tạo, xem, và quản lý nhiều version báo giá cho mỗi claim.
                     </Typography>
                 </Box>
             </Stack>
@@ -485,11 +485,11 @@ function EstimatesDialog({ open, onClose, claim, parts, partsLoading, setSnack }
         if (!recallEvents || recallEvents.length === 0) return { ids: [], names: [] };
         const allAffectedPartIds = [];
         const allAffectedPartNames = [];
-        
+
         recallEvents.forEach(event => {
             // Try to get affectedParts from multiple possible fields
             let partIds = [];
-            
+
             // Try affectedParts (array)
             if (event.affectedParts && Array.isArray(event.affectedParts)) {
                 partIds = event.affectedParts;
@@ -497,8 +497,8 @@ function EstimatesDialog({ open, onClose, claim, parts, partsLoading, setSnack }
             // Try affectedPartsJson (JSON string)
             else if (event.affectedPartsJson) {
                 try {
-                    const parsed = typeof event.affectedPartsJson === 'string' 
-                        ? JSON.parse(event.affectedPartsJson) 
+                    const parsed = typeof event.affectedPartsJson === 'string'
+                        ? JSON.parse(event.affectedPartsJson)
                         : event.affectedPartsJson;
                     if (Array.isArray(parsed)) {
                         partIds = parsed;
@@ -511,13 +511,13 @@ function EstimatesDialog({ open, onClose, claim, parts, partsLoading, setSnack }
             else if (event.affected_parts && Array.isArray(event.affected_parts)) {
                 partIds = event.affected_parts;
             }
-            
+
             if (partIds.length > 0) {
                 partIds.forEach(partId => {
                     const partIdStr = String(partId).trim();
                     // Kiểm tra xem có phải là UUID (ID) không
                     const isUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(partIdStr);
-                    
+
                     if (isUUID) {
                         // Lưu ID
                         allAffectedPartIds.push(partIdStr);
@@ -534,11 +534,11 @@ function EstimatesDialog({ open, onClose, claim, parts, partsLoading, setSnack }
                 });
             }
         });
-        
+
         // Remove duplicates
         const uniqueIds = [...new Set(allAffectedPartIds)];
         const uniqueNames = [...new Set(allAffectedPartNames)];
-        
+
         return { ids: uniqueIds, names: uniqueNames };
     }, [recallEvents, parts]);
 
@@ -553,15 +553,15 @@ function EstimatesDialog({ open, onClose, claim, parts, partsLoading, setSnack }
             const partId = String(part.id);
             const partNameLower = (part.partName || "").toLowerCase();
             const partNoLower = (part.partNo || "").toLowerCase();
-            
+
             // Kiểm tra theo ID trước (chính xác nhất)
             if (affectedPartsFromRecall.ids.includes(partId)) {
                 return true;
             }
-            
+
             // Kiểm tra theo tên (fallback)
-            return affectedPartsFromRecall.names.some(affectedName => 
-                partNameLower.includes(affectedName) || 
+            return affectedPartsFromRecall.names.some(affectedName =>
+                partNameLower.includes(affectedName) ||
                 affectedName.includes(partNameLower) ||
                 partNoLower.includes(affectedName) ||
                 affectedName.includes(partNoLower)
@@ -603,8 +603,8 @@ function EstimatesDialog({ open, onClose, claim, parts, partsLoading, setSnack }
                 // Check if event has affectedPartsJson (JSON string)
                 if (event.affectedPartsJson) {
                     try {
-                        const parsed = typeof event.affectedPartsJson === 'string' 
-                            ? JSON.parse(event.affectedPartsJson) 
+                        const parsed = typeof event.affectedPartsJson === 'string'
+                            ? JSON.parse(event.affectedPartsJson)
                             : event.affectedPartsJson;
                         if (Array.isArray(parsed) && parsed.length > 0) {
                             return true;
@@ -619,27 +619,27 @@ function EstimatesDialog({ open, onClose, claim, parts, partsLoading, setSnack }
                 }
                 return false;
             });
-            
+
             if (!hasValidAffectedParts) {
-                setSnack?.({ 
-                    open: true, 
-                    message: "⚠️ Recall event không có affectedPartsJson hợp lệ. Vui lòng kiểm tra lại recall event.", 
-                    severity: "error" 
+                setSnack?.({
+                    open: true,
+                    message: "⚠️ Recall event không có affectedPartsJson hợp lệ. Vui lòng kiểm tra lại recall event.",
+                    severity: "error"
                 });
                 return false;
             }
-            
+
             // Check if affectedPartsFromRecall is empty
             if (affectedPartsFromRecall.ids.length === 0 && affectedPartsFromRecall.names.length === 0) {
-                setSnack?.({ 
-                    open: true, 
-                    message: "⚠️ Không tìm thấy phụ tùng được phép trong recall events.", 
-                    severity: "error" 
+                setSnack?.({
+                    open: true,
+                    message: "⚠️ Không tìm thấy phụ tùng được phép trong recall events.",
+                    severity: "error"
                 });
                 return false;
             }
         }
-        
+
         if (!form.items.length) {
             setSnack?.({ open: true, message: "Cần ít nhất 1 phụ tùng (item) trong estimate", severity: "warning" });
             return false;
@@ -671,7 +671,7 @@ function EstimatesDialog({ open, onClose, claim, parts, partsLoading, setSnack }
             console.error("Create estimate error:", err);
             const msg = err?.response?.data || err;
             let friendlyMessage = "Tạo estimate thất bại";
-            
+
             // Check for specific error messages
             if (typeof msg === "object" && msg.message) {
                 if (msg.message.includes("affectedPartsJson")) {
@@ -694,7 +694,7 @@ function EstimatesDialog({ open, onClose, claim, parts, partsLoading, setSnack }
                     friendlyMessage = msg;
                 }
             }
-            
+
             setSnack?.({ open: true, message: friendlyMessage, severity: "error" });
         } finally {
             setLoadingLocal(false);
@@ -957,9 +957,9 @@ function EstimatesDialog({ open, onClose, claim, parts, partsLoading, setSnack }
                                     Danh sách phụ tùng
                                 </Typography>
                                 {recallEvents.length > 0 && (
-                                    <Chip 
-                                        label="RECALL - Chỉ chọn phụ tùng trong events" 
-                                        color="warning" 
+                                    <Chip
+                                        label="RECALL - Chỉ chọn phụ tùng trong events"
+                                        color="warning"
                                         size="small"
                                         sx={{ ml: 1 }}
                                     />
@@ -968,8 +968,8 @@ function EstimatesDialog({ open, onClose, claim, parts, partsLoading, setSnack }
                             {recallEvents.length > 0 && (affectedPartsFromRecall.ids.length > 0 || affectedPartsFromRecall.names.length > 0) && (
                                 <Alert severity="info" sx={{ mb: 1 }}>
                                     <Typography variant="caption">
-                                        Phụ tùng được phép chọn: {affectedPartsFromRecall.names.length > 0 
-                                            ? affectedPartsFromRecall.names.join(", ") 
+                                        Phụ tùng được phép chọn: {affectedPartsFromRecall.names.length > 0
+                                            ? affectedPartsFromRecall.names.join(", ")
                                             : affectedPartsFromRecall.ids.join(", ")}
                                     </Typography>
                                 </Alert>
@@ -989,9 +989,9 @@ function EstimatesDialog({ open, onClose, claim, parts, partsLoading, setSnack }
                                                     updateItem(idx, { partId: selected.id, partName: selected.partName, unitPriceVND: selected.unitPriceVND ?? 0 });
                                                 }}
                                                 renderInput={(params) => (
-                                                    <TextField 
-                                                        {...params} 
-                                                        label="Phụ tùng" 
+                                                    <TextField
+                                                        {...params}
+                                                        label="Phụ tùng"
                                                         helperText={recallEvents.length > 0 ? "Chỉ chọn phụ tùng trong recall events" : ""}
                                                     />
                                                 )}
@@ -1001,11 +1001,11 @@ function EstimatesDialog({ open, onClose, claim, parts, partsLoading, setSnack }
                                         </Grid>
 
                                         <Grid item xs={3} md={2}>
-                                            <TextField 
-                                                size="small" 
-                                                label="Số lượng" 
-                                                type="number" 
-                                                value={it.quantity} 
+                                            <TextField
+                                                size="small"
+                                                label="Số lượng"
+                                                type="number"
+                                                value={it.quantity}
                                                 inputProps={{ min: 0 }}
                                                 onChange={(e) => {
                                                     const val = Number(e.target.value || 0);
@@ -1034,12 +1034,12 @@ function EstimatesDialog({ open, onClose, claim, parts, partsLoading, setSnack }
                             <Typography variant="subtitle2" color="primary" gutterBottom>Chi phí nhân công & Ghi chú</Typography>
                             <Grid container spacing={1}>
                                 <Grid item xs={6}>
-                                    <TextField 
-                                        label="Số giờ công" 
-                                        size="small" 
-                                        type="number" 
-                                        fullWidth 
-                                        value={form.laborSlots} 
+                                    <TextField
+                                        label="Số giờ công"
+                                        size="small"
+                                        type="number"
+                                        fullWidth
+                                        value={form.laborSlots}
                                         inputProps={{ min: 0 }}
                                         onChange={(e) => {
                                             const val = Number(e.target.value || 0);

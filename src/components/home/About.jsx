@@ -9,7 +9,7 @@ export default function About() {
   const actors = [
     {
       icon: Users,
-      title: "SC Staff",
+      title: "Nhân viên Trung tâm dịch vụ",
       desc: "Tiếp nhận và quản lý hồ sơ bảo hành từ khách hàng, đảm bảo thông tin chính xác và đầy đủ.",
       gradient: "from-blue-500 to-cyan-500",
       bgGradient: "from-blue-50 to-cyan-50",
@@ -18,7 +18,7 @@ export default function About() {
     },
     {
       icon: Wrench,
-      title: "SC Technician", 
+      title: "Kỹ thuật viên Trung tâm dịch vụ",
       desc: "Thực hiện kiểm tra, sửa chữa và bảo trì theo yêu cầu bảo hành, cập nhật tiến trình xử lý.",
       gradient: "from-emerald-500 to-teal-500",
       bgGradient: "from-emerald-50 to-teal-50",
@@ -27,7 +27,7 @@ export default function About() {
     },
     {
       icon: Briefcase,
-      title: "EVM Staff",
+      title: "Nhân viên Hãng sản xuất",
       desc: "Quản lý dữ liệu bảo hành tập trung, phân tích và phối hợp cùng các trung tâm dịch vụ.",
       gradient: "from-purple-500 to-violet-500",
       bgGradient: "from-purple-50 to-violet-50",
@@ -36,7 +36,7 @@ export default function About() {
     },
     {
       icon: Shield,
-      title: "Admin",
+      title: "Người quản trị hệ thống",
       desc: "Quản trị hệ thống, phân quyền người dùng, giám sát hoạt động và đảm bảo an toàn dữ liệu.",
       gradient: "from-orange-500 to-red-500",
       bgGradient: "from-orange-50 to-red-50",
@@ -71,8 +71,8 @@ export default function About() {
   }, []);
 
   return (
-    <section 
-      id="about" 
+    <section
+      id="about"
       ref={sectionRef}
       className="py-20 bg-gradient-to-br from-slate-50 via-white to-blue-50 relative overflow-hidden"
     >
@@ -95,16 +95,16 @@ export default function About() {
               Tìm hiểu về hệ thống
             </span>
           </div>
-          
+
           <h2 className="text-4xl md:text-5xl lg:text-6xl font-bold mb-8">
             <span className="bg-gradient-to-r from-slate-800 via-blue-600 to-purple-600 bg-clip-text text-transparent">
               Giới thiệu hệ thống
             </span>
           </h2>
-          
+
           <div className="max-w-4xl mx-auto">
             <p className="text-xl md:text-2xl text-slate-600 font-light leading-relaxed mb-6">
-              EVM Warranty Management System là{" "}
+              Hệ thống quản lý bảo hành xe máy điện là{" "}
               <span className="font-semibold text-blue-600">nền tảng nội bộ hỗ trợ toàn diện</span>{" "}
               cho việc quản lý bảo hành xe máy điện từ hãng.
             </p>
@@ -120,15 +120,14 @@ export default function About() {
             const IconComponent = actor.icon;
             const isVisible = visibleCards.includes(index);
             const isHovered = hoveredCard === index;
-            
+
             return (
               <div
                 key={index}
-                className={`group relative transform transition-all duration-700 ${
-                  isVisible 
-                    ? 'translate-y-0 opacity-100' 
-                    : 'translate-y-12 opacity-0'
-                }`}
+                className={`group relative transform transition-all duration-700 ${isVisible
+                  ? 'translate-y-0 opacity-100'
+                  : 'translate-y-12 opacity-0'
+                  }`}
                 style={{ transitionDelay: `${index * 100}ms` }}
                 onMouseEnter={() => setHoveredCard(index)}
                 onMouseLeave={() => setHoveredCard(null)}
@@ -137,14 +136,14 @@ export default function About() {
                 <div className={`relative h-full bg-white backdrop-blur-sm rounded-3xl p-8 shadow-xl ${actor.shadowColor} ${actor.hoverShadow} hover:shadow-2xl transform hover:-translate-y-2 transition-all duration-500 border border-white/50`}>
                   {/* Background gradient overlay */}
                   <div className={`absolute inset-0 bg-gradient-to-br ${actor.bgGradient} rounded-3xl opacity-0 group-hover:opacity-100 transition-opacity duration-500`}></div>
-                  
+
                   {/* Icon container */}
                   <div className="relative z-10 mb-6">
                     <div className={`w-16 h-16 mx-auto bg-gradient-to-br ${actor.gradient} rounded-2xl flex items-center justify-center shadow-lg group-hover:scale-110 transition-transform duration-500`}>
                       <IconComponent className="w-8 h-8 text-white" />
                     </div>
                   </div>
-                  
+
                   {/* Content */}
                   <div className="relative z-10 text-center">
                     <h3 className={`text-xl font-bold mb-4 bg-gradient-to-r ${actor.gradient} bg-clip-text text-transparent`}>

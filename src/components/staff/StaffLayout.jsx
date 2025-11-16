@@ -7,7 +7,7 @@ import {
     Paper, Container, Tabs, Tab, Badge, Tooltip, useMediaQuery
 } from "@mui/material";
 import useScrollTrigger from "@mui/material/useScrollTrigger";
-import DirectionsCarIcon from "@mui/icons-material/DirectionsCar";
+import TwoWheelerIcon from "@mui/icons-material/TwoWheeler";
 import AssignmentIcon from "@mui/icons-material/Assignment";
 import Inventory2Icon from "@mui/icons-material/Inventory2";
 import LocalShippingIcon from "@mui/icons-material/LocalShipping";
@@ -15,11 +15,9 @@ import GroupsIcon from "@mui/icons-material/Groups";
 import StoreMallDirectoryIcon from "@mui/icons-material/StoreMallDirectory";
 import EventIcon from "@mui/icons-material/Event";
 import DescriptionIcon from "@mui/icons-material/Description";
-import NotificationsIcon from "@mui/icons-material/Notifications";
+import AddIcon from "@mui/icons-material/AddCircle";
 import Brightness4Icon from "@mui/icons-material/Brightness4";
 import Brightness7Icon from "@mui/icons-material/Brightness7";
-import AddIcon from "@mui/icons-material/AddCircle";
-import MoreVertIcon from "@mui/icons-material/MoreVert";
 import authService from "../../services/authService";
 
 /* ===== Helper: nâng AppBar khi cuộn ===== */
@@ -39,14 +37,14 @@ function ElevationScroll({ children }) {
 }
 
 const NAV_ITEMS = [
-    { label: "Vehicles", path: "/staff/vehicles", icon: <DirectionsCarIcon /> },
-    { label: "Claims", path: "/staff/claims", icon: <AssignmentIcon /> },
-    { label: "Claim Report", path: "/staff/claim-report", icon: <DescriptionIcon /> },
-    { label: "Dispatch", path: "/staff/dispatch", icon: <LocalShippingIcon /> },
-    { label: "Inventory", path: "/staff/inventory", icon: <Inventory2Icon /> },
-    { label: "Technicians", path: "/staff/technicians", icon: <GroupsIcon /> },
-    { label: "Service Centers", path: "/staff/centers", icon: <StoreMallDirectoryIcon /> },
-    { label: "Appointments", path: "/staff/appointments", icon: <EventIcon /> },
+    { label: "Xe máy điện", path: "/staff/vehicles", icon: <TwoWheelerIcon /> },
+    { label: "Yêu cầu bảo hành", path: "/staff/claims", icon: <AssignmentIcon /> },
+    { label: "Báo cáo yêu cầu", path: "/staff/claim-report", icon: <DescriptionIcon /> },
+    { label: "Điều phối", path: "/staff/dispatch", icon: <LocalShippingIcon /> },
+    { label: "Kho linh kiện", path: "/staff/inventory", icon: <Inventory2Icon /> },
+    { label: "Kỹ thuật viên", path: "/staff/technicians", icon: <GroupsIcon /> },
+    { label: "Trung tâm dịch vụ", path: "/staff/centers", icon: <StoreMallDirectoryIcon /> },
+    { label: "Lịch hẹn", path: "/staff/appointments", icon: <EventIcon /> },
 ];
 
 export default function StaffLayout() {
@@ -56,8 +54,6 @@ export default function StaffLayout() {
     const [mode, setMode] = React.useState(
         (typeof window !== "undefined" && localStorage.getItem("ui-mode")) || (prefersDark ? "dark" : "light")
     );
-    const [anchorUser, setAnchorUser] = React.useState(null);
-    const [anchorMore, setAnchorMore] = React.useState(null);
     const [user, setUser] = React.useState({
         fullName: "SC Staff",
         role: "Service Center",
@@ -143,26 +139,19 @@ export default function StaffLayout() {
                         <Toolbar sx={{ display: "flex", justifyContent: "space-between", gap: 2 }}>
                             <Box sx={{ display: "flex", alignItems: "center", gap: 1.5 }}>
                                 <Avatar sx={{ bgcolor: "primary.main" }}>
-                                    <DirectionsCarIcon sx={{ color: "white" }} />
+                                    <TwoWheelerIcon sx={{ color: "white" }} />
                                 </Avatar>
                                 <Box>
                                     <Typography variant="h6" fontWeight={900} letterSpacing={0.3}>
-                                        EVM Warranty Management System
+                                        Hệ thống quản lý bảo hành xe máy điện
                                     </Typography>
                                     <Typography variant="caption" color="text.secondary">
-                                        Staff Portal
+                                        Nhân viên trung tâm dịch vụ
                                     </Typography>
                                 </Box>
                             </Box>
 
                             <Box sx={{ display: "flex", alignItems: "center", gap: 0.5 }}>
-                                <Tooltip title="Thông báo">
-                                    <IconButton>
-                                        <Badge color="secondary" variant="dot" overlap="circular">
-                                            <NotificationsIcon />
-                                        </Badge>
-                                    </IconButton>
-                                </Tooltip>
                                 <Tooltip title="Chuyển giao diện">
                                     <IconButton onClick={() => setMode((m) => (m === "light" ? "dark" : "light"))}>
                                         {mode === "light" ? <Brightness4Icon /> : <Brightness7Icon />}
@@ -173,65 +162,70 @@ export default function StaffLayout() {
                                         <AddIcon />
                                     </IconButton>
                                 </Tooltip>
-                                <IconButton onClick={(e) => setAnchorMore(e.currentTarget)}>
-                                    <MoreVertIcon />
-                                </IconButton>
-                                <Menu anchorEl={anchorMore} open={Boolean(anchorMore)} onClose={() => setAnchorMore(null)}>
-                                    <MenuItem onClick={() => setAnchorMore(null)}>Nhập dữ liệu CSV</MenuItem>
-                                    <MenuItem onClick={() => setAnchorMore(null)}>Xuất báo cáo PDF</MenuItem>
-                                </Menu>
 
-                                {/* Avatar người dùng (có dropdown) */}
-                                <Avatar
+                                {/* Avatar người dùng (không có dropdown) */}
+                                <Box
                                     sx={{
-                                        bgcolor: "primary.main",
-                                        fontWeight: "bold",
-                                        cursor: "pointer",
-                                        width: 42,
-                                        height: 42,
-                                    }}
-                                    onClick={(e) => setAnchorUser(e.currentTarget)}
-                                >
-                                    {user.fullName ? user.fullName.charAt(0).toUpperCase() : "S"}
-                                </Avatar>
-
-                                <Menu
-                                    anchorEl={anchorUser}
-                                    open={Boolean(anchorUser)}
-                                    onClose={() => setAnchorUser(null)}
-                                    PaperProps={{
-                                        sx: {
-                                            mt: 1,
-                                            borderRadius: 2,
-                                            minWidth: 220,
-                                            boxShadow: "0 6px 20px rgba(0,0,0,0.15)",
-                                        },
+                                        display: "flex",
+                                        alignItems: "center",
+                                        gap: 1,
+                                        px: 2,
+                                        py: 0.5,
+                                        borderRadius: 2,
+                                        border: (t) => `1px solid ${alpha(t.palette.divider, 0.5)}`,
                                     }}
                                 >
-                                    <Box sx={{ px: 2, py: 1.5 }}>
-                                        <Typography variant="subtitle1" fontWeight={700} noWrap>
+                                    <Avatar
+                                        sx={{
+                                            bgcolor: "primary.main",
+                                            fontWeight: "bold",
+                                            width: 42,
+                                            height: 42,
+                                        }}
+                                    >
+                                        {user.fullName ? user.fullName.charAt(0).toUpperCase() : "S"}
+                                    </Avatar>
+                                    <Box sx={{ display: { xs: "none", sm: "block" } }}>
+                                        <Typography variant="subtitle2" fontWeight={700} noWrap>
                                             {user.fullName}
                                         </Typography>
-                                        <Typography variant="body2" color="text.secondary" noWrap>
+                                        <Typography variant="caption" color="text.secondary" noWrap>
                                             {user.role}
                                         </Typography>
                                     </Box>
-                                    <Divider />
-                                    <MenuItem onClick={() => (window.location.href = "/profile")}>
-                                        Hồ sơ cá nhân
-                                    </MenuItem>
-                                    <MenuItem onClick={() => (window.location.href = "/")}>Về trang chủ</MenuItem>
-                                    <Divider />
-                                    <MenuItem
-                                        onClick={() => {
-                                            authService.logout();
-                                            setAnchorUser(null);
+                                </Box>
+                                {/* Nút Về trang chủ */}
+                                <Tooltip title="Về trang chủ">
+                                    <IconButton
+                                        onClick={() => (window.location.href = "/")}
+                                        sx={{
+                                            border: (t) => `1px solid ${alpha(t.palette.divider, 0.5)}`,
+                                            borderRadius: 2,
+                                            px: 2
                                         }}
-                                        sx={{ color: "error.main" }}
                                     >
-                                        Đăng xuất
-                                    </MenuItem>
-                                </Menu>
+                                        <Typography variant="body2" fontWeight={600}>
+                                            Về trang chủ
+                                        </Typography>
+                                    </IconButton>
+                                </Tooltip>
+
+                                {/* Nút Đăng xuất */}
+                                <Tooltip title="Đăng xuất">
+                                    <IconButton
+                                        onClick={() => authService.logout()}
+                                        sx={{
+                                            border: (t) => `1px solid ${alpha(t.palette.divider, 0.5)}`,
+                                            borderRadius: 2,
+                                            color: "error.main",
+                                            px: 2
+                                        }}
+                                    >
+                                        <Typography variant="body2" fontWeight={600}>
+                                            Đăng xuất
+                                        </Typography>
+                                    </IconButton>
+                                </Tooltip>
                             </Box>
                         </Toolbar>
                     </AppBar>
@@ -301,7 +295,7 @@ export default function StaffLayout() {
                     </Box>
                 </Container>
             </Box>
-        </ThemeProvider>
+        </ThemeProvider >
     );
 }
 

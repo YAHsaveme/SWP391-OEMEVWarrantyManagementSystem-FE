@@ -41,6 +41,9 @@ const Header = () => {
       case "SC_TECHNICIAN":
         navigate("/tech");
         break;
+      case "SC_MANAGER":
+        navigate("/manager");
+        break;
       default:
         navigate("/");
     }
@@ -86,7 +89,7 @@ const Header = () => {
               </svg>
             </div>
             <span className="text-white font-bold text-lg hidden sm:block drop-shadow-lg">
-              Hệ thống Quản lý Bảo hành Xe máy điện
+              Hệ thống quản lý bảo hành xe máy điện
             </span>
           </div>
 

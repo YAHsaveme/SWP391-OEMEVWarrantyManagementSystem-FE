@@ -66,14 +66,14 @@ function normalizePart(row = {}, fallbackCenterName = "Trung tâm") {
     n.isShort = n.quantity < n.minQty;
     // Lấy giá từ nhiều nguồn có thể
     n.price = Number(
-        row.price ?? 
-        row.unitPrice ?? 
-        row.unitPriceVND ?? 
-        row.unit_price_vnd ?? 
-        row.part?.price ?? 
-        row.part?.unitPrice ?? 
-        row.part?.unitPriceVND ?? 
-        row.part?.unit_price_vnd ?? 
+        row.price ??
+        row.unitPrice ??
+        row.unitPriceVND ??
+        row.unit_price_vnd ??
+        row.part?.price ??
+        row.part?.unitPrice ??
+        row.part?.unitPriceVND ??
+        row.part?.unit_price_vnd ??
         0
     );
     return n;
@@ -100,7 +100,7 @@ export default function Inventory() {
 
     const [cart, setCart] = useState([]);
     const [sending, setSending] = useState(false);
-    
+
     // Kiểm tra role: chỉ SC_MANAGER mới được gửi ticket
     const [userRole, setUserRole] = useState(null);
     const canSendTicket = userRole === "SC_MANAGER";
@@ -119,7 +119,7 @@ export default function Inventory() {
                 const cid = me?.centerId || me?.centerid || null;
                 if (cid && !centerId) setCenterId(cid);
                 else if (!centerId) setMsg("Không tìm thấy trung tâm. Vui lòng đăng nhập lại.");
-                
+
                 // Lấy role từ user object hoặc localStorage
                 const role = me?.role?.name || me?.role || localStorage.getItem("role");
                 if (role) setUserRole(role);
@@ -183,20 +183,20 @@ export default function Inventory() {
             // Fetch thông tin part để lấy giá nếu chưa có
             const partIds = [...new Set(onlyMine.map(r => r.partId ?? r.part?.id ?? r.uuid ?? r.id).filter(Boolean))];
             const partPriceMap = {};
-            
+
             // Thử lấy giá từ response trước (nhiều nguồn có thể)
             onlyMine.forEach(r => {
                 const partId = r.partId ?? r.part?.id ?? r.uuid ?? r.id;
                 if (partId) {
                     // Thử nhiều nguồn giá khác nhau
-                    const price = 
-                        r.price ?? 
-                        r.unitPrice ?? 
-                        r.unitPriceVND ?? 
+                    const price =
+                        r.price ??
+                        r.unitPrice ??
+                        r.unitPriceVND ??
                         r.unit_price_vnd ??
-                        r.part?.price ?? 
-                        r.part?.unitPrice ?? 
-                        r.part?.unitPriceVND ?? 
+                        r.part?.price ??
+                        r.part?.unitPrice ??
+                        r.part?.unitPriceVND ??
                         r.part?.unit_price_vnd ??
                         r.part?.part?.price ??
                         r.part?.part?.unitPrice ??
@@ -208,14 +208,14 @@ export default function Inventory() {
                     }
                 }
             });
-            
+
             console.log("[Inventory] Price from response:", partPriceMap);
-            
+
             // Chỉ fetch từ part service nếu chưa có đủ giá từ response và user có quyền
             // SC_MANAGER có thể không có quyền gọi API parts, nên chỉ dùng giá từ response
             const currentRole = authService.getRole();
             const shouldFetchParts = partIds.length > 0 && Object.keys(partPriceMap).length < partIds.length;
-            
+
             if (shouldFetchParts && currentRole !== "SC_MANAGER") {
                 try {
                     // Thử nhiều endpoint khác nhau (chỉ cho EVM_STAFF hoặc role khác)
@@ -239,10 +239,10 @@ export default function Inventory() {
                             }
                         }
                     }
-                    
+
                     console.log("[Inventory] All parts from API:", allParts);
                     console.log("[Inventory] First part sample:", allParts[0]);
-                    
+
                     const partIdsStr = partIds.map(id => String(id));
                     allParts.forEach(part => {
                         // API trả về field 'id', không phải 'partId'
@@ -278,7 +278,7 @@ export default function Inventory() {
                     }
                 }
             }
-            
+
             console.log("[Inventory] Part price map:", partPriceMap);
             console.log("[Inventory] Part IDs:", partIds);
 
@@ -288,16 +288,16 @@ export default function Inventory() {
                 // Thử lấy giá từ nhiều key khác nhau (string và original ID)
                 const partIdStr = partId ? String(partId) : null;
                 const price = partId ? (
-                    partPriceMap[partIdStr] ?? 
-                    partPriceMap[partId] ?? 
-                    r.price ?? 
-                    r.unitPrice ?? 
-                    r.unitPriceVND ?? 
-                    r.unit_price_vnd ?? 
-                    r.part?.price ?? 
-                    r.part?.unitPrice ?? 
-                    r.part?.unitPriceVND ?? 
-                    r.part?.unit_price_vnd ?? 
+                    partPriceMap[partIdStr] ??
+                    partPriceMap[partId] ??
+                    r.price ??
+                    r.unitPrice ??
+                    r.unitPriceVND ??
+                    r.unit_price_vnd ??
+                    r.part?.price ??
+                    r.part?.unitPrice ??
+                    r.part?.unitPriceVND ??
+                    r.part?.unit_price_vnd ??
                     0
                 ) : 0;
                 const merged = overrideQty !== undefined ? { ...r, quantity: overrideQty, price: Number(price) || 0 } : { ...r, price: Number(price) || 0 };
@@ -353,7 +353,7 @@ export default function Inventory() {
                     s?.destination?.id;
                 return String(toId) === String(centerId);
             });
-            
+
             // Sort: IN_TRANSIT → DELIVERED/RECEIVED → CLOSED/COMPLETED, sau đó mới nhất trước
             const statusOrder = { "IN_TRANSIT": 1, "DELIVERED": 2, "RECEIVED": 2, "REQUESTED": 3, "CLOSED": 4, "COMPLETED": 4 };
             mine.sort((a, b) => {
@@ -365,7 +365,7 @@ export default function Inventory() {
                 const dateB = new Date(b?.createdAt || b?.created_at || 0).getTime();
                 return dateB - dateA;
             });
-            
+
             setShipRows(mine);
         } catch {
             setMsg("Tải shipments thất bại.");
@@ -489,11 +489,11 @@ export default function Inventory() {
                         : it
                 );
             }
-            return [...prev, { 
-                partId: p.partId, 
-                partNo: p.partNo, 
-                partName: p.partName, 
-                maxAllowed: cap, 
+            return [...prev, {
+                partId: p.partId,
+                partNo: p.partNo,
+                partName: p.partName,
+                maxAllowed: cap,
                 qty: suggest,
                 price: p.price || 0
             }];
@@ -579,43 +579,43 @@ export default function Inventory() {
                             </Stack>
 
                             <Typography variant="caption" color="text.secondary" sx={{ mb: 1.5, display: "block", ...noSelect }}>
-                                Inventory: Phụ tùng của Center — {centerName || "?"}
+                                Kho: Phụ tùng của Trung tâm — {centerName || "?"}
                             </Typography>
 
                             <Stack spacing={2}>
                                 {loading && <Typography sx={noSelect}>Đang tải...</Typography>}
                                 {!loading && filtered.map(p => (
-                                    <Paper 
-                                        key={p.partId} 
-                                        variant="outlined" 
-                                        sx={{ 
-                                            p: 2, 
-                                            borderRadius: 2, 
-                                            ...noSelect 
+                                    <Paper
+                                        key={p.partId}
+                                        variant="outlined"
+                                        sx={{
+                                            p: 2,
+                                            borderRadius: 2,
+                                            ...noSelect
                                         }}
                                     >
                                         <Stack spacing={1.5}>
                                             {/* Dòng 1: Tên phụ tùng, Quantity và Replenish */}
                                             <Stack direction="row" justifyContent="space-between" alignItems="center">
-                                                <Typography 
-                                                    sx={{ 
-                                                        fontWeight: 700, 
+                                                <Typography
+                                                    sx={{
+                                                        fontWeight: 700,
                                                         fontSize: "1rem",
                                                         color: "text.primary",
-                                                        ...noSelect 
+                                                        ...noSelect
                                                     }}
                                                 >
                                                     {p.partName}
                                                 </Typography>
                                                 <Stack direction="row" alignItems="center" spacing={1.5}>
-                                                    <Typography 
-                                                        sx={{ 
+                                                    <Typography
+                                                        sx={{
                                                             fontWeight: 600,
                                                             color: "text.primary",
-                                                            ...noSelect 
+                                                            ...noSelect
                                                         }}
                                                     >
-                                                        [Qty: {p.quantity}]
+                                                        [Số lượng: {p.quantity}]
                                                     </Typography>
                                                     {canSendTicket && (
                                                         <Button
@@ -647,53 +647,53 @@ export default function Inventory() {
 
                                             {/* Dòng 2: Min/Max và Status + Giá */}
                                             <Stack direction="row" justifyContent="space-between" alignItems="center">
-                                                <Typography 
-                                                    variant="body2" 
-                                                    sx={{ 
+                                                <Typography
+                                                    variant="body2"
+                                                    sx={{
                                                         color: "text.primary",
                                                         fontWeight: 500,
-                                                        ...noSelect 
+                                                        ...noSelect
                                                     }}
                                                 >
-                                                    Min: {p.minQty} • Max: {p.maxQty}
+                                                    Tối thiểu: {p.minQty} • Tối đa: {p.maxQty}
                                                 </Typography>
                                                 <Stack direction="row" alignItems="center" spacing={1}>
                                                     {canSendTicket && p.price > 0 && (
                                                         <>
-                                                            <Typography 
-                                                                variant="body2" 
-                                                                sx={{ 
+                                                            <Typography
+                                                                variant="body2"
+                                                                sx={{
                                                                     color: "text.primary",
                                                                     fontWeight: 600,
-                                                                    ...noSelect 
+                                                                    ...noSelect
                                                                 }}
                                                             >
                                                                 {formatCurrency(p.price)}
                                                             </Typography>
-                                                            <Typography 
-                                                                variant="body2" 
-                                                                sx={{ 
+                                                            <Typography
+                                                                variant="body2"
+                                                                sx={{
                                                                     color: "text.primary",
                                                                     fontWeight: 500,
-                                                                    ...noSelect 
+                                                                    ...noSelect
                                                                 }}
                                                             >
                                                                 •
                                                             </Typography>
                                                         </>
                                                     )}
-                                                    <FiberManualRecordIcon 
-                                                        sx={{ 
-                                                            fontSize: 10, 
-                                                            color: p.isShort ? "error.main" : "success.main" 
-                                                        }} 
+                                                    <FiberManualRecordIcon
+                                                        sx={{
+                                                            fontSize: 10,
+                                                            color: p.isShort ? "error.main" : "success.main"
+                                                        }}
                                                     />
-                                                    <Typography 
-                                                        variant="body2" 
-                                                        sx={{ 
+                                                    <Typography
+                                                        variant="body2"
+                                                        sx={{
                                                             color: "text.primary",
                                                             fontWeight: 500,
-                                                            ...noSelect 
+                                                            ...noSelect
                                                         }}
                                                     >
                                                         {p.isShort ? "Thiếu" : "Đủ"}
@@ -712,57 +712,57 @@ export default function Inventory() {
 
                 {/* RIGHT: TICKET - Chỉ hiển thị cho SC_MANAGER */}
                 {canSendTicket && (
-                <Grid item xs={12} md={5}>
-                    <Card>
-                        <CardContent>
-                            <Typography align="center" sx={{ fontWeight: 700, mb: 1, ...noSelect }}>Ticket</Typography>
-                            <Stack spacing={1.2}>
-                                {cart.map(it => (
-                                    <Paper key={it.partId} variant="outlined" sx={{ p: 1, borderRadius: 2, ...noSelect }}>
-                                        <Stack direction="row" alignItems="center" spacing={1.5}>
-                                            <Box sx={{ flex: 1, minWidth: 0, ...noSelect }}>
-                                                <Typography sx={{ fontWeight: 600, lineHeight: 1.2, ...noSelect }}>
-                                                    {it.partName} {it.partNo ? `• ${it.partNo}` : ""}
-                                                </Typography>
-                                                {it.price > 0 && (
-                                                    <Typography variant="caption" color="primary.main" sx={{ fontWeight: 500, ...noSelect }}>
-                                                        Giá: {formatCurrency(it.price)}
+                    <Grid item xs={12} md={5}>
+                        <Card>
+                            <CardContent>
+                                <Typography align="center" sx={{ fontWeight: 700, mb: 1, ...noSelect }}>Ticket</Typography>
+                                <Stack spacing={1.2}>
+                                    {cart.map(it => (
+                                        <Paper key={it.partId} variant="outlined" sx={{ p: 1, borderRadius: 2, ...noSelect }}>
+                                            <Stack direction="row" alignItems="center" spacing={1.5}>
+                                                <Box sx={{ flex: 1, minWidth: 0, ...noSelect }}>
+                                                    <Typography sx={{ fontWeight: 600, lineHeight: 1.2, ...noSelect }}>
+                                                        {it.partName} {it.partNo ? `• ${it.partNo}` : ""}
                                                     </Typography>
-                                                )}
-                                                {Number(it.maxAllowed || 0) > 0 && (
-                                                    <Typography variant="caption" color="text.secondary" sx={noSelect}>
-                                                        Có thể bổ sung ≤ {it.maxAllowed}
-                                                    </Typography>
-                                                )}
-                                                {it.price > 0 && it.qty > 0 && (
-                                                    <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 500, ...noSelect }}>
-                                                        Thành tiền: {formatCurrency(it.price * it.qty)}
-                                                    </Typography>
-                                                )}
-                                            </Box>
-                                            <TextField
-                                                size="small" value={it.qty} onChange={(e) => updateQty(it.partId, e.target.value)}
-                                                sx={{ width: 110 }} label="Quantity" inputProps={{ inputMode: "numeric" }}
-                                            />
-                                            <IconButton size="small" color="error" onClick={() => removeFromCart(it.partId)}>
-                                                <DeleteOutlineIcon fontSize="small" />
-                                            </IconButton>
-                                        </Stack>
-                                    </Paper>
-                                ))}
-                                {cart.length === 0 && <Typography color="text.secondary" align="center" sx={noSelect}>Chưa chọn part nào</Typography>}
-                            </Stack>
-                            <Stack direction="row" spacing={1.5} sx={{ mt: 2 }}>
-                                <Button variant="contained" fullWidth disabled={!canSend || sending} onClick={sendTicket}>
-                                    {sending ? "Đang gửi..." : "Gửi ticket"}
-                                </Button>
-                                <Button fullWidth variant="outlined" disabled={cart.length === 0} onClick={() => setCart([])}>
-                                    Xoá hết
-                                </Button>
-                            </Stack>
-                        </CardContent>
-                    </Card>
-                </Grid>
+                                                    {it.price > 0 && (
+                                                        <Typography variant="caption" color="primary.main" sx={{ fontWeight: 500, ...noSelect }}>
+                                                            Giá: {formatCurrency(it.price)}
+                                                        </Typography>
+                                                    )}
+                                                    {Number(it.maxAllowed || 0) > 0 && (
+                                                        <Typography variant="caption" color="text.secondary" sx={noSelect}>
+                                                            Có thể bổ sung ≤ {it.maxAllowed}
+                                                        </Typography>
+                                                    )}
+                                                    {it.price > 0 && it.qty > 0 && (
+                                                        <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 500, ...noSelect }}>
+                                                            Thành tiền: {formatCurrency(it.price * it.qty)}
+                                                        </Typography>
+                                                    )}
+                                                </Box>
+                                                <TextField
+                                                    size="small" value={it.qty} onChange={(e) => updateQty(it.partId, e.target.value)}
+                                                    sx={{ width: 110 }} label="Quantity" inputProps={{ inputMode: "numeric" }}
+                                                />
+                                                <IconButton size="small" color="error" onClick={() => removeFromCart(it.partId)}>
+                                                    <DeleteOutlineIcon fontSize="small" />
+                                                </IconButton>
+                                            </Stack>
+                                        </Paper>
+                                    ))}
+                                    {cart.length === 0 && <Typography color="text.secondary" align="center" sx={noSelect}>Chưa chọn part nào</Typography>}
+                                </Stack>
+                                <Stack direction="row" spacing={1.5} sx={{ mt: 2 }}>
+                                    <Button variant="contained" fullWidth disabled={!canSend || sending} onClick={sendTicket}>
+                                        {sending ? "Đang gửi..." : "Gửi ticket"}
+                                    </Button>
+                                    <Button fullWidth variant="outlined" disabled={cart.length === 0} onClick={() => setCart([])}>
+                                        Xoá hết
+                                    </Button>
+                                </Stack>
+                            </CardContent>
+                        </Card>
+                    </Grid>
                 )}
             </Grid>
 
@@ -777,11 +777,11 @@ export default function Inventory() {
                     ) : (
                         <Stack spacing={1}>
                             {shipRows.map(s => (
-                                <Paper 
-                                    key={s.id} 
-                                    variant="outlined" 
-                                    sx={{ 
-                                        p: 2, 
+                                <Paper
+                                    key={s.id}
+                                    variant="outlined"
+                                    sx={{
+                                        p: 2,
                                         borderRadius: 1,
                                         "&:hover": { bgcolor: "action.hover" }
                                     }}
@@ -790,8 +790,8 @@ export default function Inventory() {
                                         <Box sx={{ flex: 1 }}>
                                             <Typography sx={{ fontWeight: 600 }}>
                                                 Từ: {
-                                                    s.sourceCenter?.name || 
-                                                    s.fromCenter?.name || 
+                                                    s.sourceCenter?.name ||
+                                                    s.fromCenter?.name ||
                                                     (s.fromCenterId && centerMap[String(s.fromCenterId)]) ||
                                                     (s.sourceCenterId && centerMap[String(s.sourceCenterId)]) ||
                                                     (s.fromCenterId ? `Trung tâm ${s.fromCenterId}` : "Trung tâm chưa xác định")
@@ -806,9 +806,9 @@ export default function Inventory() {
                                             {s.status !== "CLOSED" && s.status !== "COMPLETED" && (
                                                 <Chip size="small" label={s.status}
                                                     color={
-                                                        s.status === "IN_TRANSIT" ? "warning" : 
-                                                        s.status === "RECEIVED" || s.status === "DELIVERED" ? "success" : 
-                                                        "default"
+                                                        s.status === "IN_TRANSIT" ? "warning" :
+                                                            s.status === "RECEIVED" || s.status === "DELIVERED" ? "success" :
+                                                                "default"
                                                     }
                                                 />
                                             )}

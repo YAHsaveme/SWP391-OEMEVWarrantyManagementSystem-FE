@@ -532,6 +532,7 @@ export default function UserManagement({ search, setSearch, theme }) {
                 <MenuItem value="">Tất cả</MenuItem>
                 <MenuItem value="SC_STAFF">SC_STAFF</MenuItem>
                 <MenuItem value="SC_TECHNICIAN">SC_TECHNICIAN</MenuItem>
+                <MenuItem value="SC_MANAGER">SC_MANAGER</MenuItem>
                 <MenuItem value="EVM_STAFF">EVM_STAFF</MenuItem>
                 <MenuItem value="ADMIN">ADMIN</MenuItem>
               </Select>
@@ -626,7 +627,9 @@ export default function UserManagement({ search, setSearch, theme }) {
                                     ? "info"
                                     : u.role === "SC_TECHNICIAN"
                                       ? "warning"
-                                      : "default"
+                                      : u.role === "SC_MANAGER"
+                                        ? "success"
+                                        : "default"
                               }
                               variant="outlined"
                             />
@@ -756,7 +759,7 @@ export default function UserManagement({ search, setSearch, theme }) {
             </FormControl>
 
             <TextField label="Vai trò" select value={createForm.role} onChange={(e) => setCreateForm({ ...createForm, role: e.target.value })} fullWidth>
-              {["SC_STAFF", "SC_TECHNICIAN", "EVM_STAFF", "ADMIN"].map((r) => (<MenuItem key={r} value={r}>{r}</MenuItem>))}
+              {["SC_STAFF", "SC_TECHNICIAN", "SC_MANAGER", "EVM_STAFF", "ADMIN"].map((r) => (<MenuItem key={r} value={r}>{r}</MenuItem>))}
             </TextField>
           </Stack>
         </DialogContent>
@@ -787,7 +790,7 @@ export default function UserManagement({ search, setSearch, theme }) {
             </FormControl>
 
             <TextField label="Vai trò" select value={editForm.role} onChange={(e) => setEditForm({ ...editForm, role: e.target.value })} fullWidth>
-              {["SC_STAFF", "SC_TECHNICIAN", "EVM_STAFF", "ADMIN"].map((r) => (<MenuItem key={r} value={r}>{r}</MenuItem>))}
+              {["SC_STAFF", "SC_TECHNICIAN", "SC_MANAGER", "EVM_STAFF", "ADMIN"].map((r) => (<MenuItem key={r} value={r}>{r}</MenuItem>))}
             </TextField>
 
             <TextField

@@ -123,10 +123,10 @@ export default function FeatureCard() {
           <div className="max-w-4xl mx-auto">
             <p className="text-xl md:text-2xl text-slate-300 font-light leading-relaxed mb-4">
               Hệ thống cung cấp đầy đủ công cụ để{" "}
-              <span className="text-blue-400 font-semibold">SC Staff</span>,{" "}
-              <span className="text-emerald-400 font-semibold">SC Technician</span>,{" "}
-              <span className="text-purple-400 font-semibold">EVM Staff</span>{" "}
-              và <span className="text-orange-400 font-semibold">Admin</span>
+              <span className="text-blue-400 font-semibold">Nhân viên Trung tâm dịch vụ</span>,{" "}
+              <span className="text-emerald-400 font-semibold">Kỹ thuật viên Trung tâm dịch vụ</span>,{" "}
+              <span className="text-purple-400 font-semibold">Nhân viên Hãng sản xuất</span>{" "}
+              và <span className="text-orange-400 font-semibold">Người quản trị hệ thống</span>
             </p>
             <p className="text-lg text-slate-400">
               quản lý toàn diện quy trình bảo hành xe điện một cách hiệu quả và chuyên nghiệp.
@@ -145,8 +145,8 @@ export default function FeatureCard() {
               <div
                 key={index}
                 className={`group relative transform transition-all duration-700 ${isVisible
-                    ? 'translate-y-0 opacity-100'
-                    : 'translate-y-16 opacity-0'
+                  ? 'translate-y-0 opacity-100'
+                  : 'translate-y-16 opacity-0'
                   }`}
                 style={{ transitionDelay: `${index * 100}ms` }}
                 onMouseEnter={() => setHoveredCard(index)}
