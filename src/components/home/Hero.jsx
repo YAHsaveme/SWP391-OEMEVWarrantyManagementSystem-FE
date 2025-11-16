@@ -14,7 +14,7 @@ export default function Hero() {
     const storedRole = localStorage.getItem("role") || "Unknown";
     setFullName(storedName);
     setRole(storedRole);
-    
+
     const handleMouseMove = (e) => {
       setMousePosition({
         x: (e.clientX / window.innerWidth) * 100,
@@ -31,7 +31,7 @@ export default function Hero() {
       {/* Enhanced Animated Background */}
       <div className="absolute inset-0">
         {/* Dynamic mouse-following gradient */}
-        <div 
+        <div
           className="absolute inset-0 opacity-40 transition-all duration-700 ease-out"
           style={{
             background: `
@@ -49,11 +49,11 @@ export default function Hero() {
         <div className="absolute top-1/4 left-1/4 w-80 h-80 bg-gradient-to-r from-blue-400 to-cyan-400 rounded-full mix-blend-multiply filter blur-3xl opacity-25 animate-pulse"></div>
         <div className="absolute bottom-1/4 right-1/4 w-96 h-96 bg-gradient-to-r from-purple-400 to-pink-400 rounded-full mix-blend-multiply filter blur-3xl opacity-20 animate-pulse delay-1000"></div>
         <div className="absolute top-3/4 left-3/4 w-72 h-72 bg-gradient-to-r from-emerald-400 to-teal-400 rounded-full mix-blend-multiply filter blur-3xl opacity-15 animate-pulse delay-2000"></div>
-        
+
         {/* Animated grid with glow effect */}
         <div className="absolute inset-0 opacity-[0.08]">
-          <div 
-            className="absolute inset-0 animate-pulse" 
+          <div
+            className="absolute inset-0 animate-pulse"
             style={{
               backgroundImage: `
                 linear-gradient(rgba(59, 130, 246, 0.5) 1px, transparent 1px),
@@ -85,7 +85,7 @@ export default function Hero() {
       {/* Enhanced Content */}
       <div className="relative z-10 flex flex-col items-center justify-center min-h-screen text-center px-6 py-24">
 
-        
+
 
         {/* Premium Logo with glow effect */}
         <div className={`mb-10 transform transition-all duration-1200 ${isVisible ? 'translate-y-0 opacity-100 scale-100' : 'translate-y-12 opacity-0 scale-95'}`}>
@@ -103,14 +103,14 @@ export default function Hero() {
         <div className={`mb-8 transform transition-all duration-1200 delay-200 ${isVisible ? 'translate-y-0 opacity-100' : 'translate-y-12 opacity-0'}`}>
           <h1 className="text-5xl md:text-7xl lg:text-8xl font-black leading-none">
             <span className="block text-transparent bg-clip-text bg-gradient-to-r from-white via-blue-100 to-cyan-100 drop-shadow-2xl">
-              EVM 
+              Hệ thống
             </span>
             <span className="block text-transparent bg-clip-text bg-gradient-to-r from-blue-400 via-purple-400 to-pink-400 mt-2 drop-shadow-xl">
-              Warranty
+              Quản lý
             </span>
           </h1>
           <p className="text-4xl md:text-5xl lg:text-6xl font-light text-slate-300 mt-4 tracking-wide">
-            Management System
+            Bảo hành xe máy điện
           </p>
         </div>
 
@@ -119,19 +119,19 @@ export default function Hero() {
           <p className="text-xl md:text-2xl text-slate-300 font-light leading-relaxed mb-8 tracking-wide">
             Nền tảng nội bộ hiện đại hỗ trợ toàn diện
           </p>
-          
+
           {/* Premium role badges with animations */}
-          <div className="flex flex-wrap justify-center gap-4 mb-10">
+          <div className="flex flex-nowrap justify-center gap-4 mb-12">
             {[
-              { name: 'SC Staff', color: 'from-blue-500 via-blue-600 to-cyan-500', shadow: 'shadow-blue-500/40' },
-              { name: 'SC Technician', color: 'from-emerald-500 via-green-600 to-teal-500', shadow: 'shadow-emerald-500/40' },
-              { name: 'EVM Staff', color: 'from-purple-500 via-violet-600 to-indigo-500', shadow: 'shadow-purple-500/40' },
-              { name: 'Admin', color: 'from-orange-500 via-red-600 to-pink-500', shadow: 'shadow-orange-500/40' }
+              { name: 'Nhân viên Trung tâm dịch vụ', color: 'from-blue-500 via-blue-600 to-cyan-500', shadow: 'shadow-blue-500/40' },
+              { name: 'Kỹ thuật viên Trung tâm dịch vụ', color: 'from-emerald-500 via-green-600 to-teal-500', shadow: 'shadow-emerald-500/40' },
+              { name: 'Nhân viên Hãng sản xuất', color: 'from-purple-500 via-violet-600 to-indigo-500', shadow: 'shadow-purple-500/40' },
+              { name: 'Người quản trị hệ thống', color: 'from-orange-500 via-red-600 to-pink-500', shadow: 'shadow-orange-500/40' }
             ].map((role, index) => (
               <div
                 key={role.name}
                 className={`group transform transition-all duration-500 hover:scale-110 ${isVisible ? 'translate-y-0 opacity-100' : 'translate-y-8 opacity-0'}`}
-                style={{ 
+                style={{
                   transitionDelay: `${600 + index * 150}ms`,
                   animationDelay: `${600 + index * 150}ms`
                 }}
@@ -143,7 +143,7 @@ export default function Hero() {
               </div>
             ))}
           </div>
-          
+
           <p className="text-lg md:text-xl text-slate-400 leading-relaxed max-w-4xl mx-auto">
             trong việc quản lý bảo hành xe điện một cách hiệu quả và chuyên nghiệp
           </p>
@@ -169,7 +169,7 @@ export default function Hero() {
       {/* Enhanced decorative elements */}
       <div className="absolute -top-48 -right-48 w-96 h-96 bg-gradient-to-bl from-blue-500/30 via-purple-500/20 to-transparent rounded-full blur-3xl"></div>
       <div className="absolute -bottom-48 -left-48 w-96 h-96 bg-gradient-to-tr from-purple-500/30 via-pink-500/20 to-transparent rounded-full blur-3xl"></div>
-      
+
       <style>{`
         @keyframes float {
           0%, 100% { transform: translateY(0px) rotate(0deg); }

@@ -38,7 +38,7 @@ const Header = () => {
       case "SC_STAFF":
         navigate("/staff/vehicles");
         break;
-      case "SC_TECH":
+      case "SC_TECHNICIAN":
         navigate("/tech");
         break;
       default:
@@ -47,22 +47,22 @@ const Header = () => {
   };
 
   const handleLogout = async () => {
-  try {
-    // Gọi API logout nếu backend có endpoint này (có thể bỏ nếu không cần)
-    await logout();
-  } catch (err) {
-    console.warn("Logout API failed or not implemented:", err.message);
-  } finally {
-    // Xóa toàn bộ dữ liệu đăng nhập
-    localStorage.removeItem("token");
-    localStorage.removeItem("role");
-    localStorage.removeItem("fullName");
+    try {
+      // Gọi API logout nếu backend có endpoint này (có thể bỏ nếu không cần)
+      await logout();
+    } catch (err) {
+      console.warn("Logout API failed or not implemented:", err.message);
+    } finally {
+      // Xóa toàn bộ dữ liệu đăng nhập
+      localStorage.removeItem("token");
+      localStorage.removeItem("role");
+      localStorage.removeItem("fullName");
 
-    if (setUser) setUser(null);
-    navigate("/login", { replace: true });
-    window.location.reload(); // giúp xóa state tạm thời, tránh lỗi session cũ
-  }
-};
+      if (setUser) setUser(null);
+      navigate("/login", { replace: true });
+      window.location.reload(); // giúp xóa state tạm thời, tránh lỗi session cũ
+    }
+  };
 
   return (
     <nav className="bg-gradient-to-r from-gray-900 via-gray-800 to-gray-900 backdrop-blur-md border-b border-gray-700/50 sticky top-0 z-50 shadow-lg">
@@ -86,11 +86,11 @@ const Header = () => {
               </svg>
             </div>
             <span className="text-white font-bold text-lg hidden sm:block drop-shadow-lg">
-              EVM Warranty Management System
+              Hệ thống Quản lý Bảo hành Xe máy điện
             </span>
           </div>
 
-          
+
 
           {/* User Info */}
           <div className="hidden md:flex items-center space-x-4">

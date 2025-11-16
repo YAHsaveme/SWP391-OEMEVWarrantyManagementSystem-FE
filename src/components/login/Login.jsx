@@ -159,7 +159,7 @@ function Login() {
                         <Box mb={6} display="flex" alignItems="center" gap={1}>
                             <ElectricBoltIcon sx={{ fontSize: 36 }} />
                             <Typography variant="h5" fontWeight="bold">
-                                EVM Warranty Management System
+                                Hệ thống Quản lý Bảo hành Xe máy điện
                             </Typography>
                         </Box>
 
@@ -178,10 +178,10 @@ function Login() {
                                 <CardContent>
                                     <Box display="flex" alignItems="center" gap={1} mb={1}>
                                         <ShieldIcon sx={{ color: "#81c784" }} />
-                                        <Typography fontWeight="600">Complete Protection</Typography>
+                                        <Typography fontWeight="600">Giải pháp Bảo vệ Toàn diện</Typography>
                                     </Box>
                                     <Typography variant="body2" color="white">
-                                        Your EV investment is protected with comprehensive warranty coverage
+                                        Khoản đầu tư vào xe điện của bạn được bảo vệ bằng chế độ bảo hành toàn diện.
                                     </Typography>
                                 </CardContent>
                             </Card>
@@ -202,10 +202,10 @@ function Login() {
                                 <CardContent>
                                     <Box display="flex" alignItems="center" gap={1} mb={1}>
                                         <BatteryChargingFullIcon sx={{ color: "#ffeb3b" }} />
-                                        <Typography fontWeight="600">Battery Assurance</Typography>
+                                        <Typography fontWeight="600">Cam kết Đảm bảo Pin</Typography>
                                     </Box>
                                     <Typography variant="body2" color="white">
-                                        Advanced battery warranty ensures your EV runs efficiently for years
+                                        Chế độ bảo hành pin nâng cao đảm bảo xe điện của bạn vận hành hiệu quả trong nhiều năm.
                                     </Typography>
                                 </CardContent>
                             </Card>
@@ -225,10 +225,10 @@ function Login() {
                                 <CardContent>
                                     <Box display="flex" alignItems="center" gap={1} mb={1}>
                                         <DirectionsCarIcon sx={{ color: "#64b5f6" }} />
-                                        <Typography fontWeight="600">Peace of Mind</Typography>
+                                        <Typography fontWeight="600">An tâm trong mọi hành trình</Typography>
                                     </Box>
                                     <Typography variant="body2" color="white">
-                                        Drive confidently knowing your electric vehicle is fully covered
+                                        Lái xe tự tin với sự đảm bảo rằng chiếc xe điện của bạn luôn được bảo vệ toàn diện.
                                     </Typography>
                                 </CardContent>
                             </Card>
@@ -247,16 +247,16 @@ function Login() {
                         >
                             <ElectricBoltIcon sx={{ fontSize: 36 }} />
                             <Typography variant="h5" fontWeight="bold">
-                                EV Warranty Pro
+                                Dịch vụ Bảo hành Xe máy điện Chuyên nghiệp
                             </Typography>
                         </Box>
 
                         <Box maxWidth={400} mx="auto" width="100%">
                             <Typography variant="h4" fontWeight="bold" mb={1}>
-                                Welcome Back
+                                Chào mừng
                             </Typography>
                             <Typography variant="body1" color="text.secondary" mb={4}>
-                                Access your EV warranty dashboard and manage your electric vehicle protection coverage.
+                                Truy cập bảng điều khiển bảo hành xe máy điện và quản lý phạm vi bảo vệ xe máy điện.
                             </Typography>
 
                             <Box component="form" onSubmit={handleSubmit} display="flex" flexDirection="column" gap={3}>
@@ -294,10 +294,10 @@ function Login() {
                                 <Box display="flex" justifyContent="space-between" alignItems="center">
                                     <FormControlLabel
                                         control={<Checkbox checked={rememberMe} onChange={(e) => setRememberMe(e.target.checked)} />}
-                                        label="Remember me"
+                                        label="Ghi nhớ tôi"
                                     />
                                     <Link href="#" underline="hover" variant="body2">
-                                        Forgot password?
+                                        Quên mật khẩu ?
                                     </Link>
                                 </Box>
 
@@ -315,7 +315,7 @@ function Login() {
                                         },
                                     }}
                                 >
-                                    {loading ? "Signing In..." : "Sign In"}
+                                    {loading ? "Signing In..." : "Đăng nhập"}
                                 </Button>
                             </Box>
                         </Box>
