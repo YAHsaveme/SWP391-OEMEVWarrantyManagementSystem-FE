@@ -1,10 +1,10 @@
 "use client";
 
 import React from "react";
-import WarrantyClaim from "../staff/WarrantyClaim";
-import ClaimReport from "../staff/ClaimReport";
-import TechniciansPage from "../staff/TechniciansPage";
-import Appointment from "../staff/Appointment";
+import WarrantyRequests from "../manager/WarrantyRequests";
+import ClaimReport from "../manager/ClaimReport";
+import TechniciansPage from "../manager/TechniciansPage";
+import Appointment from "../manager/Appointment";
 import VehiclesPage from "../staff/VehiclesPage";
 import ScDispatch from "../staff/ScDispatch";
 import Dashboard from "../evm/Dashboard";
@@ -17,7 +17,7 @@ import {
     Divider, Chip, Menu, MenuItem,
 } from "@mui/material";
 import {
-    DirectionsCar as CarIcon,
+    TwoWheeler as TwoWheelerIcon,
     Inventory2 as PackageIcon,
     Description as FileText,
     BarChart as BarChartIcon,
@@ -132,7 +132,7 @@ export default function OverviewManager() {
                         <Toolbar sx={{ display: "flex", justifyContent: "space-between", gap: 2 }}>
                             <Box sx={{ display: "flex", alignItems: "center", gap: 1.5 }}>
                                 <Avatar sx={{ bgcolor: "primary.main" }}>
-                                    <CarIcon sx={{ color: "white" }} />
+                                    <TwoWheelerIcon sx={{ color: "white" }} />
                                 </Avatar>
                                 <Box>
                                     <Typography variant="h6" fontWeight={900} letterSpacing={.3}>
@@ -279,7 +279,7 @@ export default function OverviewManager() {
 
                         <Box sx={{ p: 2.5, bgcolor: "background.paper", borderRadius: 2 }}>
                             {tab === 0 && <Dashboard />}
-                            {tab === 1 && <WarrantyClaim />}
+                            {tab === 1 && <WarrantyRequests />}
                             {tab === 2 && <ClaimReport />}
                             {tab === 3 && <TechniciansPage />}
                             {tab === 4 && <Appointment />}

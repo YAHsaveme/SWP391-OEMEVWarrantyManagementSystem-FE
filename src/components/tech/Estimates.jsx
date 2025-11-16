@@ -318,14 +318,14 @@ export default function Estimates() {
                                 </Box>
 
                                 <Stack direction="row" spacing={1} alignSelf={{ xs: "flex-start", sm: "center" }}>
-                                    <Tooltip title="Quản lý Estimates">
+                                    <Tooltip title="Quản lý báo giá">
                                         <Button
                                             variant="contained"
                                             color="primary"
                                             startIcon={<ReceiptIcon />}
                                             onClick={() => handleClaimSelect(claim)}
                                         >
-                                            Estimates
+                                            Báo giá
                                         </Button>
                                     </Tooltip>
                                 </Stack>

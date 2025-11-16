@@ -3,7 +3,7 @@
 import React from "react";
 import PartManagement from "./PartManagement";
 import ProductManagement from "./ProductManagement";
-import WarrantyRequests from "./WarrantyRequests";
+import WarrantyRequests from "../manager/WarrantyRequests";
 import WarrantyPolicy from "./WarrantyPolicy";
 import ServiceCenters from "./ServiceCenters";
 import authService from "../../services/authService";
@@ -20,7 +20,7 @@ import {
     Divider, Chip, Menu, MenuItem, Button,
 } from "@mui/material";
 import {
-    DirectionsCar as CarIcon,
+    TwoWheeler as TwoWheelerIcon,
     WarningAmber as AlertTriangle,
     Inventory2 as PackageIcon,
     Description as FileText,
@@ -149,7 +149,7 @@ export default function Overview() {
                         <Toolbar sx={{ display: "flex", justifyContent: "space-between", gap: 2 }}>
                             <Box sx={{ display: "flex", alignItems: "center", gap: 1.5 }}>
                                 <Avatar sx={{ bgcolor: "primary.main" }}>
-                                    <CarIcon sx={{ color: "white" }} />
+                                    <TwoWheelerIcon sx={{ color: "white" }} />
                                 </Avatar>
                                 <Box>
                                     <Typography variant="h6" fontWeight={900} letterSpacing={.3}>
