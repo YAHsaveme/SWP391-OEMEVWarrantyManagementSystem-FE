@@ -3,7 +3,7 @@ import axios from "axios";
 import {
     Container, Box, TextField, InputAdornment, Button, IconButton, MenuItem,
     Table, TableHead, TableRow, TableCell, TableBody, Stack, Divider, Dialog,
-    DialogTitle, DialogContent, DialogActions, Snackbar, Alert, CircularProgress, Typography, Card
+    DialogTitle, DialogContent, DialogActions, Snackbar, Alert, CircularProgress, Typography, Card, Chip
 } from "@mui/material";
 import AddIcon from "@mui/icons-material/Add";
 import SearchIcon from "@mui/icons-material/Search";
@@ -419,13 +419,14 @@ export default function VehiclesPage() {
                         <TableHead>
                             <TableRow>
                                 <HeadCell>VIN</HeadCell>
-                                <HeadCell>Model</HeadCell>
-                                <HeadCell>Model Code</HeadCell>
-                                <HeadCell>In Service Date</HeadCell>
-                                <HeadCell>Production Date</HeadCell>
-                                <HeadCell>Intake Contact</HeadCell>
-                                <HeadCell>Phone</HeadCell>
-                                <HeadCell>Created At</HeadCell>
+                                <HeadCell>Mẫu Xe</HeadCell>
+                                <HeadCell>Mã Mẫu Xe</HeadCell>
+                                <HeadCell>Ngày sử dụng</HeadCell>
+                                <HeadCell>Ngày sản xuất</HeadCell>
+                                <HeadCell>Tên khách</HeadCell>
+                                <HeadCell>Số điện thoại</HeadCell>
+                                <HeadCell>Trạng thái bảo hành</HeadCell>
+                                <HeadCell>Ngày tạo</HeadCell>
                                 <HeadCell align="right">Actions</HeadCell>
                             </TableRow>
                         </TableHead>
@@ -441,19 +442,47 @@ export default function VehiclesPage() {
                                     <TableCell>{fmtDateTime(v.productionDate)}</TableCell>
                                     <TableCell>{v.intakeContactName || "—"}</TableCell>
                                     <TableCell>{v.intakeContactPhone || "—"}</TableCell>
+                                    <TableCell>
+                                        {(() => {
+                                            const status = v.warrantyStatus || v.status || v.warranty?.status || null;
+                                            if (!status) return "—";
+                                            const statusUpper = String(status).toUpperCase();
+                                            const isActive = statusUpper === "ACTIVE" || statusUpper === "ACTIVATED" || statusUpper === "ACTIVE_WARRANTY";
+                                            return (
+                                                <Chip
+                                                    label={status}
+                                                    size="small"
+                                                    color={isActive ? "success" : "default"}
+                                                    variant={isActive ? "filled" : "outlined"}
+                                                />
+                                            );
+                                        })()}
+                                    </TableCell>
                                     <TableCell>{fmtDateTime(v.createdAt ?? v.createAt ?? v.create_at ?? v.created_at)}</TableCell>
 
                                     <TableCell align="right">
                                         <Stack direction="row" spacing={1} justifyContent="flex-end">
-                                            <IconButton
-                                                size="small"
-                                                color="success"
-                                                onClick={() => onClickActivate(v)}
-                                                disabled={!v.vin}
-                                                title="Kích hoạt bảo hành"
-                                            >
-                                                <VerifiedUserIcon fontSize="small" />
-                                            </IconButton>
+                                            {(() => {
+                                                const status = v.warrantyStatus || v.status || v.warranty?.status || null;
+                                                const statusUpper = status ? String(status).toUpperCase() : "";
+                                                const isActivated = statusUpper === "ACTIVE" || statusUpper === "ACTIVATED" || statusUpper === "ACTIVE_WARRANTY";
+                                                
+                                                // Chỉ hiển thị nút kích hoạt nếu chưa được kích hoạt
+                                                if (!isActivated) {
+                                                    return (
+                                                        <IconButton
+                                                            size="small"
+                                                            color="success"
+                                                            onClick={() => onClickActivate(v)}
+                                                            disabled={!v.vin}
+                                                            title="Kích hoạt bảo hành"
+                                                        >
+                                                            <VerifiedUserIcon fontSize="small" />
+                                                        </IconButton>
+                                                    );
+                                                }
+                                                return null;
+                                            })()}
                                             <IconButton
                                                 size="small"
                                                 color="inherit"
@@ -469,14 +498,14 @@ export default function VehiclesPage() {
 
                             {loading && pageItems.length === 0 && (
                                 <TableRow>
-                                    <TableCell colSpan={9} align="center" sx={{ py: 6 }}>
+                                    <TableCell colSpan={10} align="center" sx={{ py: 6 }}>
                                         <CircularProgress size={24} />
                                     </TableCell>
                                 </TableRow>
                             )}
                             {!loading && pageItems.length === 0 && (
                                 <TableRow>
-                                    <TableCell colSpan={9} align="center" sx={{ py: 6, color: "text.secondary" }}>
+                                    <TableCell colSpan={10} align="center" sx={{ py: 6, color: "text.secondary" }}>
                                         {error ? `Lỗi tải dữ liệu: ${error}` : "No vehicles found."}
                                     </TableCell>
                                 </TableRow>

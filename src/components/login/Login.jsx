@@ -77,6 +77,9 @@ function Login() {
                     case "SC_TECHNICIAN":
                         navigate("/tech")
                         break
+                    case "SC_MANAGER":
+                        navigate("/manager")
+                        break
                     default:
                         navigate("/")
                 }

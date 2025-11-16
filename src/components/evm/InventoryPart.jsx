@@ -109,19 +109,19 @@ function InventoryPartView({ onSwitch }) {
 
     // Function để load inventory parts theo partId
     const loadPartsByPart = async (partId) => {
-        try {
-            setLoading(true);
+            try {
+                setLoading(true);
             const data = await inventoryPartService.listByPart(partId);
-            const parts = Array.isArray(data) ? data : (data?.inventoryParts || data?.content || []);
-            setAllItems(parts);
-            setTotalPages(1);
-            setPage(0);
-        } catch (e) {
-            console.error(e);
+                const parts = Array.isArray(data) ? data : (data?.inventoryParts || data?.content || []);
+                setAllItems(parts);
+                setTotalPages(1);
+                setPage(0);
+            } catch (e) {
+                console.error(e);
             notify("Lỗi tải tồn kho theo phụ tùng", "error");
-        } finally {
-            setLoading(false);
-        }
+            } finally {
+                setLoading(false);
+            }
     };
 
     // Function để reload dữ liệu: ưu tiên listByPart > listByCenter > getAll
@@ -208,11 +208,33 @@ function InventoryPartView({ onSwitch }) {
     }, [centerId, selectedPartId]);
 
     // Event listeners cho shipment-received, shipment-dispatch và inventory-center-reload
-    // Tự động reload khi SC-Staff receive hoặc EVM dispatch
     useEffect(() => {
-        const onReload = (ev) => {
+        // Receive: reload inventory vì đã cộng vào kho đích
+        const onReceive = (ev) => {
             const cid = ev?.detail?.centerId;
             // Nếu có centerId trong event và đang filter theo center đó, hoặc không filter theo center
+            if (!cid || !centerId || String(cid) === String(centerId)) {
+                notify("Đã nhận sự kiện nhận hàng. Đang làm mới dữ liệu...", "info");
+                reloadAll();
+            } else {
+                notify(`Có cập nhật tồn kho từ center ${cid}. Bạn đang xem center khác.`, "info");
+            }
+        };
+
+        // Dispatch: CHỈ reload nếu đang xem kho NGUỒN (vì dispatch trừ kho nguồn)
+        // KHÔNG reload nếu đang xem kho ĐÍCH (vì chưa receive, chưa cộng vào kho đích)
+        const onDispatch = (ev) => {
+            const fromCid = ev?.detail?.fromCenterId || ev?.detail?.centerId;
+            // Chỉ reload nếu đang xem kho nguồn (nơi dispatch)
+            if (fromCid && centerId && String(fromCid) === String(centerId)) {
+                notify("Đã nhận sự kiện dispatch. Đang làm mới dữ liệu kho nguồn...", "info");
+                reloadAll();
+            }
+            // KHÔNG reload nếu đang xem kho đích - vì chưa receive, chưa cộng vào kho đích
+        };
+
+        const onInventoryReload = (ev) => {
+            const cid = ev?.detail?.centerId;
             if (!cid || !centerId || String(cid) === String(centerId)) {
                 notify("Đã nhận sự kiện cập nhật tồn kho. Đang làm mới dữ liệu...", "info");
                 reloadAll();
@@ -220,13 +242,14 @@ function InventoryPartView({ onSwitch }) {
                 notify(`Có cập nhật tồn kho từ center ${cid}. Bạn đang xem center khác.`, "info");
             }
         };
-        window.addEventListener("shipment-received", onReload);
-        window.addEventListener("shipment-dispatch", onReload);
-        window.addEventListener("inventory-center-reload", onReload);
+
+        window.addEventListener("shipment-received", onReceive);
+        window.addEventListener("shipment-dispatch", onDispatch);
+        window.addEventListener("inventory-center-reload", onInventoryReload);
         return () => {
-            window.removeEventListener("shipment-received", onReload);
-            window.removeEventListener("shipment-dispatch", onReload);
-            window.removeEventListener("inventory-center-reload", onReload);
+            window.removeEventListener("shipment-received", onReceive);
+            window.removeEventListener("shipment-dispatch", onDispatch);
+            window.removeEventListener("inventory-center-reload", onInventoryReload);
         };
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [centerId, notify]);
@@ -849,8 +872,8 @@ function InventoryLotView({ onSwitch }) {
             );
         }
         setItems(list);
-        setTotalPages(1);
-        setPage(0);
+            setTotalPages(1);
+            setPage(0);
     }, [allItems, q, summaryMode]);
 
     // search API không sử dụng cho Lots (theo BE hiện tại)

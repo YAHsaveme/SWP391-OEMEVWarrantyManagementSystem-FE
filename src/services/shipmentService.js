@@ -148,6 +148,7 @@ const shipmentService = {
     const { data } = await axiosInstance.post(`${API_BASE}/suggest-center`, payload);
     return data;
   },
+
 };
 
 export default shipmentService;

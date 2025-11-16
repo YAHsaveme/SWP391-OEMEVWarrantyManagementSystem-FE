@@ -311,7 +311,14 @@ export default function ShipmentDetailPage({ id: idProp }) {
             setSnack({ open: true, sev: "success", msg: "Đã Dispatch (bắt đầu vận chuyển)" });
             await reload();
             await loadPendingShipments(); // Reload pending list
-            window.dispatchEvent(new CustomEvent("shipment-dispatch", { detail: { id } }));
+            // Truyền fromCenterId để biết chỉ reload kho nguồn, không reload kho đích
+            window.dispatchEvent(new CustomEvent("shipment-dispatch", { 
+                detail: { 
+                    id,
+                    fromCenterId: data?.fromCenterId || null,
+                    toCenterId: data?.toCenterId || null
+                } 
+            }));
         } catch (e) {
             setSnack({ open: true, sev: "error", msg: e?.response?.data?.message || e.message || "Dispatch failed" });
         } finally {

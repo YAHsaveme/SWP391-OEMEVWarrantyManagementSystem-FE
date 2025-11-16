@@ -2,12 +2,14 @@ import React, { useMemo, useState, useEffect } from "react";
 import {
     Box, Grid, Card, CardContent, Typography, TextField,
     Button, Stack, Paper, InputAdornment, FormControl, Select, MenuItem,
-    IconButton, Snackbar, Alert, Dialog, DialogTitle, DialogContent,
-    DialogActions, Chip, Badge, CircularProgress
+    IconButton, Snackbar, Alert, Chip, CircularProgress, Dialog, DialogTitle,
+    DialogContent, DialogActions, Badge
 } from "@mui/material";
 import SearchIcon from "@mui/icons-material/Search";
 import AddIcon from "@mui/icons-material/Add";
 import DeleteOutlineIcon from "@mui/icons-material/DeleteOutline";
+import SendIcon from "@mui/icons-material/Send";
+import LocalShippingIcon from "@mui/icons-material/LocalShipping";
 import FiberManualRecordIcon from "@mui/icons-material/FiberManualRecord";
 
 import staffInventory from "../../services/staffInventoryFacade";
@@ -19,15 +21,6 @@ import centerService from "../../services/centerService";
 
 /* ===== Helpers ===== */
 const noSelect = { userSelect: "none", cursor: "default" };
-
-// Format currency VND
-const formatCurrency = (value) => {
-    if (value === null || value === undefined || isNaN(value) || value === 0) return "—";
-    return new Intl.NumberFormat("vi-VN", {
-        style: "currency",
-        currency: "VND",
-    }).format(value);
-};
 
 // Bỏ dấu tiếng Việt
 const ascii = (s = "") =>
@@ -64,18 +57,6 @@ function normalizePart(row = {}, fallbackCenterName = "Trung tâm") {
     n.quantity = Number(row.quantity ?? 0);
     n.remainingToMax = Math.max(0, n.maxQty - n.quantity);
     n.isShort = n.quantity < n.minQty;
-    // Lấy giá từ nhiều nguồn có thể
-    n.price = Number(
-        row.price ?? 
-        row.unitPrice ?? 
-        row.unitPriceVND ?? 
-        row.unit_price_vnd ?? 
-        row.part?.price ?? 
-        row.part?.unitPrice ?? 
-        row.part?.unitPriceVND ?? 
-        row.part?.unit_price_vnd ?? 
-        0
-    );
     return n;
 }
 
@@ -86,8 +67,16 @@ const unwrap = (x) =>
                 : Array.isArray(x?.content) ? x.content
                     : Array.isArray(x?.results) ? x.results : [];
 
+const formatCurrency = (value) => {
+    if (value === null || value === undefined || isNaN(value) || value === 0) return "—";
+    return new Intl.NumberFormat("vi-VN", {
+        style: "currency",
+        currency: "VND"
+    }).format(value);
+};
+
 /* ===== Component ===== */
-export default function Inventory() {
+export default function ReplenishTicket() {
     const [centerId, setCenterId] = useState(() => getCenterIdFromToken());
     const [centerName, setCenterName] = useState("");
 
@@ -100,41 +89,70 @@ export default function Inventory() {
 
     const [cart, setCart] = useState([]);
     const [sending, setSending] = useState(false);
-    
-    // Kiểm tra role: chỉ SC_MANAGER mới được gửi ticket
-    const [userRole, setUserRole] = useState(null);
-    const canSendTicket = userRole === "SC_MANAGER";
+    const [reasonNote, setReasonNote] = useState("");
 
+    // Incoming Shipments
     const [shipOpen, setShipOpen] = useState(false);
     const [shipLoading, setShipLoading] = useState(false);
     const [shipRows, setShipRows] = useState([]);
     const [shipNeedsReload, setShipNeedsReload] = useState(false);
     const [centerMap, setCenterMap] = useState({});
 
-    // === LẤY centerId và role từ /me nếu token không có ===
+    // === LẤY centerId từ /me nếu token không có ===
     useEffect(() => {
+        if (centerId) return;
         (async () => {
             try {
                 const me = await authService.getCurrentUser();
                 const cid = me?.centerId || me?.centerid || null;
-                if (cid && !centerId) setCenterId(cid);
-                else if (!centerId) setMsg("Không tìm thấy trung tâm. Vui lòng đăng nhập lại.");
-                
-                // Lấy role từ user object hoặc localStorage
-                const role = me?.role?.name || me?.role || localStorage.getItem("role");
-                if (role) setUserRole(role);
+                if (cid) setCenterId(cid);
+                else setMsg("Không tìm thấy trung tâm. Vui lòng đăng nhập lại.");
             } catch {
                 setMsg("Không lấy được thông tin người dùng (/me).");
-                // Fallback: lấy role từ localStorage
-                const role = localStorage.getItem("role");
-                if (role) setUserRole(role);
             }
         })();
     }, [centerId]);
 
+    // === LOAD CENTERS MAP ===
+    useEffect(() => {
+        const loadCenters = async () => {
+            try {
+                const res = await centerService.getAll();
+                const arr = Array.isArray(res) ? res : res?.data || [];
+                const map = {};
+                arr.forEach((c) => {
+                    const id = c.id || c.centerId;
+                    if (id) {
+                        const idStr = String(id);
+                        const name = c.name || c.centerName || `Center ${idStr}`;
+                        // Map cả UUID (nếu là UUID) và string để đảm bảo match
+                        map[idStr] = name;
+                        map[id] = name; // Map cả original ID (có thể là UUID object)
+                        // Nếu là UUID, cũng map với lowercase
+                        if (idStr.includes('-')) {
+                            map[idStr.toLowerCase()] = name;
+                            map[idStr.toUpperCase()] = name;
+                        }
+                    }
+                });
+                setCenterMap(map);
+                console.log("[ReplenishTicket] Center map loaded:", map);
+                console.log("[ReplenishTicket] Sample center IDs:", Object.keys(map).slice(0, 3));
+                
+                // Reload shipments sau khi centerMap load xong để hiển thị đúng tên
+                if (shipOpen) {
+                    loadShipments();
+                }
+            } catch (err) {
+                console.error("[ReplenishTicket] loadCenters error:", err);
+            }
+        };
+        loadCenters();
+    }, []);
+
     // === LOAD INVENTORY (luôn dùng no-cache) ===
     const load = async () => {
-        if (!centerId) return setMsg("Chưa xác định trung tâm."); // ← giữ nguyên
+        if (!centerId) return setMsg("Chưa xác định trung tâm.");
         setLoading(true);
         try {
             const res = await axiosInstance.get(`/inventory-parts/${centerId}/list-by-center`, {
@@ -177,7 +195,7 @@ export default function Inventory() {
                     aggregatedByPart[partId] = (aggregatedByPart[partId] || 0) + (Number.isNaN(qty) ? 0 : qty);
                 });
             } catch (err) {
-                console.warn("[Inventory] sync quantity with lots failed:", err);
+                console.warn("[ReplenishTicket] sync quantity with lots failed:", err);
             }
 
             // Fetch thông tin part để lấy giá nếu chưa có
@@ -209,39 +227,38 @@ export default function Inventory() {
                 }
             });
             
-            console.log("[Inventory] Price from response:", partPriceMap);
+            console.log("[ReplenishTicket] Price from response:", partPriceMap);
             
-            // Chỉ fetch từ part service nếu chưa có đủ giá từ response và user có quyền
-            // SC_MANAGER có thể không có quyền gọi API parts, nên chỉ dùng giá từ response
-            const currentRole = authService.getRole();
+            // SC_MANAGER có thể không có quyền gọi API parts
+            // Chỉ fetch nếu chưa có đủ giá từ response
             const shouldFetchParts = partIds.length > 0 && Object.keys(partPriceMap).length < partIds.length;
             
-            if (shouldFetchParts && currentRole !== "SC_MANAGER") {
+            if (shouldFetchParts) {
                 try {
-                    // Thử nhiều endpoint khác nhau (chỉ cho EVM_STAFF hoặc role khác)
+                    // Thử nhiều endpoint khác nhau
                     let allParts = [];
                     try {
                         allParts = await partService.getAll();
-                        console.log("[Inventory] getAll() succeeded, got", allParts.length, "parts");
+                        console.log("[ReplenishTicket] getAll() succeeded, got", allParts.length, "parts");
                     } catch (getAllErr) {
-                        console.warn("[Inventory] getAll() failed, trying getActive():", getAllErr);
+                        console.warn("[ReplenishTicket] getAll() failed (may be permission issue for SC_MANAGER), trying getActive():", getAllErr);
                         try {
                             allParts = await partService.getActive();
-                            console.log("[Inventory] getActive() succeeded, got", allParts.length, "parts");
+                            console.log("[ReplenishTicket] getActive() succeeded, got", allParts.length, "parts");
                         } catch (getActiveErr) {
-                            console.warn("[Inventory] getActive() also failed, trying list():", getActiveErr);
+                            console.warn("[ReplenishTicket] getActive() also failed (may be permission issue), trying list():", getActiveErr);
                             try {
                                 allParts = await partService.list();
-                                console.log("[Inventory] list() succeeded, got", allParts.length, "parts");
+                                console.log("[ReplenishTicket] list() succeeded, got", allParts.length, "parts");
                             } catch (listErr) {
-                                console.warn("[Inventory] list() also failed:", listErr);
-                                throw listErr;
+                                console.warn("[ReplenishTicket] All API calls failed (likely permission issue for SC_MANAGER):", listErr);
+                                // Không throw error, chỉ dùng giá từ response
                             }
                         }
                     }
                     
-                    console.log("[Inventory] All parts from API:", allParts);
-                    console.log("[Inventory] First part sample:", allParts[0]);
+                    console.log("[ReplenishTicket] All parts from API:", allParts);
+                    console.log("[ReplenishTicket] First part sample:", allParts[0]);
                     
                     const partIdsStr = partIds.map(id => String(id));
                     allParts.forEach(part => {
@@ -259,9 +276,9 @@ export default function Inventory() {
                                     if (partId !== partIdStr) {
                                         partPriceMap[partId] = Number(price);
                                     }
-                                    console.log(`[Inventory] Found price for part ${partIdStr} (${part.partName || part.partNo}):`, price);
+                                    console.log(`[ReplenishTicket] Found price for part ${partIdStr} (${part.partName || part.partNo}):`, price);
                                 } else {
-                                    console.warn(`[Inventory] Part ${partIdStr} has unitPrice = 0 or null, part data:`, {
+                                    console.warn(`[ReplenishTicket] Part ${partIdStr} has unitPrice = 0 or null, part data:`, {
                                         id: part.id,
                                         partNo: part.partNo,
                                         partName: part.partName,
@@ -272,15 +289,22 @@ export default function Inventory() {
                         }
                     });
                 } catch (err) {
-                    console.warn("[Inventory] Failed to fetch part prices:", err);
-                    if (err?.response?.data) {
-                        console.warn("[Inventory] Error response:", err.response.data);
+                    // Không log error nếu là permission issue - chỉ dùng giá từ response
+                    if (err?.response?.status !== 400 && err?.response?.status !== 403) {
+                        console.warn("[ReplenishTicket] Failed to fetch part prices:", err);
+                        if (err?.response?.data) {
+                            console.warn("[ReplenishTicket] Error response:", err.response.data);
+                        }
+                    } else {
+                        console.info("[ReplenishTicket] API parts not accessible (likely permission), using prices from inventory-parts response only");
                     }
                 }
+            } else {
+                console.log("[ReplenishTicket] Skipping API call - using prices from inventory-parts response only");
             }
             
-            console.log("[Inventory] Part price map:", partPriceMap);
-            console.log("[Inventory] Part IDs:", partIds);
+            console.log("[ReplenishTicket] Part price map:", partPriceMap);
+            console.log("[ReplenishTicket] Part IDs:", partIds);
 
             const norm = onlyMine.map((r) => {
                 const partId = r.partId ?? r.part?.id ?? r.uuid ?? r.id ?? null;
@@ -318,144 +342,6 @@ export default function Inventory() {
         if (centerId) load();
     }, [centerId]);
 
-    // === LOAD CENTERS MAP ===
-    useEffect(() => {
-        const loadCenters = async () => {
-            try {
-                const res = await centerService.getAll();
-                const arr = Array.isArray(res) ? res : res?.data || [];
-                const map = {};
-                arr.forEach((c) => {
-                    const id = c.id || c.centerId;
-                    if (id) map[String(id)] = c.name || c.centerName || `Center ${id}`;
-                });
-                setCenterMap(map);
-            } catch (err) {
-                console.error("[Inventory] loadCenters error:", err);
-            }
-        };
-        loadCenters();
-    }, []);
-
-    // === LOAD SHIPMENTS ===
-    async function loadShipments() {
-        if (!centerId) return;
-        setShipLoading(true);
-        try {
-            const resp = await axiosInstance.get("shipments/get-all");
-            const arr = unwrap(resp);
-            const mine = arr.filter((s) => {
-                const toId =
-                    s?.toCenterId ??
-                    s?.destinationCenterId ??
-                    s?.destinationCenter?.id ??
-                    s?.toCenter?.id ??
-                    s?.destination?.id;
-                return String(toId) === String(centerId);
-            });
-            
-            // Sort: IN_TRANSIT → DELIVERED/RECEIVED → CLOSED/COMPLETED, sau đó mới nhất trước
-            const statusOrder = { "IN_TRANSIT": 1, "DELIVERED": 2, "RECEIVED": 2, "REQUESTED": 3, "CLOSED": 4, "COMPLETED": 4 };
-            mine.sort((a, b) => {
-                const statusA = statusOrder[a?.status] || 99;
-                const statusB = statusOrder[b?.status] || 99;
-                if (statusA !== statusB) return statusA - statusB;
-                // Nếu cùng status, sort theo createdAt (mới nhất trước)
-                const dateA = new Date(a?.createdAt || a?.created_at || 0).getTime();
-                const dateB = new Date(b?.createdAt || b?.created_at || 0).getTime();
-                return dateB - dateA;
-            });
-            
-            setShipRows(mine);
-        } catch {
-            setMsg("Tải shipments thất bại.");
-        } finally {
-            setShipLoading(false);
-        }
-    }
-
-    useEffect(() => {
-        if (shipOpen) loadShipments();
-        else if (shipNeedsReload) {
-            loadShipments();
-            setShipNeedsReload(false);
-        }
-    }, [shipOpen, centerId, shipNeedsReload]);
-
-    // Listen for shipment events
-    useEffect(() => {
-        // Dispatch: chỉ reload shipments list, KHÔNG reload inventory (vì chưa receive, chưa cộng vào kho đích)
-        const handleDispatch = () => {
-            if (shipOpen) {
-                loadShipments();
-            } else {
-                setShipNeedsReload(true);
-            }
-            // KHÔNG gọi load() - vì dispatch chỉ trừ kho nguồn, chưa cộng vào kho đích
-        };
-
-        // Receive: reload cả shipments list VÀ inventory (vì đã cộng vào kho đích)
-        const handleReceive = () => {
-            if (shipOpen) {
-                loadShipments();
-            } else {
-                setShipNeedsReload(true);
-            }
-            // Gọi load() để refresh inventory vì đã cộng vào kho đích
-            load();
-        };
-
-        // Close: chỉ reload shipments list
-        const handleClose = () => {
-            if (shipOpen) {
-                loadShipments();
-            } else {
-                setShipNeedsReload(true);
-            }
-        };
-
-        window.addEventListener("shipment-dispatch", handleDispatch);
-        window.addEventListener("shipment-received", handleReceive);
-        window.addEventListener("shipment-close", handleClose);
-
-        return () => {
-            window.removeEventListener("shipment-dispatch", handleDispatch);
-            window.removeEventListener("shipment-received", handleReceive);
-            window.removeEventListener("shipment-close", handleClose);
-        };
-    }, [shipOpen]);
-
-    // === HANDLE RECEIVE – QUAN TRỌNG NHẤT ===
-    async function handleReceive(id) {
-        try {
-            await axiosInstance.post(`shipments/${id}/receive`);
-            setMsg("Đã nhận hàng vào kho.");
-
-            // Dispatch event để notify EVM
-            window.dispatchEvent(new CustomEvent("shipment-received", {
-                detail: { shipmentId: id, centerId: centerId }
-            }));
-
-            // Refetch shipments
-            await loadShipments();
-            await load(); // refresh lại sau khi gửi
-
-        } catch (e) {
-            const m = e?.response?.data?.message || "Receive thất bại";
-            setMsg(`Lỗi: ${m}`);
-        }
-    }
-
-    async function handleClose(id) {
-        try {
-            await axiosInstance.post(`shipments/${id}/close`);
-            setMsg("Đã close shipment.");
-            await loadShipments();
-        } catch (e) {
-            setMsg(e?.response?.data?.message || "Close thất bại");
-        }
-    }
-
     // === FILTER & SEARCH ===
     const filtered = useMemo(() => {
         let arr = parts;
@@ -489,14 +375,7 @@ export default function Inventory() {
                         : it
                 );
             }
-            return [...prev, { 
-                partId: p.partId, 
-                partNo: p.partNo, 
-                partName: p.partName, 
-                maxAllowed: cap, 
-                qty: suggest,
-                price: p.price || 0
-            }];
+            return [...prev, { partId: p.partId, partNo: p.partNo, partName: p.partName, maxAllowed: cap, qty: suggest }];
         });
     };
 
@@ -515,15 +394,146 @@ export default function Inventory() {
 
     const canSend = cart.length > 0 && cart.every(it => (it.qty || 0) > 0);
 
+    // === LOAD SHIPMENTS ===
+    async function loadShipments() {
+        if (!centerId) return;
+        setShipLoading(true);
+        try {
+            const resp = await axiosInstance.get("shipments/get-all");
+            const arr = Array.isArray(resp?.data) ? resp.data : Array.isArray(resp) ? resp : resp?.content || [];
+            const mine = arr.filter((s) => {
+                const toId =
+                    s?.toCenterId ??
+                    s?.destinationCenterId ??
+                    s?.destinationCenter?.id ??
+                    s?.toCenter?.id ??
+                    s?.destination?.id;
+                return String(toId) === String(centerId);
+            });
+            
+            // Sort: IN_TRANSIT → DELIVERED/RECEIVED → CLOSED/COMPLETED, sau đó mới nhất trước
+            const statusOrder = { "IN_TRANSIT": 1, "DELIVERED": 2, "RECEIVED": 2, "REQUESTED": 3, "CLOSED": 4, "COMPLETED": 4 };
+            mine.sort((a, b) => {
+                const statusA = statusOrder[a?.status] || 99;
+                const statusB = statusOrder[b?.status] || 99;
+                if (statusA !== statusB) return statusA - statusB;
+                const dateA = new Date(a?.createdAt || a?.created_at || 0).getTime();
+                const dateB = new Date(b?.createdAt || b?.created_at || 0).getTime();
+                return dateB - dateA;
+            });
+            
+            setShipRows(mine);
+            
+            // Log để debug
+            console.log("[ReplenishTicket] Loaded shipments:", mine.length);
+            console.log("[ReplenishTicket] CenterMap size:", Object.keys(centerMap).length);
+            if (mine.length > 0) {
+                mine.forEach(s => {
+                    const fromId = s.fromCenterId || s.sourceCenterId;
+                    if (fromId) {
+                        const fromIdStr = String(fromId);
+                        const centerName = 
+                            centerMap[fromIdStr] || 
+                            centerMap[fromId] || 
+                            centerMap[fromIdStr.toLowerCase()] || 
+                            centerMap[fromIdStr.toUpperCase()] ||
+                            null;
+                        console.log(`[ReplenishTicket] Shipment ${s.id}: fromCenterId=${fromIdStr}, centerName=${centerName || 'NOT FOUND'}`);
+                        if (!centerName && Object.keys(centerMap).length > 0) {
+                            console.warn(`[ReplenishTicket] Center name not found for ${fromIdStr}. Available keys sample:`, Object.keys(centerMap).slice(0, 3));
+                        }
+                    }
+                });
+            }
+        } catch {
+            setMsg("Tải shipments thất bại.");
+        } finally {
+            setShipLoading(false);
+        }
+    }
+
+    useEffect(() => {
+        if (shipOpen) loadShipments();
+        else if (shipNeedsReload) {
+            loadShipments();
+            setShipNeedsReload(false);
+        }
+    }, [shipOpen, centerId, shipNeedsReload, centerMap]);
+
+    // Listen for shipment events
+    useEffect(() => {
+        const handleDispatch = () => {
+            if (shipOpen) {
+                loadShipments();
+            } else {
+                setShipNeedsReload(true);
+            }
+        };
+
+        const handleReceive = () => {
+            if (shipOpen) {
+                loadShipments();
+            } else {
+                setShipNeedsReload(true);
+            }
+            // Reload inventory để cập nhật số lượng sau khi receive
+            load();
+        };
+
+        const handleClose = () => {
+            if (shipOpen) {
+                loadShipments();
+            } else {
+                setShipNeedsReload(true);
+            }
+        };
+
+        window.addEventListener("shipment-dispatch", handleDispatch);
+        window.addEventListener("shipment-received", handleReceive);
+        window.addEventListener("shipment-close", handleClose);
+
+        return () => {
+            window.removeEventListener("shipment-dispatch", handleDispatch);
+            window.removeEventListener("shipment-received", handleReceive);
+            window.removeEventListener("shipment-close", handleClose);
+        };
+    }, [shipOpen]);
+
+    // === HANDLE RECEIVE ===
+    async function handleReceive(id) {
+        try {
+            await axiosInstance.post(`shipments/${id}/receive`);
+            setMsg("Đã nhận hàng vào kho.");
+
+            window.dispatchEvent(new CustomEvent("shipment-received", {
+                detail: { shipmentId: id, centerId: centerId }
+            }));
+
+            // Reload shipments trước
+            await loadShipments();
+            
+            // Reload inventory để cập nhật số lượng
+            await load();
+            
+            // Đảm bảo UI được cập nhật
+            setShipNeedsReload(true);
+        } catch (e) {
+            const m = e?.response?.data?.message || "Receive thất bại";
+            setMsg(`Lỗi: ${m}`);
+        }
+    }
+
     const sendTicket = async () => {
         if (!centerId) return setMsg("Chưa xác định trung tâm.");
         if (!canSend) return setMsg("Vui lòng nhập quantity hợp lệ.");
         setSending(true);
         try {
             const items = cart.map(it => ({ partId: String(it.partId), quantity: Number(it.qty) }));
-            await staffInventory.createReplenishTicket(centerId, items);
-            setMsg("Đã tạo ticket bổ sung.");
+            const note = reasonNote.trim() || "Yêu cầu bổ sung phụ tùng từ SC Manager";
+            await staffInventory.createReplenishTicket(centerId, items, note);
+            setMsg("Đã tạo yêu cầu bổ sung và gửi lên EVM Staff.");
             setCart([]);
+            setReasonNote("");
             await load(); // refresh lại sau khi gửi
         } catch (e) {
             const m = e?.response?.data?.message || e?.message || "Gửi ticket thất bại";
@@ -536,9 +546,33 @@ export default function Inventory() {
     // === RENDER ===
     return (
         <Box>
-            <Grid container spacing={2}>
+            <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 3 }}>
+                <Box>
+                    <Typography variant="h5" sx={{ fontWeight: 700, ...noSelect }}>
+                        Gửi Yêu Cầu Bổ Sung Phụ Tùng
+                    </Typography>
+                    <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5, ...noSelect }}>
+                        Chọn phụ tùng cần bổ sung và gửi yêu cầu lên EVM Staff để được phê duyệt.
+                    </Typography>
+                </Box>
+                <Badge 
+                    color="warning" 
+                    overlap="circular" 
+                    badgeContent={shipRows.filter(s => s.status === "IN_TRANSIT").length || 0}
+                >
+                    <Button
+                        variant="outlined"
+                        startIcon={<LocalShippingIcon />}
+                        onClick={() => setShipOpen(true)}
+                    >
+                        Incoming Shipments
+                    </Button>
+                </Badge>
+            </Stack>
+
+            <Grid container spacing={3}>
                 {/* LEFT: LIST */}
-                <Grid item xs={12} md={canSendTicket ? 7 : 12}>
+                <Grid item xs={12} md={7}>
                     <Card>
                         <CardContent sx={noSelect}>
                             <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb: 2 }}>
@@ -555,27 +589,20 @@ export default function Inventory() {
                                         autoComplete: "off",
                                         autoCorrect: "off",
                                         autoCapitalize: "none",
-                                        name: "inventory-search",
-                                        id: "inventory-search",
+                                        name: "ticket-search",
+                                        id: "ticket-search",
                                     }}
                                     InputProps={{
                                         startAdornment: <InputAdornment position="start"><SearchIcon fontSize="small" /></InputAdornment>,
                                     }}
                                 />
-                                <Stack direction="row" spacing={1}>
-                                    <FormControl size="small" sx={{ minWidth: 140 }}>
-                                        <Select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
-                                            <MenuItem value="all">Tất cả</MenuItem>
-                                            <MenuItem value="shortage">Thiếu hàng</MenuItem>
-                                            <MenuItem value="enough">Đủ hàng</MenuItem>
-                                        </Select>
-                                    </FormControl>
-                                    <Button size="small" variant="outlined" onClick={() => setShipOpen(true)}>
-                                        <Badge color="warning" overlap="circular" badgeContent={shipRows.filter(s => s.status === "IN_TRANSIT").length || 0}>
-                                            Hàng tới
-                                        </Badge>
-                                    </Button>
-                                </Stack>
+                                <FormControl size="small" sx={{ minWidth: 140 }}>
+                                    <Select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
+                                        <MenuItem value="all">Tất cả</MenuItem>
+                                        <MenuItem value="shortage">Thiếu hàng</MenuItem>
+                                        <MenuItem value="enough">Đủ hàng</MenuItem>
+                                    </Select>
+                                </FormControl>
                             </Stack>
 
                             <Typography variant="caption" color="text.secondary" sx={{ mb: 1.5, display: "block", ...noSelect }}>
@@ -583,7 +610,11 @@ export default function Inventory() {
                             </Typography>
 
                             <Stack spacing={2}>
-                                {loading && <Typography sx={noSelect}>Đang tải...</Typography>}
+                                {loading && (
+                                    <Stack alignItems="center" sx={{ py: 3 }}>
+                                        <CircularProgress size={24} />
+                                    </Stack>
+                                )}
                                 {!loading && filtered.map(p => (
                                     <Paper 
                                         key={p.partId} 
@@ -617,31 +648,29 @@ export default function Inventory() {
                                                     >
                                                         [Qty: {p.quantity}]
                                                     </Typography>
-                                                    {canSendTicket && (
-                                                        <Button
-                                                            startIcon={<AddIcon />}
-                                                            size="small"
-                                                            variant="outlined"
-                                                            onClick={() => addToCart(p)}
-                                                            disabled={Number(p.remainingToMax ?? 0) <= 0}
-                                                            sx={{
-                                                                color: "error.main",
-                                                                borderColor: "error.main",
-                                                                textTransform: "none",
-                                                                fontWeight: 500,
-                                                                "&:hover": {
-                                                                    bgcolor: "rgba(211, 47, 47, 0.08)",
-                                                                    borderColor: "error.dark"
-                                                                },
-                                                                "&:disabled": {
-                                                                    borderColor: "action.disabled",
-                                                                    color: "action.disabled"
-                                                                }
-                                                            }}
-                                                        >
-                                                            Yêu cầu thêm
-                                                        </Button>
-                                                    )}
+                                                    <Button
+                                                        startIcon={<AddIcon />}
+                                                        size="small"
+                                                        variant="outlined"
+                                                        onClick={() => addToCart(p)}
+                                                        disabled={Number(p.remainingToMax ?? 0) <= 0}
+                                                        sx={{
+                                                            color: "error.main",
+                                                            borderColor: "error.main",
+                                                            textTransform: "none",
+                                                            fontWeight: 500,
+                                                            "&:hover": {
+                                                                bgcolor: "rgba(211, 47, 47, 0.08)",
+                                                                borderColor: "error.dark"
+                                                            },
+                                                            "&:disabled": {
+                                                                borderColor: "action.disabled",
+                                                                color: "action.disabled"
+                                                            }
+                                                        }}
+                                                    >
+                                                        Yêu cầu thêm 
+                                                    </Button>
                                                 </Stack>
                                             </Stack>
 
@@ -658,7 +687,7 @@ export default function Inventory() {
                                                     Min: {p.minQty} • Max: {p.maxQty}
                                                 </Typography>
                                                 <Stack direction="row" alignItems="center" spacing={1}>
-                                                    {canSendTicket && p.price > 0 && (
+                                                    {p.price > 0 && (
                                                         <>
                                                             <Typography 
                                                                 variant="body2" 
@@ -704,29 +733,52 @@ export default function Inventory() {
                                         </Stack>
                                     </Paper>
                                 ))}
-                                {!loading && filtered.length === 0 && <Typography color="text.secondary" sx={noSelect}>Không có dữ liệu.</Typography>}
+                                {!loading && filtered.length === 0 && (
+                                    <Typography color="text.secondary" sx={noSelect}>Không có dữ liệu.</Typography>
+                                )}
                             </Stack>
                         </CardContent>
                     </Card>
                 </Grid>
 
-                {/* RIGHT: TICKET - Chỉ hiển thị cho SC_MANAGER */}
-                {canSendTicket && (
+                {/* RIGHT: TICKET */}
                 <Grid item xs={12} md={5}>
                     <Card>
                         <CardContent>
-                            <Typography align="center" sx={{ fontWeight: 700, mb: 1, ...noSelect }}>Ticket</Typography>
-                            <Stack spacing={1.2}>
+                            <Stack direction="row" alignItems="center" spacing={1} sx={{ mb: 2 }}>
+                                <SendIcon color="primary" />
+                                <Typography align="left" sx={{ fontWeight: 700, ...noSelect }}>
+                                    Yêu cầu bổ sung phụ tùng gửi lên EVM Staff
+                                </Typography>
+                            </Stack>
+
+                            <TextField
+                                fullWidth
+                                multiline
+                                rows={3}
+                                label="Lý do / Ghi chú"
+                                value={reasonNote}
+                                onChange={(e) => setReasonNote(e.target.value)}
+                                placeholder="Nhập lý do yêu cầu bổ sung phụ tùng..."
+                                sx={{ mb: 2 }}
+                                size="small"
+                            />
+
+                            <Typography variant="caption" color="text.secondary" sx={{ mb: 1.5, display: "block", ...noSelect }}>
+                                Phụ tùng trong yêu cầu bổ sung ({cart.length}):
+                            </Typography>
+
+                            <Stack spacing={1.2} sx={{ maxHeight: 400, overflowY: "auto", mb: 2 }}>
                                 {cart.map(it => (
-                                    <Paper key={it.partId} variant="outlined" sx={{ p: 1, borderRadius: 2, ...noSelect }}>
+                                    <Paper key={it.partId} variant="outlined" sx={{ p: 1.5, borderRadius: 2, ...noSelect }}>
                                         <Stack direction="row" alignItems="center" spacing={1.5}>
                                             <Box sx={{ flex: 1, minWidth: 0, ...noSelect }}>
                                                 <Typography sx={{ fontWeight: 600, lineHeight: 1.2, ...noSelect }}>
-                                                    {it.partName} {it.partNo ? `• ${it.partNo}` : ""}
+                                                    {it.partName}
                                                 </Typography>
-                                                {it.price > 0 && (
-                                                    <Typography variant="caption" color="primary.main" sx={{ fontWeight: 500, ...noSelect }}>
-                                                        Giá: {formatCurrency(it.price)}
+                                                {it.partNo && (
+                                                    <Typography variant="caption" color="text.secondary" sx={noSelect}>
+                                                        Mã: {it.partNo}
                                                     </Typography>
                                                 )}
                                                 {Number(it.maxAllowed || 0) > 0 && (
@@ -734,15 +786,15 @@ export default function Inventory() {
                                                         Có thể bổ sung ≤ {it.maxAllowed}
                                                     </Typography>
                                                 )}
-                                                {it.price > 0 && it.qty > 0 && (
-                                                    <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 500, ...noSelect }}>
-                                                        Thành tiền: {formatCurrency(it.price * it.qty)}
-                                                    </Typography>
-                                                )}
                                             </Box>
                                             <TextField
-                                                size="small" value={it.qty} onChange={(e) => updateQty(it.partId, e.target.value)}
-                                                sx={{ width: 110 }} label="Quantity" inputProps={{ inputMode: "numeric" }}
+                                                size="small" 
+                                                value={it.qty} 
+                                                onChange={(e) => updateQty(it.partId, e.target.value)}
+                                                sx={{ width: 100 }} 
+                                                label="Số lượng" 
+                                                inputProps={{ inputMode: "numeric", min: 0, max: it.maxAllowed || undefined }}
+                                                type="number"
                                             />
                                             <IconButton size="small" color="error" onClick={() => removeFromCart(it.partId)}>
                                                 <DeleteOutlineIcon fontSize="small" />
@@ -750,20 +802,38 @@ export default function Inventory() {
                                         </Stack>
                                     </Paper>
                                 ))}
-                                {cart.length === 0 && <Typography color="text.secondary" align="center" sx={noSelect}>Chưa chọn part nào</Typography>}
+                                {cart.length === 0 && (
+                                    <Typography color="text.secondary" align="center" sx={{ py: 2, ...noSelect }}>
+                                        Chưa chọn phụ tùng nào. Hãy chọn phụ tùng từ danh sách bên trái.
+                                    </Typography>
+                                )}
                             </Stack>
+
                             <Stack direction="row" spacing={1.5} sx={{ mt: 2 }}>
-                                <Button variant="contained" fullWidth disabled={!canSend || sending} onClick={sendTicket}>
-                                    {sending ? "Đang gửi..." : "Gửi ticket"}
+                                <Button 
+                                    variant="contained" 
+                                    fullWidth 
+                                    disabled={!canSend || sending} 
+                                    onClick={sendTicket}
+                                    startIcon={sending ? <CircularProgress size={16} /> : <SendIcon />}
+                                >
+                                    {sending ? "Đang gửi..." : "Gửi Lên EVM"}
                                 </Button>
-                                <Button fullWidth variant="outlined" disabled={cart.length === 0} onClick={() => setCart([])}>
+                                <Button 
+                                    fullWidth 
+                                    variant="outlined" 
+                                    disabled={cart.length === 0} 
+                                    onClick={() => {
+                                        setCart([]);
+                                        setReasonNote("");
+                                    }}
+                                >
                                     Xoá hết
                                 </Button>
                             </Stack>
                         </CardContent>
                     </Card>
                 </Grid>
-                )}
             </Grid>
 
             {/* DIALOG: INCOMING SHIPMENTS */}
@@ -789,20 +859,37 @@ export default function Inventory() {
                                     <Stack direction="row" justifyContent="space-between" alignItems="center">
                                         <Box sx={{ flex: 1 }}>
                                             <Typography sx={{ fontWeight: 600 }}>
-                                                Từ: {
-                                                    s.sourceCenter?.name || 
-                                                    s.fromCenter?.name || 
-                                                    (s.fromCenterId && centerMap[String(s.fromCenterId)]) ||
-                                                    (s.sourceCenterId && centerMap[String(s.sourceCenterId)]) ||
-                                                    (s.fromCenterId ? `Trung tâm ${s.fromCenterId}` : "Trung tâm chưa xác định")
-                                                }
+                                                Từ: {(() => {
+                                                    // Ưu tiên: object name > centerMap > fallback
+                                                    if (s.sourceCenter?.name) return s.sourceCenter.name;
+                                                    if (s.fromCenter?.name) return s.fromCenter.name;
+                                                    
+                                                    const fromId = s.fromCenterId || s.sourceCenterId;
+                                                    if (fromId) {
+                                                        const fromIdStr = String(fromId);
+                                                        // Thử nhiều cách match: string, original, lowercase, uppercase
+                                                        const name = 
+                                                            centerMap[fromIdStr] || 
+                                                            centerMap[fromId] || 
+                                                            centerMap[fromIdStr.toLowerCase()] || 
+                                                            centerMap[fromIdStr.toUpperCase()] ||
+                                                            null;
+                                                        if (name) {
+                                                            console.log(`[ReplenishTicket] Found center name for ${fromIdStr}: ${name}`);
+                                                            return name;
+                                                        }
+                                                        // Nếu không tìm thấy trong map, hiển thị ID tạm thời
+                                                        console.warn(`[ReplenishTicket] Center name not found for ${fromIdStr}, centerMap keys:`, Object.keys(centerMap).slice(0, 5));
+                                                        return `Trung tâm ${fromIdStr}`;
+                                                    }
+                                                    return "Trung tâm chưa xác định";
+                                                })()}
                                             </Typography>
                                             <Typography variant="caption" color="text.secondary">
                                                 {s.trackingNo ? `Tracking: ${s.trackingNo}` : "Chưa có tracking number"}
                                             </Typography>
                                         </Box>
                                         <Stack direction="row" spacing={1} alignItems="center">
-                                            {/* Chỉ hiển thị status chip nếu không phải CLOSED/COMPLETED */}
                                             {s.status !== "CLOSED" && s.status !== "COMPLETED" && (
                                                 <Chip size="small" label={s.status}
                                                     color={
@@ -831,9 +918,12 @@ export default function Inventory() {
                 <DialogActions><Button onClick={() => setShipOpen(false)}>Đóng</Button></DialogActions>
             </Dialog>
 
-            <Snackbar open={!!msg} autoHideDuration={2500} onClose={() => setMsg("")}>
-                <Alert severity="info" onClose={() => setMsg("")} sx={{ userSelect: "none", cursor: "default" }}>{msg}</Alert>
+            <Snackbar open={!!msg} autoHideDuration={4000} onClose={() => setMsg("")}>
+                <Alert severity={msg.includes("Lỗi") ? "error" : "success"} onClose={() => setMsg("")} sx={{ userSelect: "none", cursor: "default" }}>
+                    {msg}
+                </Alert>
             </Snackbar>
         </Box>
     );
 }
+
