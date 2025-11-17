@@ -19,6 +19,59 @@ import partService from "../../services/partService";
 import { FormControl, InputLabel, Select } from "@mui/material";
 import axiosInstance from "../../services/axiosInstance";
 
+const INVENTORY_PART_COLUMN_LABELS = {
+    centerName: "Trung tâm",
+    center: "Trung tâm",
+    partNo: "Mã phụ tùng",
+    partNumber: "Mã phụ tùng",
+    partName: "Tên phụ tùng",
+    minQty: "Tồn tối thiểu",
+    maxQty: "Tồn tối đa",
+    quantity: "Số lượng",
+    note: "Ghi chú",
+    status: "Trạng thái",
+};
+
+const INVENTORY_LOT_COLUMN_LABELS = {
+    centerName: "Trung tâm",
+    center: "Trung tâm",
+    partName: "Tên phụ tùng",
+    partNo: "Mã phụ tùng",
+    partNumber: "Mã phụ tùng",
+    partCategory: "Nhóm phụ tùng",
+    serialNo: "Số serial",
+    partLotSerialNo: "Số serial (lô)",
+    batchNo: "Số lô",
+    partLotBatchNo: "Mã lô",
+    quantity: "Số lượng",
+    mfgDate: "Ngày sản xuất",
+    manufactureDate: "Ngày sản xuất",
+    expireDate: "Ngày hết hạn",
+    updatedAt: "Cập nhật",
+};
+
+const INVENTORY_LOT_SUMMARY_LABELS = {
+    partName: "Tên phụ tùng",
+    partNumber: "Mã phụ tùng",
+    partCategory: "Nhóm phụ tùng",
+    totalQuantity: "Tổng số lượng",
+    availableLots: "Số lô khả dụng",
+};
+
+const toTitleCase = (key = "") =>
+    key
+        .replace(/([a-z0-9])([A-Z])/g, "$1 $2")
+        .replace(/_/g, " ")
+        .replace(/\s+/g, " ")
+        .trim()
+        .replace(/\b\w/g, (char) => char.toUpperCase());
+
+const getColumnLabel = (key = "") =>
+    INVENTORY_PART_COLUMN_LABELS[key] ||
+    INVENTORY_LOT_COLUMN_LABELS[key] ||
+    INVENTORY_LOT_SUMMARY_LABELS[key] ||
+    toTitleCase(key);
+
 /* ================= InventoryPartView ================= */
 function InventoryPartView({ onSwitch }) {
     const [centers, setCenters] = useState([]);
@@ -505,7 +558,7 @@ function InventoryPartView({ onSwitch }) {
                     <TextField
                         size="small"
                         fullWidth
-                        placeholder="Tìm theo Center/partName"
+                        placeholder="Tìm theo trung tâm hoặc tên phụ tùng"
                         value={q}
                         onChange={(e) => setQ(e.target.value)}
                         InputProps={{ startAdornment: <SearchIcon sx={{ mr: 1, opacity: .6 }} /> }}
@@ -540,8 +593,10 @@ function InventoryPartView({ onSwitch }) {
                     <Table size="small" stickyHeader>
                         <TableHead>
                             <TableRow>
-                                {columns.map((c) => <TableCell key={c}>{c}</TableCell>)}
-                                <TableCell align="center">Actions</TableCell>
+                                {columns.map((c) => (
+                                    <TableCell key={c}>{getColumnLabel(c)}</TableCell>
+                                ))}
+                                <TableCell align="center">Thao tác</TableCell>
                             </TableRow>
                         </TableHead>
                         <TableBody>
@@ -591,7 +646,7 @@ function InventoryPartView({ onSwitch }) {
 
             {/* Dialog: Create Inventory Part */}
             <Dialog open={openCreate} onClose={() => setOpenCreate(false)} fullWidth maxWidth="sm">
-                <DialogTitle>Tạo Inventory Part</DialogTitle>
+                <DialogTitle>Tạo kho phụ tùng</DialogTitle>
                 <DialogContent>
                     <Grid container spacing={2} mt={1}>
                         {/* Trung tâm */}
@@ -632,7 +687,7 @@ function InventoryPartView({ onSwitch }) {
                             <TextField
                                 fullWidth
                                 type="text"
-                                label="Quantity"
+                                label="Số lượng"
                                 value={createForm.quantity}
                                 onChange={(e) => setCreateForm({ ...createForm, quantity: sanitizeIntInput(e.target.value) })}
                             />
@@ -643,7 +698,7 @@ function InventoryPartView({ onSwitch }) {
                             <TextField
                                 fullWidth
                                 type="text"
-                                label="Min Qty"
+                                label="Số lượng tối thiểu"
                                 value={createForm.minQty}
                                 onChange={(e) => setCreateForm({ ...createForm, minQty: sanitizeIntInput(e.target.value) })}
                             />
@@ -652,7 +707,7 @@ function InventoryPartView({ onSwitch }) {
                             <TextField
                                 fullWidth
                                 type="text"
-                                label="Max Qty"
+                                label="Số lượng tối đa"
                                 value={createForm.maxQty}
                                 onChange={(e) => setCreateForm({ ...createForm, maxQty: sanitizeIntInput(e.target.value) })}
                             />
@@ -669,7 +724,7 @@ function InventoryPartView({ onSwitch }) {
 
             {/* Dialog: Edit */}
             <Dialog open={openEdit} onClose={() => setOpenEdit(false)} fullWidth maxWidth="sm">
-                <DialogTitle>Cập nhật Inventory Part</DialogTitle>
+                <DialogTitle>Cập nhật kho phụ tùng</DialogTitle>
                 <DialogContent>
                     {editing ? (
                         <Grid container spacing={2} mt={1}>
@@ -757,6 +812,16 @@ function InventoryLotView({ onSwitch }) {
     const [adjustForm, setAdjustForm] = useState({ inventoryLotId: "", delta: "", reason: "" });
 
     const [snack, setSnack] = useState({ open: false, message: "", severity: "info" });
+
+    const lotDetailFields = [
+        { key: "centerName", label: "Trung tâm" },
+        { key: "partLotBatchNo", label: "Số lô" },
+        { key: "partLotSerialNo", label: "Số serial" },
+        { key: "partName", label: "Tên phụ tùng" },
+        { key: "partNumber", label: "Mã phụ tùng" },
+        { key: "partCategory", label: "Nhóm phụ tùng" },
+        { key: "quantity", label: "Số lượng", editable: true },
+    ];
 
     const notify = useCallback((message, severity = "info") => {
         setSnack({ open: true, message, severity });
@@ -1133,7 +1198,7 @@ function InventoryLotView({ onSwitch }) {
                         } finally { 
                             setLoading(false); 
                         }
-                    }}>Tổng hợp theo Center</Button>
+                    }}>Tổng hợp theo trung tâm</Button>
                 </Grid>
                 <Grid item xs="auto">
                     <Button
@@ -1165,16 +1230,18 @@ function InventoryLotView({ onSwitch }) {
                             <TableRow>
                                 {summaryMode ? (
                                     <>
-                                        <TableCell>partName</TableCell>
-                                        <TableCell>partNumber</TableCell>
-                                        <TableCell>partCategory</TableCell>
-                                        <TableCell align="right">totalQuantity</TableCell>
-                                        <TableCell align="right">availableLots</TableCell>
+                                        <TableCell>{getColumnLabel("partName")}</TableCell>
+                                        <TableCell>{getColumnLabel("partNumber")}</TableCell>
+                                        <TableCell>{getColumnLabel("partCategory")}</TableCell>
+                                        <TableCell align="right">{getColumnLabel("totalQuantity")}</TableCell>
+                                        <TableCell align="right">{getColumnLabel("availableLots")}</TableCell>
                                     </>
                                 ) : (
                                     <>
-                                        {columns.map((c) => <TableCell key={c}>{c}</TableCell>)}
-                                        <TableCell align="center">Actions</TableCell>
+                                        {columns.map((c) => (
+                                            <TableCell key={c}>{getColumnLabel(c)}</TableCell>
+                                        ))}
+                                        <TableCell align="center">Thao tác</TableCell>
                                     </>
                                 )}
                             </TableRow>
@@ -1363,30 +1430,22 @@ function InventoryLotView({ onSwitch }) {
                 <DialogContent>
                     {editing ? (
                         <Grid container spacing={2} mt={1}>
-                            {[
-                                "centerName",
-                                "partLotBatchNo",
-                                "partLotSerialNo",
-                                "partName",
-                                "partNumber",
-                                "partCategory",
-                                "quantity",
-                            ].map((k) => (
-                                <Grid key={k} item xs={12} sm={6}>
+                            {lotDetailFields.map((field) => (
+                                <Grid key={field.key} item xs={12} sm={6}>
                                     <TextField
                                         fullWidth
-                                        label={k}
+                                        label={field.label}
                                         value={
-                                            typeof editForm[k] === "object"
-                                                ? JSON.stringify(editForm[k])
-                                                : editForm[k] ?? ""
+                                            typeof editForm[field.key] === "object"
+                                                ? JSON.stringify(editForm[field.key])
+                                                : editForm[field.key] ?? ""
                                         }
                                         onChange={(e) => {
-                                            if (k === "quantity") {
-                                                setEditForm({ ...editForm, quantity: Number(e.target.value) });
+                                            if (field.editable) {
+                                                setEditForm({ ...editForm, [field.key]: Number(e.target.value) });
                                             }
                                         }}
-                                        disabled={k !== "quantity"} // 🔒 chỉ cho sửa quantity
+                                        disabled={!field.editable}
                                     />
                                 </Grid>
                             ))}

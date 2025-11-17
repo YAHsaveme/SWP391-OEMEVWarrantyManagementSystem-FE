@@ -20,6 +20,7 @@ import {
     Divider, Chip, Menu, MenuItem, Button,
 } from "@mui/material";
 import {
+    DirectionsCar as CarIcon,
     TwoWheeler as TwoWheelerIcon,
     WarningAmber as AlertTriangle,
     Inventory2 as PackageIcon,

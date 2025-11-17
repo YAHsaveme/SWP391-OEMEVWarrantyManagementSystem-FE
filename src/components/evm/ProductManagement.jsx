@@ -377,7 +377,7 @@ export default function EvModelsManagement() {
                 <Grid container spacing={1.5} alignItems="center">
                     <Grid item xs={12} md={6}>
                         <Typography variant="h5" fontWeight={700} gutterBottom>
-                            Quản lý EV Models
+                            Quản lý mẫu xe điện
                         </Typography>
                         <Stack direction="row" spacing={1} sx={{ mt: 0.5 }}>
                             <Chip label={`Tổng: ${stats.total}`} color="primary" variant="outlined" size="small" />
@@ -431,15 +431,15 @@ export default function EvModelsManagement() {
             {/* BẢNG EV MODELS */}
             <Paper elevation={0} sx={{ borderRadius: 3, overflow: "hidden" }}>
                 <Box sx={{ p: 2, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-                    <Typography variant="h6" fontWeight={700}>Bảng EV Models</Typography>
+                    <Typography variant="h6" fontWeight={700}>Bảng mẫu xe điện</Typography>
                 </Box>
                 <Divider />
                 <Box sx={{ width: "100%", overflowX: "auto" }}>
                     <Table size="small" stickyHeader>
                         <TableHead>
                             <TableRow>
-                                <TableCell>Mã model</TableCell>
-                                <TableCell>Tên model</TableCell>
+                                <TableCell>Mã mẫu</TableCell>
+                                <TableCell>Tên mẫu</TableCell>
                                 <TableCell>Pin (kWh)</TableCell>
                                 <TableCell>Motor (kW)</TableCell>
                                 <TableCell>Range (km)</TableCell>

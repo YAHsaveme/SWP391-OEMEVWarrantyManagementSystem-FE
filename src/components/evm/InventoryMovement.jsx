@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
     Box,
     Grid,
@@ -82,15 +82,16 @@ const reasonOptions = [
 ];
 
 const initialFilters = {
-    centerId: "",
-    direction: "",
-    reason: "",
-    startDate: "",
-    endDate: "",
+        centerId: "",
+        direction: "",
+        reason: "",
+        startDate: "",
+        endDate: "",
 };
 
 export default function InventoryMovement() {
     const [centers, setCenters] = useState([]);
+    const [centerMap, setCenterMap] = useState({});
     const [filters, setFilters] = useState(initialFilters);
     const [appliedFilters, setAppliedFilters] = useState(initialFilters);
     const [page, setPage] = useState(0);
@@ -135,6 +136,11 @@ export default function InventoryMovement() {
                 name: c.name || c.centerName || c.displayName || c.code || "—",
             }));
             setCenters(normalized);
+            const map = normalized.reduce((acc, c) => {
+                if (c.id) acc[String(c.id)] = c.name;
+                return acc;
+            }, {});
+            setCenterMap(map);
         } catch (err) {
             console.error("[InventoryMovement] loadCenters error:", err);
             setSnack({
@@ -165,7 +171,7 @@ export default function InventoryMovement() {
             let totalElements = 0;
             let currentPage = targetPage;
 
-            if (Array.isArray(res.data)) {
+                    if (Array.isArray(res.data)) {
                 list = res.data;
                 totalElements = list.length;
                 currentPage = 0;
@@ -245,9 +251,16 @@ export default function InventoryMovement() {
         }
     };
 
+    const getCenterLabel = useCallback((id, fallbackName) => {
+        if (fallbackName) return fallbackName;
+        if (!id) return "—";
+        const key = String(id);
+        return centerMap[key] || `Trung tâm ${key}`;
+    }, [centerMap]);
+
     const aggregatedByCenter = useMemo(() => {
         const map = movements.reduce((acc, mov) => {
-            const center = mov.centerName || mov.centerId || "Không rõ trung tâm";
+            const center = getCenterLabel(mov.centerId, mov.centerName) || "Không rõ trung tâm";
             if (!acc[center]) {
                 acc[center] = { total: 0, in: 0, out: 0 };
             }
@@ -261,7 +274,7 @@ export default function InventoryMovement() {
         return Object.entries(map)
             .map(([center, stats]) => ({ center, ...stats }))
             .sort((a, b) => b.total - a.total);
-    }, [movements]);
+    }, [movements, centerMap, getCenterLabel]);
 
     const aggregatedReasons = useMemo(() => {
         return Object.entries(summary.byReason || {})
@@ -392,19 +405,19 @@ export default function InventoryMovement() {
                 <Grid item xs={12} md={4}>
                 </Grid>
 
-                <Grid item xs={12} md={8}>
+                    <Grid item xs={12} md={8}>
                     
+                    </Grid>
                 </Grid>
-            </Grid>
 
             <Paper sx={{ p: 3, borderRadius: 3 }}>
                 <Typography variant="h6" fontWeight={700} gutterBottom>
                     Lịch sử luân chuyển kho
-                </Typography>               
+                        </Typography>
 
-                <Table size="small">
-                    <TableHead>
-                        <TableRow>
+                            <Table size="small">
+                                <TableHead>
+                                    <TableRow>
                             <TableCell>Thời gian</TableCell>
                             <TableCell>Trung tâm</TableCell>
                             <TableCell>Hướng</TableCell>
@@ -413,9 +426,9 @@ export default function InventoryMovement() {
                             <TableCell>Phụ tùng</TableCell>
                             <TableCell align="right">Số lượng</TableCell>
                             <TableCell align="center">Chi tiết</TableCell>
-                        </TableRow>
-                    </TableHead>
-                    <TableBody>
+                                    </TableRow>
+                                </TableHead>
+                                <TableBody>
                         {movements.length === 0
                             ? renderEmptyState()
                             : movements.map((mov) => {
@@ -429,11 +442,11 @@ export default function InventoryMovement() {
                                   return (
                                       <TableRow key={mov.id || `${mov.centerId}_${mov.movedAt}`}>
                                           <TableCell>{formatDate(mov.movedAt)}</TableCell>
-                                          <TableCell>{mov.centerName || mov.centerId || "—"}</TableCell>
-                                          <TableCell>
+                                          <TableCell>{getCenterLabel(mov.centerId, mov.centerName)}</TableCell>
+                                            <TableCell>
                                               {direction ? (
                                                   <Chip
-                                                      size="small"
+                                                    size="small"
                                                       label={directionLabels[direction] || direction}
                                                       color={directionColors[direction] || "default"}
                                                   />
@@ -467,12 +480,12 @@ export default function InventoryMovement() {
                                                       <VisibilityIcon fontSize="small" />
                                                   </IconButton>
                                               </Tooltip>
-                                          </TableCell>
-                                      </TableRow>
+                                            </TableCell>
+                                        </TableRow>
                                   );
                               })}
-                    </TableBody>
-                </Table>
+                                </TableBody>
+                            </Table>
 
                 <TablePagination
                     component="div"
@@ -488,7 +501,7 @@ export default function InventoryMovement() {
                     rowsPerPageOptions={[10, 20, 50, 100]}
                     labelRowsPerPage="Số dòng mỗi trang"
                 />
-            </Paper>
+                    </Paper>
 
 
             <Dialog
@@ -522,7 +535,7 @@ export default function InventoryMovement() {
                                         Trung tâm
                                     </Typography>
                                     <Typography variant="body1">
-                                        {detailMovement.centerName || detailMovement.centerId || "—"}
+                                        {getCenterLabel(detailMovement.centerId, detailMovement.centerName)}
                                     </Typography>
                                 </Grid>
                                 <Grid item xs={12} md={3}>
@@ -534,13 +547,13 @@ export default function InventoryMovement() {
                                         color={directionColors[(detailMovement.direction || "").toUpperCase()] || "default"}
                                         label={directionLabels[(detailMovement.direction || "").toUpperCase()] || "—"}
                                     />
-                                </Grid>
+                                                        </Grid>
                                 <Grid item xs={12} md={3}>
                                     <Typography variant="subtitle2" color="text.secondary">
                                         Lý do
                                     </Typography>
                                     <Chip
-                                        size="small"
+                                                                size="small"
                                         color="primary"
                                         variant="outlined"
                                         icon={
@@ -553,31 +566,31 @@ export default function InventoryMovement() {
                                             detailMovement.reason ||
                                             "—"
                                         }
-                                    />
-                                </Grid>
-                            </Grid>
+                                                            />
+                                                        </Grid>
+                                                    </Grid>
                             <Divider />
                             <Typography variant="subtitle2" color="text.secondary">
                                 Phụ tùng liên quan
-                            </Typography>
-                            <Table size="small">
-                                <TableHead>
-                                    <TableRow>
-                                        <TableCell>Part No</TableCell>
+                </Typography>
+                    <Table size="small">
+                        <TableHead>
+                            <TableRow>
+                                        <TableCell>Mã phụ tùng </TableCell>
                                         <TableCell>Tên phụ tùng</TableCell>
                                         <TableCell>Serial</TableCell>
-                                        <TableCell>Batch</TableCell>
+                                        <TableCell>Lô</TableCell>
                                         <TableCell align="right">Số lượng</TableCell>
-                                    </TableRow>
-                                </TableHead>
-                                <TableBody>
+                            </TableRow>
+                        </TableHead>
+                        <TableBody>
                                     {detailLotsDisplay.length === 0 ? (
                                         <TableRow>
                                             <TableCell colSpan={5}>
                                                 <Typography align="center" color="text.secondary" sx={{ py: 2 }}>
                                                     Không có thông tin chi tiết lot.
                                                 </Typography>
-                                            </TableCell>
+                                        </TableCell>
                                         </TableRow>
                                     ) : (
                                         detailLotsDisplay.map((lot) => (
@@ -587,11 +600,11 @@ export default function InventoryMovement() {
                                                 <TableCell>{lot.serial}</TableCell>
                                                 <TableCell>{lot.batch}</TableCell>
                                                 <TableCell align="right">{lot.quantity}</TableCell>
-                                            </TableRow>
-                                        ))
-                                    )}
-                                </TableBody>
-                            </Table>
+                                    </TableRow>
+                                ))
+                            )}
+                        </TableBody>
+                    </Table>
                             {detailMovement.note && (
                                 <>
                                     <Divider />

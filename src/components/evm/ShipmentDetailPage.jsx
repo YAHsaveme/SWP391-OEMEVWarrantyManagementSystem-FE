@@ -503,11 +503,11 @@ export default function ShipmentDetailPage({ id: idProp }) {
                     <TableHead>
                         <TableRow>
                             <TableCell>#</TableCell>
-                            <TableCell>Part</TableCell>
-                            <TableCell align="right">Qty</TableCell>
+                            <TableCell>Phụ tùng</TableCell>
+                            <TableCell align="right">Số lượng</TableCell>
                             {hasSerialized && <TableCell>Serial No</TableCell>}
-                            <TableCell>Batch No</TableCell>
-                            <TableCell>Mfg Date</TableCell>
+                            <TableCell>Mã lô</TableCell>
+                            <TableCell>Ngày sản xuất</TableCell>
                         </TableRow>
                     </TableHead>
                     <TableBody>

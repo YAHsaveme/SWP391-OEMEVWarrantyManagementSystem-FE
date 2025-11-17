@@ -2107,7 +2107,7 @@ function WarrantyRequests() {
                     {/* header lọc + search */}
                     <Stack direction={{ xs: "column", md: "row" }} justifyContent="space-between" alignItems={{ xs: "flex-start", md: "center" }} spacing={2} sx={{ mb: 3 }}>
                         <Box>
-                            <Typography variant="h4" fontWeight="bold" sx={nonEditableSx}>Warranty Requests</Typography>
+                            <Typography variant="h4" fontWeight="bold" sx={nonEditableSx}>Yêu cầu bảo hành</Typography>
                             <Typography color="text.secondary" sx={nonEditableSx}>Phê duyệt hoặc từ chối các đơn bảo hành đang chờ xử lý.</Typography>
                         </Box>
                         <Stack direction="row" spacing={2}>

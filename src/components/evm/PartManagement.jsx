@@ -362,7 +362,7 @@ function PartFormDialog({ open, onClose, onSubmit, initial }) {
     const handleSubmit = async () => {
         // client-side validation
         if (!String(form.partNo).trim() || !String(form.partName).trim()) {
-            setServerErr("Vui lòng nhập Part No và Tên phụ tùng");
+            setServerErr("Vui lòng nhập mã phụ tùng và tên phụ tùng");
             return;
         }
         const priceNum = form.unitPrice === "" ? 0 : Number(form.unitPrice);
@@ -942,7 +942,7 @@ function PartsView({ onSwitch }) {
 
                     <Stack direction="row" alignItems="center" spacing={1}>
                         <PillTextField
-                            placeholder="Tìm Part No / Tên / Nhóm"
+                            placeholder="Tìm phụ tùng / Tên / Nhóm"
                             size="small"
                             value={q}
                             onChange={(e) => { setQ(e.target.value); setPage(0); }}
@@ -1011,7 +1011,7 @@ function PartsView({ onSwitch }) {
                     <Table size="small" stickyHeader>
                         <TableHead>
                             <TableRow>
-                                <HeadCell>Part No</HeadCell>
+                                <HeadCell>Mã</HeadCell>
                                 <HeadCell>Tên phụ tùng</HeadCell>
                                 <HeadCell>Nhóm/Loại</HeadCell>
                                 <HeadCell>Đơn vị</HeadCell>
@@ -1430,7 +1430,7 @@ function LotsView({ onSwitch }) {
 
                     <Stack direction="row" alignItems="center" spacing={1}>
                         <PillTextField
-                            placeholder="Tìm Batch No / Part No"
+                            placeholder="Tìm mã lô / mã phụ tùng"
                             size="small"
                             value={q}
                             onChange={(e) => { setQ(e.target.value); setPage(0); }}
@@ -1559,9 +1559,9 @@ function LotsView({ onSwitch }) {
                         <TableHead>
                             <TableRow>
                                 {/* BỎ Serial No để bảng gọn hơn */}
-                                <HeadCell>Batch No</HeadCell>
-                                <HeadCell>Part No</HeadCell>
-                                <HeadCell>Ngày SX</HeadCell>
+                                <HeadCell>Mã lô</HeadCell>
+                                <HeadCell>Mã phụ tùng</HeadCell>
+                                <HeadCell>Ngày sản xuất</HeadCell>
                                 <HeadCell>Ngày tạo</HeadCell>
                                 <HeadCell>Trạng thái</HeadCell>
                                 <HeadCell align="right">Action</HeadCell>
