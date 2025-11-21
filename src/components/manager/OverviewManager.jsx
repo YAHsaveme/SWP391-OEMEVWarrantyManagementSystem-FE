@@ -7,7 +7,7 @@ import TechniciansPage from "../manager/TechniciansPage";
 import Appointment from "../manager/Appointment";
 import VehiclesPage from "../staff/VehiclesPage";
 import ScDispatch from "../staff/ScDispatch";
-import Dashboard from "../evm/Dashboard";
+import Dashboard from "../manager/Dashboard";
 import ReplenishTicket from "./ReplenishTicket";
 import authService from "../../services/authService";
 
@@ -269,11 +269,11 @@ export default function OverviewManager() {
                         >
                             <Tab iconPosition="start" icon={<BarChartIcon />} label="Dashboard" />
                             <Tab iconPosition="start" icon={<FileText />} label="Yêu cầu bảo hành" />
-                            <Tab iconPosition="start" icon={<AssessmentIcon />} label="Báo cáo Claims" />
+                            <Tab iconPosition="start" icon={<AssessmentIcon />} label="Báo cáo yêu cầu bảo hành" />
                             <Tab iconPosition="start" icon={<GroupsIcon />} label="Quản lý kỹ thuật viên" />
                             <Tab iconPosition="start" icon={<EventIcon />} label="Quản lý cuộc hẹn" />
-                            <Tab iconPosition="start" icon={<LocalShippingIcon />} label="Dispatch" />
-                            <Tab iconPosition="start" icon={<SendIcon />} label="Gửi Ticket" />
+                            <Tab iconPosition="start" icon={<LocalShippingIcon />} label="Giao hàng" />
+                            <Tab iconPosition="start" icon={<SendIcon />} label="Gửi phiếu yêu cầu phụ tùng" />
 
                         </Tabs>
 

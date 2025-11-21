@@ -39,7 +39,7 @@ function ElevationScroll({ children }) {
 const NAV_ITEMS = [
     { label: "Xe máy điện", path: "/staff/vehicles", icon: <TwoWheelerIcon /> },
     { label: "Yêu cầu bảo hành", path: "/staff/claims", icon: <AssignmentIcon /> },
-    { label: "Báo cáo yêu cầu", path: "/staff/claim-report", icon: <DescriptionIcon /> },
+    { label: "Báo cáo yêu cầu bảo hành", path: "/staff/claim-report", icon: <DescriptionIcon /> },
     { label: "Điều phối", path: "/staff/dispatch", icon: <LocalShippingIcon /> },
     { label: "Kho linh kiện", path: "/staff/inventory", icon: <Inventory2Icon /> },
     { label: "Kỹ thuật viên", path: "/staff/technicians", icon: <GroupsIcon /> },

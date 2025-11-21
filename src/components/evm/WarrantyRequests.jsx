@@ -9,7 +9,7 @@ import {
     InputLabel, Select, MenuItem, Stack, Tooltip, Checkbox
 } from "@mui/material";
 import DescriptionIcon from "@mui/icons-material/Description";
-import { Visibility, CheckCircle, Cancel, Search, Refresh, LocalShipping, Add, Delete, Remove } from "@mui/icons-material";
+import { Visibility, Search, Refresh, LocalShipping, Add, Delete, Remove } from "@mui/icons-material";
 
 import claimService, { CLAIM_STATUS } from "../../services/claimService";
 import ticketService from "../../services/ticketService";
@@ -1898,23 +1898,6 @@ function WarrantyRequests() {
         }
     };
 
-    const [updatingClaimId, setUpdatingClaimId] = useState(null);
-    const handleUpdateStatus = async (claimId, status) => {
-        if (updatingClaimId === claimId) return;
-        setUpdatingClaimId(claimId);
-        try {
-            const updated = await claimService.updateStatus(claimId, status);
-            setRequests((prev) => prev.map((r) => (r.id === claimId ? updated : r)));
-            setSnack({ open: true, message: `Đã cập nhật: ${status}`, severity: "success" });
-            window.dispatchEvent(new CustomEvent("claim-sync"));
-        } catch (err) {
-            console.error("Update status failed:", err);
-            setSnack({ open: true, message: "Không thể cập nhật trạng thái", severity: "error" });
-        } finally {
-            setUpdatingClaimId(null);
-        }
-    };
-
     const handleView = async (id) => {
         setViewOpen(true);
         try {
@@ -2128,7 +2111,6 @@ function WarrantyRequests() {
                                     onChange={(e) => { setPage(1); setFilterStatus(e.target.value); }}
                                 >
                                     <MenuItem value="all">Tất cả</MenuItem>
-                                    <MenuItem value={CLAIM_STATUS.UNDER_REVIEW}>Chờ phê duyệt</MenuItem>
                                     <MenuItem value={CLAIM_STATUS.APPROVED}>Đã phê duyệt</MenuItem>
                                     <MenuItem value={CLAIM_STATUS.REJECTED}>Từ chối</MenuItem>
                                     <MenuItem value={CLAIM_STATUS.COMPLETED}>Hoàn tất</MenuItem>
@@ -2212,32 +2194,6 @@ function WarrantyRequests() {
                                                             <Visibility />
                                                         </IconButton>
                                                     </Tooltip>
-                                                    {r.status === CLAIM_STATUS.UNDER_REVIEW && (
-                                                        <>
-                                                            <Tooltip title={isUpdating ? "Đang xử lý..." : "Phê duyệt"}>
-                                                                <span>
-                                                                    <IconButton
-                                                                        color="success"
-                                                                        disabled={isUpdating}
-                                                                        onClick={() => handleUpdateStatus(r.id, CLAIM_STATUS.APPROVED)}
-                                                                    >
-                                                                        <CheckCircle />
-                                                                    </IconButton>
-                                                                </span>
-                                                            </Tooltip>
-                                                            <Tooltip title={isUpdating ? "Đang xử lý..." : "Từ chối"}>
-                                                                <span>
-                                                                    <IconButton
-                                                                        color="error"
-                                                                        disabled={isUpdating}
-                                                                        onClick={() => handleUpdateStatus(r.id, CLAIM_STATUS.REJECTED)}
-                                                                    >
-                                                                        <Cancel />
-                                                                    </IconButton>
-                                                                </span>
-                                                            </Tooltip>
-                                                        </>
-                                                    )}
                                                 </TableCell>
                                             </TableRow>
                                         );
@@ -2248,7 +2204,7 @@ function WarrantyRequests() {
                     </Paper>
                     {/* Dialog xem chi tiết claim */}
                     <Dialog open={viewOpen} onClose={() => setViewOpen(false)} fullWidth maxWidth="lg">
-                        <DialogTitle sx={nonEditableSx}>Xem chi tiết Claim</DialogTitle>
+                        <DialogTitle sx={nonEditableSx}>Xem chi tiết đơn bảo hành</DialogTitle>
                         <DialogContent dividers>
                             {!selectedClaim ? (
                                 <Typography color="text.secondary" sx={nonEditableSx}>Không có dữ liệu</Typography>

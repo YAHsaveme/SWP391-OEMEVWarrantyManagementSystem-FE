@@ -13,6 +13,7 @@ import EventManagement from "./EventManagement";
 import Dashboard from "./Dashboard";
 import PartTraceability from "./PartTraceability";
 import InventoryMovement from "./InventoryMovement";
+import ClaimReport from "./ClaimReport";
 
 import {
     AppBar, Toolbar, Typography, Container, Box, Avatar, Tabs, Tab,
@@ -34,6 +35,7 @@ import {
     AddCircle as AddIcon,
     Build as BuildIcon,
     CompareArrows as CompareArrowsIcon,
+    Assessment as AssessmentIcon,
 } from "@mui/icons-material";
 import { alpha, createTheme } from "@mui/material/styles";
 import { ThemeProvider, useTheme } from "@mui/material/styles";
@@ -305,6 +307,7 @@ export default function Overview() {
                             <Tab iconPosition="start" icon={<BarChartIcon />} label="Kho phụ tùng" />
                             <Tab iconPosition="start" icon={<CompareArrowsIcon />} label="Luân chuyển kho" />
                             <Tab iconPosition="start" icon={<FileText />} label="Yêu cầu bảo hành" />
+                            <Tab iconPosition="start" icon={<AssessmentIcon />} label="Báo cáo bảo hành" />
                             <Tab iconPosition="start" icon={<CarIcon />} label="Trung tâm Dịch vụ" />
                             <Tab iconPosition="start" icon={<FileText />} label="Chính sách Bảo hành" />
                             <Tab iconPosition="start" icon={<CarIcon />} label="Chi tiết vận đơn" />
@@ -319,11 +322,12 @@ export default function Overview() {
                             {tab === 3 && <InventoryPart />}
                             {tab === 4 && <InventoryMovement />}
                             {tab === 5 && <WarrantyRequests />}
-                            {tab === 6 && <ServiceCenters />}
-                            {tab === 7 && <WarrantyPolicy />}
-                            {tab === 8 && <ShipmentDetailPage id={activeShipmentId} />}
-                            {tab === 9 && <EventManagement />}
-                            {tab === 10 && <PartTraceability />}
+                            {tab === 6 && <ClaimReport />}
+                            {tab === 7 && <ServiceCenters />}
+                            {tab === 8 && <WarrantyPolicy />}
+                            {tab === 9 && <ShipmentDetailPage id={activeShipmentId} />}
+                            {tab === 10 && <EventManagement />}
+                            {tab === 11 && <PartTraceability />}
                         </Box>
                     </Paper>
 

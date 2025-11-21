@@ -1,4 +1,4 @@
-// src/components/evm/WarrantyRequests.jsx
+// src/components/manager/WarrantyRequests.jsx
 "use client";
 
 import React, { useEffect, useState, useMemo, useRef } from "react";
@@ -2107,7 +2107,6 @@ function WarrantyRequests() {
                     {/* header lọc + search */}
                     <Stack direction={{ xs: "column", md: "row" }} justifyContent="space-between" alignItems={{ xs: "flex-start", md: "center" }} spacing={2} sx={{ mb: 3 }}>
                         <Box>
-                            <Typography variant="h4" fontWeight="bold" sx={nonEditableSx}>Warranty Requests</Typography>
                             <Typography color="text.secondary" sx={nonEditableSx}>Phê duyệt hoặc từ chối các đơn bảo hành đang chờ xử lý.</Typography>
                         </Box>
                         <Stack direction="row" spacing={2}>
@@ -2169,7 +2168,7 @@ function WarrantyRequests() {
                                     <TableCell sx={nonEditableSx}>VIN</TableCell>
                                     <TableCell sx={nonEditableSx}>Tóm tắt lỗi</TableCell>
                                     <TableCell sx={nonEditableSx}>Ngày tạo</TableCell>
-                                    <TableCell sx={nonEditableSx}>Odometer</TableCell>
+                                    <TableCell sx={nonEditableSx}>Chỉ số công tơ mét</TableCell>
                                     <TableCell sx={nonEditableSx}>Trạng thái</TableCell>
                                     <TableCell sx={nonEditableSx} align="center">Thao tác</TableCell>
                                 </TableRow>
@@ -2248,7 +2247,7 @@ function WarrantyRequests() {
                     </Paper>
                     {/* Dialog xem chi tiết claim */}
                     <Dialog open={viewOpen} onClose={() => setViewOpen(false)} fullWidth maxWidth="lg">
-                        <DialogTitle sx={nonEditableSx}>Xem chi tiết Claim</DialogTitle>
+                        <DialogTitle sx={nonEditableSx}>Xem chi tiết đơn bảo hành</DialogTitle>
                         <DialogContent dividers>
                             {!selectedClaim ? (
                                 <Typography color="text.secondary" sx={nonEditableSx}>Không có dữ liệu</Typography>
@@ -2264,29 +2263,29 @@ function WarrantyRequests() {
                                     <Card variant="outlined" sx={{ mb: 2 }}>
                                         <CardContent>
                                             <Typography variant="h6" gutterBottom sx={{ mb: 2, fontWeight: 700 }}>
-                                                Thông tin Claim
+                                                Thông tin đơn bảo hành
                                             </Typography>
                                             <Box>
                                                 {renderDetailListItem("VIN", <Box component="span" sx={{ fontFamily: "monospace" }}>{selectedClaim.vin || "—"}</Box>)}
-                                                {renderDetailListItem("Intake Contact Name", vehicleInfo?.intakeContactName || selectedClaim.intakeContactName || "—")}
-                                                {renderDetailListItem("Intake Contact Phone", vehicleInfo?.intakeContactPhone || "—")}
-                                                {renderDetailListItem("Service Center", centerName)}
-                                                {renderDetailListItem("Opened By", openedByUserName || selectedClaim.openedBy || "—")}
-                                                {renderDetailListItem("Claim Type", selectedClaim.claimType || "—")}
-                                                {renderDetailListItem("Status", selectedClaim.status || "—")}
-                                                {renderDetailListItem("Opened At", selectedClaim.openedAt ? new Date(selectedClaim.openedAt).toLocaleString("vi-VN") : "—")}
-                                                {renderDetailListItem("Error Date", selectedClaim.errorDate ? new Date(selectedClaim.errorDate).toLocaleString("vi-VN") : "—")}
-                                                {renderDetailListItem("Coverage Type", selectedClaim.coverageType || "—")}
-                                                {renderDetailListItem("Odometer (km)", selectedClaim.odometerKm || "—")}
-                                                {renderDetailListItem("Summary", selectedClaim.summary || "—")}
-                                                {renderDetailListItem("Exclusion", selectedClaim.exclusion || "—")}
+                                                {renderDetailListItem("Tên khách hàng", vehicleInfo?.intakeContactName || selectedClaim.intakeContactName || "—")}
+                                                {renderDetailListItem("SĐT khách hàng", vehicleInfo?.intakeContactPhone || "—")}
+                                                {renderDetailListItem("Trung tâm", centerName)}
+                                                {renderDetailListItem("Người tạo yêu cầu", openedByUserName || selectedClaim.openedBy || "—")}
+                                                {renderDetailListItem("Loại yêu cầu bảo hành", selectedClaim.claimType || "—")}
+                                                {renderDetailListItem("Trạng thái", selectedClaim.status || "—")}
+                                                {renderDetailListItem("Được tạo vào lúc", selectedClaim.openedAt ? new Date(selectedClaim.openedAt).toLocaleString("vi-VN") : "—")}
+                                                {renderDetailListItem("Ngày lỗi", selectedClaim.errorDate ? new Date(selectedClaim.errorDate).toLocaleString("vi-VN") : "—")}
+                                                {renderDetailListItem("Loại phạm vi bảo hành", selectedClaim.coverageType || "—")}
+                                                {renderDetailListItem("Chỉ số công tơ mét (km)", selectedClaim.odometerKm || "—")}
+                                                {renderDetailListItem("Kết luận", selectedClaim.summary || "—")}
+                                                {renderDetailListItem("Điều khoản loại trừ", selectedClaim.exclusion || "—")}
                                             </Box>
 
                                             {/* Attachments */}
                                             {Array.isArray(selectedClaim.attachmentUrls) && selectedClaim.attachmentUrls.filter((url) => url && url !== "string").length > 0 && (
                                                 <Box sx={{ mt: 2, pt: 2, borderTop: "1px solid", borderColor: "divider" }}>
                                                     <Typography variant="subtitle2" sx={{ mb: 1, fontWeight: 600 }}>
-                                                        Attachments:
+                                                        Đính kèm:
                                                     </Typography>
                                                     <Stack spacing={1} direction="row" flexWrap="wrap">
                                                         {selectedClaim.attachmentUrls
@@ -2298,7 +2297,7 @@ function WarrantyRequests() {
                                                                 return (
                                                                     <Box key={i} sx={{ display: "flex", alignItems: "center", gap: 1 }}>
                                                                         {isImage ? (
-                                                                            <Tooltip title="Click to view" arrow>
+                                                                            <Tooltip title="Nhấn để xem" arrow>
                                                                                 <img
                                                                                     src={url}
                                                                                     alt={fileName}
@@ -2313,7 +2312,7 @@ function WarrantyRequests() {
                                                                                 />
                                                                             </Tooltip>
                                                                         ) : isPdf ? (
-                                                                            <Tooltip title="Click to view PDF" arrow>
+                                                                            <Tooltip title="Nhấn để xem PDF" arrow>
                                                                                 <DescriptionIcon
                                                                                     color="action"
                                                                                     sx={{ fontSize: 40, cursor: "pointer" }}
@@ -2347,26 +2346,26 @@ function WarrantyRequests() {
                                     <Card variant="outlined" sx={{ mb: 2 }}>
                                         <CardContent>
                                             <Typography variant="h6" gutterBottom sx={{ mb: 2, fontWeight: 700 }}>
-                                                Diagnostics ({diagnostics.length})
+                                                Đánh giá sau sửa chữa ({diagnostics.length})
                                             </Typography>
                                             {diagnostics.length === 0 ? (
-                                                <Typography color="text.secondary">Chưa có diagnostics</Typography>
+                                                <Typography color="text.secondary">Chưa có đánh giá sau sửa chữa</Typography>
                                             ) : (
                                                 <Stack spacing={2}>
                                                     {diagnostics.map((diag) => (
                                                         <Card key={diag.id} variant="outlined" sx={{ bgcolor: "action.hover" }}>
                                                             <CardContent>
                                                                 <Stack spacing={1}>
-                                                                    {renderDetailListItem("Phase", diag.phase || "—")}
-                                                                    {renderDetailListItem("Outcome", diag.outcome || "—")}
+                                                                    {renderDetailListItem("Giai đoạn", diag.phase || "—")}
+                                                                    {renderDetailListItem("Kết quả", diag.outcome || "—")}
                                                                     {renderDetailListItem("SOH (%)", diag.sohPct ?? "—")}
                                                                     {renderDetailListItem("SOC (%)", diag.socPct ?? "—")}
-                                                                    {renderDetailListItem("Pack Voltage", diag.packVoltage ?? "—")}
-                                                                    {renderDetailListItem("Cell Delta (mV)", diag.cellDeltaMv ?? "—")}
-                                                                    {renderDetailListItem("Cycles", diag.cycles ?? "—")}
-                                                                    {renderDetailListItem("Performed By", diag.performedByName || "—")}
-                                                                    {renderDetailListItem("Recorded At", diag.recordedAt ? new Date(diag.recordedAt).toLocaleString("vi-VN") : "—")}
-                                                                    {renderDetailListItem("Notes", diag.notes || "—")}
+                                                                    {renderDetailListItem("Điện áp của bộ pin", diag.packVoltage ?? "—")}
+                                                                    {renderDetailListItem("Độ chênh lệch điện áp giữa các cell (mV)", diag.cellDeltaMv ?? "—")}
+                                                                    {renderDetailListItem("Số chu kỳ sạc-xả của pin", diag.cycles ?? "—")}
+                                                                    {renderDetailListItem("Được thực hiện bởi", diag.performedByName || "—")}
+                                                                    {renderDetailListItem("Được ghi nhận vào lúc", diag.recordedAt ? new Date(diag.recordedAt).toLocaleString("vi-VN") : "—")}
+                                                                    {renderDetailListItem("Ghi chú", diag.notes || "—")}
                                                                 </Stack>
                                                             </CardContent>
                                                         </Card>
@@ -2380,10 +2379,10 @@ function WarrantyRequests() {
                                     <Card variant="outlined" sx={{ mb: 2 }}>
                                         <CardContent>
                                             <Typography variant="h6" gutterBottom sx={{ mb: 2, fontWeight: 700 }}>
-                                                Estimates ({estimates.length})
+                                                Báo giá ({estimates.length})
                                             </Typography>
                                             {estimates.length === 0 ? (
-                                                <Typography color="text.secondary">Chưa có estimates</Typography>
+                                                <Typography color="text.secondary">Chưa có báo giá</Typography>
                                             ) : (
                                                 <Stack spacing={2}>
                                                     {estimates.map((est) => {
@@ -2392,18 +2391,18 @@ function WarrantyRequests() {
                                                             <Card key={est.id} variant="outlined" sx={{ bgcolor: "action.hover" }}>
                                                                 <CardContent>
                                                                     <Stack spacing={1}>
-                                                                        {renderDetailListItem("Version", est.versionNo ?? est.version ?? "—")}
-                                                                        {renderDetailListItem("Created At", est.createdAt ? new Date(est.createdAt).toLocaleString("vi-VN") : "—")}
-                                                                        {renderDetailListItem("Note", est.note || "—")}
-                                                                        {renderDetailListItem("Labor Slots", est.laborSlots ?? "—")}
-                                                                        {renderDetailListItem("Labor Rate (VND)", est.laborRateVND ? est.laborRateVND.toLocaleString("vi-VN") : "—")}
-                                                                        {renderDetailListItem("Parts Subtotal (VND)", est.partsSubtotalVND ? est.partsSubtotalVND.toLocaleString("vi-VN") : "—")}
-                                                                        {renderDetailListItem("Labor Subtotal (VND)", est.laborSubtotalVND ? est.laborSubtotalVND.toLocaleString("vi-VN") : "—")}
-                                                                        {renderDetailListItem("Grand Total (VND)", est.grandTotalVND ? est.grandTotalVND.toLocaleString("vi-VN") : "—")}
+                                                                        {renderDetailListItem("Phiên bản", est.versionNo ?? est.version ?? "—")}
+                                                                        {renderDetailListItem("Được tạo vào lúc", est.createdAt ? new Date(est.createdAt).toLocaleString("vi-VN") : "—")}
+                                                                        {renderDetailListItem("Ghi chú", est.note || "—")}
+                                                                        {renderDetailListItem("Số giờ công", est.laborSlots ?? "—")}
+                                                                        {renderDetailListItem("Đơn giá nhân công (VND)", est.laborRateVND ? est.laborRateVND.toLocaleString("vi-VN") : "—")}
+                                                                        {renderDetailListItem("Tổng tính phụ tùng (VND)", est.partsSubtotalVND ? est.partsSubtotalVND.toLocaleString("vi-VN") : "—")}
+                                                                        {renderDetailListItem("Tổng tính nhân công (VND)", est.laborSubtotalVND ? est.laborSubtotalVND.toLocaleString("vi-VN") : "—")}
+                                                                        {renderDetailListItem("Tổng chi phí (VND)", est.grandTotalVND ? est.grandTotalVND.toLocaleString("vi-VN") : "—")}
                                                                         {items.length > 0 && (
                                                                             <Box sx={{ mt: 1 }}>
                                                                                 <Typography variant="subtitle2" sx={{ mb: 1, fontWeight: 600 }}>
-                                                                                    Items:
+                                                                                    Phụ tùng:
                                                                                 </Typography>
                                                                                 <Stack spacing={0.5}>
                                                                                     {items.map((item, idx) => (
