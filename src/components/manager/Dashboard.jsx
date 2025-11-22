@@ -166,13 +166,37 @@ export default function Dashboard() {
     const [performance, setPerformance] = useState(null);
     const [summary, setSummary] = useState(null);
 
-    if (!centerId) {
-        return (
-            <Alert severity="error" sx={{ mb: 2 }}>
-                Manager bắt buộc phải có centerId để xem Dashboard
-            </Alert>
-        );
-    }
+    // Load centerId từ user khi component mount
+    useEffect(() => {
+        const loadCenterId = async () => {
+            try {
+                const currentUser = await authService.getCurrentUser();
+                console.log("[Dashboard] Current user:", currentUser);
+                
+                // Lấy centerId từ nhiều nguồn có thể
+                const cId = currentUser?.centerId || 
+                           currentUser?.center?.id || 
+                           currentUser?.center?.centerId ||
+                           currentUser?.id || // Nếu user.id chính là centerId
+                           null;
+                
+                console.log("[Dashboard] Extracted centerId:", cId);
+                
+                if (cId) {
+                    setCenterId(String(cId));
+                } else {
+                    setError("Không tìm thấy centerId trong thông tin người dùng. Vui lòng liên hệ quản trị viên.");
+                    setLoading(false);
+                }
+            } catch (err) {
+                console.error("[Dashboard] Failed to load centerId:", err);
+                setError("Không thể tải thông tin người dùng: " + (err?.response?.data?.message || err.message));
+                setLoading(false);
+            }
+        };
+        
+        loadCenterId();
+    }, []);
 
     // Chuẩn hóa dữ liệu cho biểu đồ đường - Ưu tiên monthlyClaims, fallback các options khác
     const chartData = useMemo(() => {

@@ -242,7 +242,7 @@ export default function ScDispatch() {
                                 <TableCell>Phụ tùng</TableCell>
                                 <TableCell>Đến trung tâm</TableCell>
                                 <TableCell align="right">Số phụ tùng</TableCell>
-                                <TableCell>Tracking No</TableCell>
+                                <TableCell>Mã vận đơn</TableCell>
                                 <TableCell align="center">Thao tác</TableCell>
                             </TableRow>
                         </TableHead>
@@ -265,7 +265,7 @@ export default function ScDispatch() {
                                         <TextField
                                             fullWidth
                                             size="small"
-                                            placeholder="Nhập tracking"
+                                            placeholder="Nhập mã vận đơn"
                                             value={trackingInput[s.id] ?? s.trackingNo ?? ""}
                                             onChange={(e) => setTrackingInput((prev) => ({ ...prev, [s.id]: e.target.value }))}
                                         />
@@ -307,7 +307,7 @@ export default function ScDispatch() {
                             <TableRow>
                                 <TableCell>Phụ tùng</TableCell>
                                 <TableCell>Đến trung tâm</TableCell>
-                                <TableCell>Tracking</TableCell>
+                                <TableCell>Mã vận đơn</TableCell>
                                 <TableCell>Trạng thái</TableCell>
                             </TableRow>
                         </TableHead>

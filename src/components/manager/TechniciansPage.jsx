@@ -20,6 +20,7 @@ import CloseIcon from "@mui/icons-material/Close";
 import technicianService from "../../services/technicianService";
 import scheduleService from "../../services/scheduleService";
 import centerService from "../../services/centerService";
+import authService from "../../services/authService";
 import "@fontsource/poppins";
 
 const fmt = (d) => format(d, "yyyy-MM-dd");
@@ -65,6 +66,7 @@ const parseTimeToKey = (t) => {
 
 export default function TechniciansPage() {
   const [technicians, setTechnicians] = useState([]);
+  const [centerId, setCenterId] = useState(null);
   const [centersMap, setCentersMap] = useState({}); // id -> center object
   const [selectedTech, setSelectedTech] = useState(null);
   const [query, setQuery] = useState("");
@@ -107,17 +109,34 @@ export default function TechniciansPage() {
         const res = await technicianService.getAll();
         const arr = Array.isArray(res) ? res : res?.data ?? [];
         // map technician data and include centerId if present
-        setTechnicians(arr.map(t => ({
+        const mapped = arr.map(t => ({
           id: t.technicianId ?? t.id ?? t._id,
           name: t.fullName ?? t.name ?? "Không tên",
           centerId: t.centerId ?? t.center?.id ?? t.centerId ?? null
-        })));
+        }));
+        // Filter theo centerId nếu có
+        console.log("[TechniciansPage] Filtering technicians by centerId:", centerId, "Total technicians:", mapped.length);
+        const filtered = centerId 
+          ? mapped.filter(t => {
+              const matches = t.centerId && String(t.centerId) === String(centerId);
+              if (!matches) {
+                console.log("[TechniciansPage] Technician filtered out:", {
+                  techId: t.id,
+                  techCenterId: t.centerId,
+                  expectedCenterId: centerId
+                });
+              }
+              return matches;
+            })
+          : mapped;
+        console.log("[TechniciansPage] Filtered technicians:", filtered.length);
+        setTechnicians(filtered);
       } catch (err) {
         console.error(err);
         setSnack({ open: true, severity: "error", message: "Không thể tải danh sách kỹ thuật viên." });
       }
     })();
-  }, []);
+  }, [centerId]);
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();

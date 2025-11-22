@@ -20,6 +20,7 @@ import appointmentService from "../../services/appointmentService";
 import scheduleService from "../../services/scheduleService";
 import claimService from "../../services/claimService";
 import technicianService from "../../services/technicianService";
+import authService from "../../services/authService";
 
 import "@fontsource/poppins";
 
@@ -49,6 +50,7 @@ const fmtTime = (t) => {
 
 export default function Appointment() {
     // data
+    const [centerId, setCenterId] = useState(null);
     const [claims, setClaims] = useState([]);
     const [technicians, setTechnicians] = useState([]);
     // dialog
@@ -95,45 +97,106 @@ export default function Appointment() {
     const [editForm, setEditForm] = useState({ note: "", requiredSkill: "" });
     const [editLoading, setEditLoading] = useState(false);
 
-    // initial load claims
+    // Load centerId từ user
     useEffect(() => {
         (async () => {
             try {
-                const res = await claimService.getAll();
-                const arr = res?.data ?? res ?? [];
-                setClaims(arr);
+                const currentUser = await authService.getCurrentUser();
+                console.log("[Appointment] Current user:", currentUser);
+                const cId = currentUser?.centerId || 
+                           currentUser?.center?.id || 
+                           currentUser?.center?.centerId ||
+                           currentUser?.id;
+                if (cId) {
+                    const centerIdStr = String(cId);
+                    setCenterId(centerIdStr);
+                    console.log("[Appointment] Set centerId:", centerIdStr);
+                } else {
+                    console.warn("[Appointment] No centerId found in user:", currentUser);
+                }
             } catch (err) {
-                console.warn("Không tải được claims", err);
+                console.error("[Appointment] Failed to load centerId:", err);
             }
         })();
     }, []);
 
+    // initial load claims
+    useEffect(() => {
+        if (centerId === null) return; // Chờ centerId load xong
+        (async () => {
+            try {
+                const res = await claimService.getAll();
+                const arr = res?.data ?? res ?? [];
+                // Filter claims theo centerId
+                console.log("[Appointment] Filtering claims by centerId:", centerId, "Total claims:", arr.length);
+                const filtered = centerId 
+                    ? arr.filter(c => {
+                        const claimCenterId = c.centerId || c.center?.id || c.center?.centerId || c.appointment?.centerId;
+                        const matches = claimCenterId && String(claimCenterId) === String(centerId);
+                        if (!matches) {
+                            console.log("[Appointment] Claim filtered out:", {
+                                claimId: c.id,
+                                claimCenterId: claimCenterId,
+                                expectedCenterId: centerId
+                            });
+                        }
+                        return matches;
+                    })
+                    : arr;
+                console.log("[Appointment] Filtered claims:", filtered.length);
+                setClaims(filtered);
+            } catch (err) {
+                console.warn("Không tải được claims", err);
+            }
+        })();
+    }, [centerId]);
+
     // initial load technicians
     useEffect(() => {
+        if (centerId === null) return; // Chờ centerId load xong
         (async () => {
             try {
                 const res = await technicianService.getAll();
+                let techs = [];
                 // technicianService.getAll() returns array directly, not {success, data}
                 if (Array.isArray(res)) {
-                    setTechnicians(res);
+                    techs = res;
                 } else if (res && Array.isArray(res.data)) {
-                    setTechnicians(res.data);
+                    techs = res.data;
                 } else {
                     // Try alternative API
                     try {
                         const altRes = await scheduleService.getAllTechnicians();
                         if (altRes.success && Array.isArray(altRes.data)) {
-                            setTechnicians(altRes.data);
+                            techs = altRes.data;
                         }
                     } catch (altErr) {
                         console.warn("Không tải được technicians từ scheduleService", altErr);
                     }
                 }
+                // Filter technicians theo centerId
+                console.log("[Appointment] Filtering technicians by centerId:", centerId, "Total technicians:", techs.length);
+                const filtered = centerId 
+                    ? techs.filter(t => {
+                        const techCenterId = t.centerId || t.center?.id || t.center?.centerId;
+                        const matches = techCenterId && String(techCenterId) === String(centerId);
+                        if (!matches) {
+                            console.log("[Appointment] Technician filtered out:", {
+                                techId: t.id,
+                                techCenterId: techCenterId,
+                                expectedCenterId: centerId
+                            });
+                        }
+                        return matches;
+                    })
+                    : techs;
+                console.log("[Appointment] Filtered technicians:", filtered.length);
+                setTechnicians(filtered);
             } catch (err) {
                 console.warn("Không tải được technicians", err);
             }
         })();
-    }, []);
+    }, [centerId]);
 
     // Load all appointments
     const loadAllAppointments = async () => {
@@ -141,7 +204,25 @@ export default function Appointment() {
         try {
             const res = await appointmentService.getAll();
             if (res.success) {
-                setAllAppointments(res.data || []);
+                const allApps = res.data || [];
+                // Filter appointments theo centerId
+                console.log("[Appointment] Filtering appointments by centerId:", centerId, "Total appointments:", allApps.length);
+                const filtered = centerId 
+                    ? allApps.filter(a => {
+                        const appCenterId = a.centerId || a.center?.id || a.center?.centerId || a.claim?.centerId || a.technician?.centerId;
+                        const matches = appCenterId && String(appCenterId) === String(centerId);
+                        if (!matches) {
+                            console.log("[Appointment] Appointment filtered out:", {
+                                appointmentId: a.id,
+                                appCenterId: appCenterId,
+                                expectedCenterId: centerId
+                            });
+                        }
+                        return matches;
+                    })
+                    : allApps;
+                console.log("[Appointment] Filtered appointments:", filtered.length);
+                setAllAppointments(filtered);
             } else {
                 showSnack("error", "Không thể tải danh sách appointments");
             }
@@ -370,11 +451,13 @@ export default function Appointment() {
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [filterClaimId, filterStatus]);
 
-    // Initial load
+    // Initial load và reload khi centerId thay đổi
     useEffect(() => {
-        loadAllAppointments();
+        if (centerId !== null) {
+            loadAllAppointments();
+        }
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, []);
+    }, [centerId]);
 
     const showSnack = (sev, msg) => setSnack({ open: true, severity: sev, message: msg });
 

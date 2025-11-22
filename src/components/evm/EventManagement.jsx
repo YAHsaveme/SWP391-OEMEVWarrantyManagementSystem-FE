@@ -169,6 +169,10 @@ export default function EventManagement() {
     const handleViewDetail = async (event) => {
         try {
             setDetailLoading(true);
+            // Đảm bảo parts đã được load trước khi hiển thị
+            if (parts.length === 0) {
+                await fetchParts();
+            }
             const detail = await eventService.get(event.id);
             setEventDetail(detail);
             setViewDetailOpen(true);
@@ -466,7 +470,7 @@ export default function EventManagement() {
                 <Grid container spacing={1.5} alignItems="center">
                     <Grid item xs>
                         <Typography variant="h5" fontWeight={700}>
-                            Quản lý Sự kiện (Recall Events)
+                            Quản lý sự kiện thu hồi xe
                         </Typography>
                     </Grid>
                     <Grid item>
@@ -476,7 +480,7 @@ export default function EventManagement() {
                             onClick={openCreate}
                             size="small"
                         >
-                            Tạo Event
+                            Tạo sự kiện
                         </Button>
                     </Grid>
                 </Grid>
@@ -547,8 +551,8 @@ export default function EventManagement() {
                             <TableCell>Lý do</TableCell>
                             <TableCell>Ngày bắt đầu</TableCell>
                             <TableCell>Ngày kết thúc</TableCell>
-                            <TableCell>Exclusions</TableCell>
-                            <TableCell>Model Ranges</TableCell>
+                            <TableCell>Phụ tùng bị ảnh hưởng</TableCell>
+                            <TableCell>Phạm vi model</TableCell>
                             <TableCell>Trạng thái</TableCell>
                             <TableCell align="right">Thao tác</TableCell>
                         </TableRow>
@@ -647,7 +651,7 @@ export default function EventManagement() {
             {/* Form Dialog */}
             <Dialog open={open} onClose={closeDialog} fullWidth maxWidth="md">
                 <DialogTitle>
-                    {mode === "create" ? "Tạo Event mới" : "Cập nhật Event"}
+                    {mode === "create" ? "Tạo sự kiện thu hồi mới" : "Cập nhật sự kiện"}
                 </DialogTitle>
                 <DialogContent dividers sx={{ pt: 2 }}>
                     <Stack spacing={2}>
@@ -686,7 +690,7 @@ export default function EventManagement() {
                                     fullWidth
                                     InputLabelProps={{ shrink: true }}
                                     disabled={mode === "create"}
-                                    helperText={mode === "create" ? "Khi tạo mới, endDate sẽ được set là null" : "Có thể set endDate khi update"}
+                                    
                                 />
                             </Grid>
                         </Grid>
@@ -813,9 +817,9 @@ export default function EventManagement() {
                         <Divider />
                         <Box>
                             <Stack direction="row" justifyContent="space-between" alignItems="center" mb={1}>
-                                <Typography variant="subtitle2">Model Ranges</Typography>
+                                <Typography variant="subtitle2">Phạm vi mẫu xe</Typography>
                                 <Button size="small" startIcon={<Add />} onClick={addModelRange}>
-                                    Thêm Range
+                                    Thêm phạm vi mẫu xe
                                 </Button>
                             </Stack>
                             {form.modelRanges.map((r, idx) => (
@@ -823,7 +827,7 @@ export default function EventManagement() {
                                     <Stack spacing={2}>
                                         <Stack direction="row" justifyContent="space-between" alignItems="center">
                                             <Typography variant="body2" fontWeight={600}>
-                                                Range {idx + 1}
+                                                Phạm vi mẫu xe ảnh hưởng {idx + 1}
                                             </Typography>
                                             <IconButton size="small" onClick={() => removeModelRange(idx)}>
                                                 <Delete fontSize="small" />
@@ -842,7 +846,7 @@ export default function EventManagement() {
                                         <Grid container spacing={2}>
                                             <Grid item xs={6}>
                                                 <TextField
-                                                    label="Production From"
+                                                    label="Ngày sản xuất từ"
                                                     type="date"
                                                     value={r.productionFrom}
                                                     onChange={(e) => updateModelRange(idx, "productionFrom", e.target.value)}
@@ -852,7 +856,7 @@ export default function EventManagement() {
                                             </Grid>
                                             <Grid item xs={6}>
                                                 <TextField
-                                                    label="Production To"
+                                                    label="Ngày sản xuất đến"
                                                     type="date"
                                                     value={r.productionTo}
                                                     onChange={(e) => updateModelRange(idx, "productionTo", e.target.value)}
@@ -877,7 +881,7 @@ export default function EventManagement() {
 
             {/* View Detail Dialog */}
             <Dialog open={viewDetailOpen} onClose={() => setViewDetailOpen(false)} fullWidth maxWidth="md">
-                <DialogTitle>Chi tiết Event</DialogTitle>
+                <DialogTitle>Chi tiết sự kiện</DialogTitle>
                 <DialogContent dividers>
                     {detailLoading ? (
                         <Box sx={{ display: "flex", justifyContent: "center", py: 4 }}>
@@ -920,15 +924,64 @@ export default function EventManagement() {
                                 </Grid>
                                 <Grid item xs={12}>
                                     <Typography variant="subtitle2" color="text.secondary">Affected Parts</Typography>
-                                    {Array.isArray(eventDetail.affectedParts) && eventDetail.affectedParts.length > 0 ? (
-                                        <Stack direction="row" spacing={0.5} flexWrap="wrap" sx={{ mt: 0.5 }}>
-                                            {eventDetail.affectedParts.map((part, i) => (
-                                                <Chip key={i} label={part} size="small" />
-                                            ))}
-                                        </Stack>
-                                    ) : (
-                                        <Typography variant="body1">—</Typography>
-                                    )}
+                                    {(() => {
+                                        // Parse affectedParts từ eventDetail
+                                        let affectedPartIds = [];
+                                        
+                                        // Thử parse từ affectedPartsJson trước
+                                        if (eventDetail.affectedPartsJson) {
+                                            try {
+                                                const parsed = typeof eventDetail.affectedPartsJson === 'string' 
+                                                    ? JSON.parse(eventDetail.affectedPartsJson) 
+                                                    : eventDetail.affectedPartsJson;
+                                                if (Array.isArray(parsed)) {
+                                                    affectedPartIds = parsed.map(item => String(item));
+                                                }
+                                            } catch (err) {
+                                                console.warn("[EventManagement] Failed to parse affectedPartsJson in detail view:", err);
+                                            }
+                                        }
+                                        
+                                        // Fallback: dùng affectedParts nếu có
+                                        if (affectedPartIds.length === 0 && Array.isArray(eventDetail.affectedParts)) {
+                                            affectedPartIds = eventDetail.affectedParts.map(item => String(item));
+                                        }
+                                        
+                                        // Tìm part objects từ IDs
+                                        const affectedPartObjects = affectedPartIds
+                                            .map(partId => parts.find(p => String(p.id) === partId))
+                                            .filter(Boolean);
+                                        
+                                        if (affectedPartObjects.length > 0) {
+                                            return (
+                                                <Stack direction="row" spacing={0.5} flexWrap="wrap" sx={{ mt: 0.5 }}>
+                                                    {affectedPartObjects.map((part, i) => (
+                                                        <Chip 
+                                                            key={part.id || i} 
+                                                            label={part.partName || part.partNo || part.id} 
+                                                            size="small" 
+                                                        />
+                                                    ))}
+                                                </Stack>
+                                            );
+                                        } else if (affectedPartIds.length > 0) {
+                                            // Nếu có IDs nhưng không tìm thấy part objects (có thể part đã bị xóa)
+                                            return (
+                                                <Stack direction="row" spacing={0.5} flexWrap="wrap" sx={{ mt: 0.5 }}>
+                                                    {affectedPartIds.map((partId, i) => (
+                                                        <Chip 
+                                                            key={i} 
+                                                            label={`Part ID: ${partId}`} 
+                                                            size="small" 
+                                                            color="warning"
+                                                        />
+                                                    ))}
+                                                </Stack>
+                                            );
+                                        } else {
+                                            return <Typography variant="body1">—</Typography>;
+                                        }
+                                    })()}
                                 </Grid>
                                 <Grid item xs={12}>
                                     <Typography variant="subtitle2" color="text.secondary" gutterBottom>Model Ranges</Typography>

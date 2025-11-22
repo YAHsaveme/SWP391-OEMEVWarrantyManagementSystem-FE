@@ -21,6 +21,7 @@ import diagnosticsService from "../../services/diagnosticsService";
 import estimatesService from "../../services/estimatesService";
 import eventService from "../../services/eventService";
 import axiosInstance from "../../services/axiosInstance";
+import authService from "../../services/authService";
 import { useNavigate } from "react-router-dom";
 
 // Map trạng thái cho UI (ticket)
@@ -167,20 +168,68 @@ function ReplenishmentTicketList() {
     // ====== DATA & LOAD LIST ======
     const [rows, setRows] = useState([]);
     const [loading, setLoading] = useState(true);
+    const [centerId, setCenterId] = useState(null);
     const loadLockRef = useRef(false);
     // Snackbar thông báo cục bộ cho Ticket/Shipment
     const [snack, setSnack] = useState({ open: false, msg: "", sev: "info" });
     const notify = (msg, sev = "info") => setSnack({ open: true, msg, sev });
     const [shippedIds, setShippedIds] = useState(new Set());
     const navigate = useNavigate();
+    
+    // Load centerId từ user
+    useEffect(() => {
+        (async () => {
+            try {
+                const currentUser = await authService.getCurrentUser();
+                console.log("[WarrantyRequests] Current user:", currentUser);
+                const cId = currentUser?.centerId || 
+                           currentUser?.center?.id || 
+                           currentUser?.center?.centerId ||
+                           currentUser?.id;
+                if (cId) {
+                    const centerIdStr = String(cId);
+                    setCenterId(centerIdStr);
+                    console.log("[WarrantyRequests] Set centerId:", centerIdStr);
+                } else {
+                    console.warn("[WarrantyRequests] No centerId found in user:", currentUser);
+                }
+            } catch (err) {
+                console.error("[WarrantyRequests] Failed to load centerId:", err);
+            }
+        })();
+    }, []);
+    
     const load = async () => {
         if (loadLockRef.current) return;
+        if (centerId === null) {
+            console.log("[WarrantyRequests] Waiting for centerId to load...");
+            return;
+        }
         loadLockRef.current = true;
         setLoading(true);
         try {
             const list = await ticketService.getAll();
             const arr = Array.isArray(list) ? list : [];
-            setRows(arr);
+            console.log("[WarrantyRequests] Loaded tickets:", arr.length, "Filtering by centerId:", centerId);
+            
+            // Filter theo centerId nếu có
+            const filtered = centerId 
+                ? arr.filter(t => {
+                    const ticketCenterId = t.centerId || t.center?.id || t.center?.centerId;
+                    const matches = ticketCenterId && String(ticketCenterId) === String(centerId);
+                    if (!matches && arr.length > 0) {
+                        console.log("[WarrantyRequests] Ticket filtered out:", {
+                            ticketId: t.id,
+                            ticketCenterId: ticketCenterId,
+                            expectedCenterId: centerId,
+                            ticket: t
+                        });
+                    }
+                    return matches;
+                })
+                : arr;
+            console.log("[WarrantyRequests] Filtered tickets:", filtered.length);
+            setRows(filtered);
 
             // 🟦 Kiểm tra ticket nào có shipment
             const shipped = new Set();
@@ -204,7 +253,11 @@ function ReplenishmentTicketList() {
             setTimeout(() => (loadLockRef.current = false), 300);
         }
     };
-    useEffect(() => { load(); }, []);
+    useEffect(() => { 
+        if (centerId !== null) {
+            load(); 
+        }
+    }, [centerId]);
 
     // ====== CENTERS (lọc theo trung tâm) ======
     const [centers, setCenters] = useState([]);
@@ -1832,6 +1885,7 @@ function ReplenishmentTicketList() {
    ========================= */
 function WarrantyRequests() {
     const [mode, setMode] = useState("warranty");
+    const [centerId, setCenterId] = useState(null);
 
     // ====== CLAIMS (warranty) ======
     const [requests, setRequests] = useState([]);
@@ -1843,6 +1897,29 @@ function WarrantyRequests() {
     const [viewOpen, setViewOpen] = useState(false);
     const [page, setPage] = useState(1);
     const [rowsPerPage] = useState(10);
+    
+    // Load centerId từ user
+    useEffect(() => {
+        (async () => {
+            try {
+                const currentUser = await authService.getCurrentUser();
+                console.log("[WarrantyRequests-Main] Current user:", currentUser);
+                const cId = currentUser?.centerId || 
+                           currentUser?.center?.id || 
+                           currentUser?.center?.centerId ||
+                           currentUser?.id;
+                if (cId) {
+                    const centerIdStr = String(cId);
+                    setCenterId(centerIdStr);
+                    console.log("[WarrantyRequests-Main] Set centerId:", centerIdStr);
+                } else {
+                    console.warn("[WarrantyRequests-Main] No centerId found in user:", currentUser);
+                }
+            } catch (err) {
+                console.error("[WarrantyRequests-Main] Failed to load centerId:", err);
+            }
+        })();
+    }, []);
 
     // State cho Diagnostics, Estimates, Recall Events
     const [vehicleInfo, setVehicleInfo] = useState(null);
@@ -1855,13 +1932,35 @@ function WarrantyRequests() {
     const [loadingData, setLoadingData] = useState(false);
 
     const fetchRequests = async () => {
+        if (centerId === null && mode === "warranty") {
+            console.log("[WarrantyRequests-Main] Waiting for centerId to load...");
+            return;
+        }
         setLoading(true);
         try {
             let list = [];
             if (filterStatus === "all") list = await claimService.getAll();
             else list = await claimService.getByStatus(filterStatus);
             const arr = Array.isArray(list) ? list : [list];
-            setRequests(arr);
+            console.log("[WarrantyRequests-Main] Loaded claims:", arr.length, "Filtering by centerId:", centerId);
+            
+            // Filter theo centerId nếu có
+            const filtered = centerId && mode === "warranty"
+                ? arr.filter(c => {
+                    const claimCenterId = c.centerId || c.center?.id || c.center?.centerId || c.appointment?.centerId;
+                    const matches = claimCenterId && String(claimCenterId) === String(centerId);
+                    if (!matches) {
+                        console.log("[WarrantyRequests-Main] Claim filtered out:", {
+                            claimId: c.id,
+                            claimCenterId: claimCenterId,
+                            expectedCenterId: centerId
+                        });
+                    }
+                    return matches;
+                })
+                : arr;
+            console.log("[WarrantyRequests-Main] Filtered claims:", filtered.length);
+            setRequests(filtered);
         } catch (err) {
             console.error("Fetch failed:", err);
             setSnack({ open: true, message: "Không thể tải danh sách yêu cầu", severity: "error" });
@@ -1877,7 +1976,7 @@ function WarrantyRequests() {
             window.addEventListener("claim-sync", handleSync);
             return () => window.removeEventListener("claim-sync", handleSync);
         }
-    }, [filterStatus, mode]);
+    }, [filterStatus, mode, centerId]);
 
     const [searching, setSearching] = useState(false);
     const handleSearch = async (e) => {
@@ -1888,7 +1987,15 @@ function WarrantyRequests() {
         setLoading(true);
         try {
             const list = await claimService.getByVin(query.trim());
-            setRequests(Array.isArray(list) ? list : [list]);
+            const arr = Array.isArray(list) ? list : [list];
+            // Filter theo centerId nếu có
+            const filtered = centerId
+                ? arr.filter(c => {
+                    const claimCenterId = c.centerId || c.center?.id || c.center?.centerId || c.appointment?.centerId;
+                    return claimCenterId && String(claimCenterId) === String(centerId);
+                })
+                : arr;
+            setRequests(filtered);
         } catch (err) {
             console.error("Search failed:", err);
             setSnack({ open: true, message: "Không tìm thấy VIN", severity: "warning" });
@@ -2429,10 +2536,10 @@ function WarrantyRequests() {
                                     <Card variant="outlined">
                                         <CardContent>
                                             <Typography variant="h6" gutterBottom sx={{ mb: 2, fontWeight: 700 }}>
-                                                Recall Events ({recallEvents.length})
+                                                Sự kiện thu hồi ({recallEvents.length})
                                             </Typography>
                                             {recallEvents.length === 0 ? (
-                                                <Typography color="text.secondary">Không có recall events cho VIN này</Typography>
+                                                <Typography color="text.secondary">Không có sự kiện thu hồi cho VIN này</Typography>
                                             ) : (
                                                 <Stack spacing={2}>
                                                     {recallEvents.map((event) => (

@@ -52,6 +52,7 @@ import claimService, { CLAIM_STATUS } from "../../services/claimService";
 import Autocomplete from "@mui/material/Autocomplete";
 import axiosInstance from "../../services/axiosInstance";
 import estimatesService from "../../services/estimatesService";
+import authService from "../../services/authService";
 
 // Vehicle service — dùng để lấy thông tin khách hàng theo VIN
 const vehiclesService = {
@@ -693,6 +694,7 @@ function UpdateNoteDialog({ open, onClose, report, onUpdate, setSnack }) {
 export default function ClaimReport() {
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
+    const [centerId, setCenterId] = useState(null);
     const [reports, setReports] = useState([]);
     const [claims, setClaims] = useState([]);
     const [claimMap, setClaimMap] = useState({}); // Map claimId -> claim info
@@ -707,8 +709,32 @@ export default function ClaimReport() {
     const [activeReport, setActiveReport] = useState(null);
     const [snack, setSnack] = useState({ open: false, message: "", severity: "info" });
 
+    // Load centerId từ user
+    useEffect(() => {
+        (async () => {
+            try {
+                const currentUser = await authService.getCurrentUser();
+                console.log("[ClaimReport] Current user:", currentUser);
+                const cId = currentUser?.centerId || 
+                           currentUser?.center?.id || 
+                           currentUser?.center?.centerId ||
+                           currentUser?.id;
+                if (cId) {
+                    const centerIdStr = String(cId);
+                    setCenterId(centerIdStr);
+                    console.log("[ClaimReport] Set centerId:", centerIdStr);
+                } else {
+                    console.warn("[ClaimReport] No centerId found in user:", currentUser);
+                }
+            } catch (err) {
+                console.error("[ClaimReport] Failed to load centerId:", err);
+            }
+        })();
+    }, []);
+
     // Fetch reports và claims
     useEffect(() => {
+        if (centerId === null) return; // Chờ centerId load xong
         let mounted = true;
         const fetch = async () => {
             setLoading(true);
@@ -722,12 +748,30 @@ export default function ClaimReport() {
                     const reportsArray = Array.isArray(reportsData) ? reportsData : [];
                     const claimsArray = Array.isArray(claimsData) ? claimsData : [];
 
-                    // Filter chỉ lấy claims có status là COMPLETED
+                    // Filter chỉ lấy claims có status là COMPLETED và thuộc centerId
+                    console.log("[ClaimReport] Filtering claims by centerId:", centerId, "Total claims:", claimsArray.length);
                     const completedClaims = claimsArray.filter(
-                        (claim) => claim.status === CLAIM_STATUS.COMPLETED || claim.status === "COMPLETED"
+                        (claim) => {
+                            const isCompleted = claim.status === CLAIM_STATUS.COMPLETED || claim.status === "COMPLETED";
+                            const claimCenterId = claim.centerId || claim.center?.id || claim.center?.centerId || claim.appointment?.centerId;
+                            const belongsToCenter = centerId ? String(claimCenterId) === String(centerId) : true;
+                            if (!belongsToCenter && isCompleted) {
+                                console.log("[ClaimReport] Claim filtered out:", {
+                                    claimId: claim.id,
+                                    claimCenterId: claimCenterId,
+                                    expectedCenterId: centerId
+                                });
+                            }
+                            return isCompleted && belongsToCenter;
+                        }
                     );
+                    console.log("[ClaimReport] Filtered completed claims:", completedClaims.length);
+                    
+                    // Filter reports chỉ lấy những report có claimId trong completedClaims
+                    const completedClaimIds = new Set(completedClaims.map(c => c.id));
+                    const filteredReports = reportsArray.filter(r => completedClaimIds.has(r.claimId));
 
-                    setReports(reportsArray);
+                    setReports(filteredReports);
                     setClaims(completedClaims);
 
                     // Build claim map: claimId -> claim info
@@ -781,7 +825,7 @@ export default function ClaimReport() {
         return () => {
             mounted = false;
         };
-    }, []);
+    }, [centerId]);
 
     // Filter reports
     const filteredReports = useMemo(() => {

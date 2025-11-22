@@ -211,7 +211,7 @@ function CreateReportDialog({ open, onClose, onCreate, claims, setSnack }) {
     return (
         <Dialog open={open} onClose={onClose} fullWidth maxWidth="sm">
             <form onSubmit={handleSubmit}>
-                <DialogTitle>Tạo Report mới</DialogTitle>
+                <DialogTitle>Tạo báo cáo mới</DialogTitle>
                 <DialogContent dividers>
                     <Grid container spacing={2} sx={{ mt: 1 }}>
                         <Grid item xs={12}>
@@ -225,7 +225,7 @@ function CreateReportDialog({ open, onClose, onCreate, claims, setSnack }) {
                                 renderInput={(params) => (
                                     <TextField
                                         {...params}
-                                        label="Chọn Claim *"
+                                        label="Chọn yêu cầu *"
                                         required
                                         placeholder="Tìm kiếm theo VIN"
                                     />
@@ -251,7 +251,7 @@ function CreateReportDialog({ open, onClose, onCreate, claims, setSnack }) {
                         Hủy
                     </Button>
                     <Button type="submit" variant="contained" disabled={submitting}>
-                        {submitting ? <CircularProgress size={20} /> : "Tạo Report"}
+                        {submitting ? <CircularProgress size={20} /> : "Tạo"}
                     </Button>
                 </DialogActions>
             </form>
@@ -306,7 +306,7 @@ function ViewReportDialog({ open, onClose, report, onUpdate, claimMap = {} }) {
 
     return (
         <Dialog open={open} onClose={onClose} fullWidth maxWidth="md">
-            <DialogTitle>Chi tiết Report</DialogTitle>
+            <DialogTitle>Chi tiết báo cáo</DialogTitle>
             <DialogContent dividers>
                 <Grid container spacing={2} sx={{ mt: 1 }}>
                     <Grid item xs={12} sm={6}>
@@ -325,7 +325,7 @@ function ViewReportDialog({ open, onClose, report, onUpdate, claimMap = {} }) {
                     </Grid>
                     <Grid item xs={12} sm={6}>
                         <Typography variant="caption" color="text.secondary">
-                            Claim
+                            Yêu cầu
                         </Typography>
                         <Typography variant="body1" fontWeight={600}>
                             {claimDisplayName}
@@ -341,7 +341,7 @@ function ViewReportDialog({ open, onClose, report, onUpdate, claimMap = {} }) {
                     </Grid>
                     <Grid item xs={12}>
                         <Typography variant="caption" color="text.secondary">
-                            Tóm tắt Claim
+                            Tóm tắt yêu cầu
                         </Typography>
                         <Typography variant="body1">{report.claimSummary || claimInfo.summary || "—"}</Typography>
                     </Grid>
@@ -352,7 +352,7 @@ function ViewReportDialog({ open, onClose, report, onUpdate, claimMap = {} }) {
                     <Grid item xs={12}>
                         <Divider sx={{ my: 2 }} />
                         <Typography variant="h6" gutterBottom sx={{ fontWeight: 700, color: "primary.main", mb: 2 }}>
-                            Chi tiết từ Estimate
+                            Chi tiết từ báo giá
                         </Typography>
                     </Grid>
 
@@ -365,7 +365,7 @@ function ViewReportDialog({ open, onClose, report, onUpdate, claimMap = {} }) {
                     ) : !estimateData ? (
                         <Grid item xs={12}>
                             <Alert severity="info">
-                                Không tìm thấy estimate cho claim này
+                            Không tìm thấy báo giá cho yêu cầu này
                             </Alert>
                         </Grid>
                     ) : (
@@ -373,14 +373,7 @@ function ViewReportDialog({ open, onClose, report, onUpdate, claimMap = {} }) {
                             <Card variant="outlined" sx={{ bgcolor: "action.hover", mb: 2 }}>
                                 <CardContent>
                                     <Stack spacing={2}>
-                                        <Box>
-                                            <Typography variant="caption" color="text.secondary" fontWeight={600}>
-                                                Version Estimate
-                                            </Typography>
-                                            <Typography variant="body1" fontWeight={600}>
-                                                Version {estimateData.versionNo ?? estimateData.version ?? "—"}
-                                            </Typography>
-                                        </Box>
+                                       
 
                                         <Divider />
 
@@ -463,7 +456,7 @@ function ViewReportDialog({ open, onClose, report, onUpdate, claimMap = {} }) {
                                                 <Divider sx={{ my: 0.5 }} />
                                                 <Stack direction="row" justifyContent="space-between">
                                                     <Typography variant="body2" fontWeight={700}>
-                                                        Tổng nhân công:
+                                                        Tổng giá nhân công:
                                                     </Typography>
                                                     <Typography variant="body1" fontWeight={700} color="primary.main">
                                                         {formatCurrency(estimateData.laborSubtotalVND ?? estimateData.laborSubtotal ?? 0)}
@@ -476,7 +469,7 @@ function ViewReportDialog({ open, onClose, report, onUpdate, claimMap = {} }) {
                                         {estimateData.note && (
                                             <Box sx={{ p: 1.5, bgcolor: "info.lighter", borderRadius: 1, border: "1px solid", borderColor: "info.light" }}>
                                                 <Typography variant="caption" color="text.secondary" fontWeight={600}>
-                                                    Ghi chú từ Estimate:
+                                                    Ghi chú từ báo giá:
                                                 </Typography>
                                                 <Typography variant="body2" sx={{ mt: 0.5, whiteSpace: "pre-wrap" }}>
                                                     {estimateData.note}
@@ -489,7 +482,7 @@ function ViewReportDialog({ open, onClose, report, onUpdate, claimMap = {} }) {
                                             <Stack spacing={1}>
                                                 <Stack direction="row" justifyContent="space-between">
                                                     <Typography variant="body2" fontWeight={600}>
-                                                        Tổng phụ tùng (Estimate):
+                                                        Tổng giá phụ tùng từ báo giá :
                                                     </Typography>
                                                     <Typography variant="body2" fontWeight={700} color="primary.main">
                                                         {formatCurrency(estimateData.partsSubtotalVND ?? estimateData.partsSubtotal ?? 0)}
@@ -497,7 +490,7 @@ function ViewReportDialog({ open, onClose, report, onUpdate, claimMap = {} }) {
                                                 </Stack>
                                                 <Stack direction="row" justifyContent="space-between">
                                                     <Typography variant="body2" fontWeight={600}>
-                                                        Tổng nhân công (Estimate):
+                                                        Tổng giá nhân công từ báo giá:
                                                     </Typography>
                                                     <Typography variant="body2" fontWeight={700} color="primary.main">
                                                         {formatCurrency(estimateData.laborSubtotalVND ?? estimateData.laborSubtotal ?? 0)}
@@ -506,7 +499,7 @@ function ViewReportDialog({ open, onClose, report, onUpdate, claimMap = {} }) {
                                                 <Divider sx={{ my: 1 }} />
                                                 <Stack direction="row" justifyContent="space-between">
                                                     <Typography variant="h6" fontWeight={700} color="success.main">
-                                                        Tổng cộng (Estimate):
+                                                        Tổng cộng:
                                                     </Typography>
                                                     <Typography variant="h6" fontWeight={700} color="success.main">
                                                         {formatCurrency(estimateData.grandTotalVND ?? estimateData.grandTotal ?? 0)}
@@ -546,7 +539,7 @@ function ViewReportDialog({ open, onClose, report, onUpdate, claimMap = {} }) {
                     </Grid>
                     <Grid item xs={12} sm={6}>
                         <Typography variant="caption" color="text.secondary">
-                            Tổng giá gộp
+                            Tổng giá:
                         </Typography>
                         <Typography variant="h6" color="success.main" fontWeight={700}>
                             {formatCurrency(report.grossTotalPrice)}
@@ -605,7 +598,7 @@ function ViewReportDialog({ open, onClose, report, onUpdate, claimMap = {} }) {
                     variant="contained"
                     startIcon={<EditIcon />}
                 >
-                    Cập nhật Ghi chú
+                    Cập nhật ghi chú
                 </Button>
             </DialogActions>
         </Dialog>
@@ -661,7 +654,7 @@ function UpdateNoteDialog({ open, onClose, report, onUpdate, setSnack }) {
     return (
         <Dialog open={open} onClose={onClose} fullWidth maxWidth="sm">
             <form onSubmit={handleSubmit}>
-                <DialogTitle>Cập nhật Ghi chú</DialogTitle>
+                <DialogTitle>Cập nhật ghi chú</DialogTitle>
                 <DialogContent dividers>
                     <Grid container spacing={2} sx={{ mt: 1 }}>
                         <Grid item xs={12}>

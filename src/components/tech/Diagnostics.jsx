@@ -132,12 +132,17 @@ export default function Diagnostics() {
   async function loadClaims() {
     try {
       setLoadingClaims(true);
+      // Load cả DIAGNOSING và APPROVED, sẽ filter theo phase hint sau
       const [claimsRes, vehiclesRes] = await Promise.all([
         axiosInstance.get("claims/get-all"),
         axiosInstance.get("vehicles/get-all"),
       ]);
 
-      const claims = Array.isArray(claimsRes.data) ? claimsRes.data : [];
+      const allClaims = Array.isArray(claimsRes.data) ? claimsRes.data : [];
+      console.log("Total claims loaded:", allClaims.length);
+      // Filter: chỉ lấy DIAGNOSING (cho pre_repair) hoặc APPROVED (cho post_repair)
+      const claims = allClaims.filter(c => c.status === "DIAGNOSING" || c.status === "APPROVED");
+      console.log("Filtered claims (DIAGNOSING or APPROVED):", claims.length);
       const vehicles = Array.isArray(vehiclesRes.data) ? vehiclesRes.data : [];
 
       const merged = claims.map((claim) => {
@@ -152,6 +157,7 @@ export default function Diagnostics() {
         };
       });
 
+      console.log("Merged claims count:", merged.length);
       setClaimsOptions(merged);
       log.ok("Loaded claims merged", merged.length);
     } catch (err) {
@@ -303,7 +309,8 @@ export default function Diagnostics() {
       notes: "",
       outcome: "",
     });
-    setCreatePhaseHint(null);
+    // Mặc định là PRE_REPAIR (trước sửa chữa) - chỉ hiện DIAGNOSING
+    setCreatePhaseHint(DIAGNOSTIC_PHASE.PRE_REPAIR);
     setCreatePhaseCount(0);
     setFormOpen(true);
   }
@@ -317,7 +324,8 @@ export default function Diagnostics() {
         customerPhone: "",
       }));
       setCreatePhaseCount(0);
-      setCreatePhaseHint(null);
+      // Reset về PRE_REPAIR khi bỏ chọn
+      setCreatePhaseHint(DIAGNOSTIC_PHASE.PRE_REPAIR);
       return;
     }
 
@@ -334,10 +342,13 @@ export default function Diagnostics() {
       setCreatePhaseCount(arr.length);
 
       if (arr.length === 0) {
+        // Chưa có diagnostic nào → sẽ tạo PRE_REPAIR → chỉ hiện DIAGNOSING
         setCreatePhaseHint(DIAGNOSTIC_PHASE.PRE_REPAIR);
       } else if (arr.length === 1) {
+        // Đã có 1 diagnostic (PRE_REPAIR) → sẽ tạo POST_REPAIR → chỉ hiện APPROVED
         setCreatePhaseHint(DIAGNOSTIC_PHASE.POST_REPAIR);
       } else {
+        // Đã có đủ 2 diagnostics → không cho tạo thêm
         setCreatePhaseHint(null);
       }
     } catch (err) {
@@ -710,7 +721,7 @@ export default function Diagnostics() {
 
       {/* Detail dialog */}
       <Dialog open={detailOpen} onClose={() => setDetailOpen(false)} fullWidth maxWidth="md">
-        <DialogTitle>Chi tiết Diagnostic</DialogTitle>
+        <DialogTitle>Chi tiết đánh giá </DialogTitle>
         <DialogContent dividers>
           {!detailData ? (
             <Box display="flex" justifyContent="center" p={4}>
@@ -782,14 +793,14 @@ export default function Diagnostics() {
                   <Divider sx={{ my: 2 }} />
                   <Box>
                     <Typography variant="h6" gutterBottom sx={{ mb: 2, fontWeight: 700 }}>
-                      Recall Events ({recallEvents.length})
+                      Sự kiện thu hồi xe ({recallEvents.length})
                     </Typography>
                     {loadingEvents ? (
                       <Box sx={{ display: "flex", justifyContent: "center", py: 2 }}>
                         <CircularProgress />
                       </Box>
                     ) : recallEvents.length === 0 ? (
-                      <Typography color="text.secondary">Không có sự kiện RECALL cho VIN này</Typography>
+                      <Typography color="text.secondary">Không có sự kiện thu hồi cho VIN này</Typography>
                     ) : (
                       <Stack spacing={2}>
                         {recallEvents.map((event) => (
@@ -868,12 +879,34 @@ export default function Diagnostics() {
           <Grid container spacing={2}>
             <Grid item xs={12}>
               <Autocomplete
-                options={claimsOptions}
+                options={claimsOptions.filter(c => {
+                  // Trước sửa chữa (PRE_REPAIR): chỉ hiện DIAGNOSING
+                  // Sau sửa chữa (POST_REPAIR): chỉ hiện APPROVED
+                  if (createPhaseHint === DIAGNOSTIC_PHASE.PRE_REPAIR) {
+                    return c.status === "DIAGNOSING";
+                  } else if (createPhaseHint === DIAGNOSTIC_PHASE.POST_REPAIR) {
+                    return c.status === "APPROVED";
+                  }
+                  // Nếu không có hint (đã có đủ 2 diagnostics), không hiện gì
+                  return false;
+                })}
                 loading={loadingClaims}
                 getOptionLabel={(opt) => `${opt.vin} — ${opt.intakeContactName} (${opt.intakeContactPhone})`}
                 value={claimsOptions.find((c) => c.id === formValues.claimId) || null}
                 onChange={(_, selected) => onSelectClaimForForm(selected)}
-                renderInput={(params) => <TextField {...params} label="Chọn Claim (VIN / Khách hàng)" />}
+                renderInput={(params) => (
+                  <TextField 
+                    {...params} 
+                    label="Chọn yêu cầu (VIN / Khách hàng)" 
+                    helperText={
+                      createPhaseHint === DIAGNOSTIC_PHASE.PRE_REPAIR 
+                        ? "Chỉ hiển thị yêu cầu có trạng thái chuẩn đoán(Trước sửa chữa)"
+                        : createPhaseHint === DIAGNOSTIC_PHASE.POST_REPAIR
+                        ? "Chỉ hiển thị yêu cầu có trạng thái xác nhận (Sau sửa chữa)"
+                        : ""
+                    }
+                  />
+                )}
                 disabled={formMode === "edit"}
               />
               {createPhaseHint && (
@@ -890,7 +923,7 @@ export default function Diagnostics() {
 
             <Grid item xs={6}>
               <TextField
-                label="SOH (%)"
+                label="Tình trạng pin (%)"
                 fullWidth
                 type="number"
                 inputProps={{ step: "0.1", min: "0", max: "100" }}
@@ -901,7 +934,7 @@ export default function Diagnostics() {
 
             <Grid item xs={6}>
               <TextField
-                label="SOC (%)"
+                label="Mức sạc"
                 fullWidth
                 type="number"
                 inputProps={{ step: "0.1", min: "0", max: "100" }}

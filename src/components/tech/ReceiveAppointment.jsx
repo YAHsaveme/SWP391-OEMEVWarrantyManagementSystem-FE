@@ -109,7 +109,7 @@ export default function ReceiveAppointment() {
       setLoading(false);
       return;
     }
-
+    
     const idToUse = techId || fallbackUserId;
     console.log("[ReceiveAppointment] loadAppointments: Loading appointments for ID:", idToUse, "(techId:", techId, ", fallbackUserId:", fallbackUserId, ")");
     setLoading(true);
@@ -212,7 +212,7 @@ export default function ReceiveAppointment() {
                 vin = apt.vin || apt.vehicleVin || apt.claim?.vin || apt.vehicle?.vin || "";
                 customerName = apt.customerName || apt.intakeContactName || apt.claim?.intakeContactName || "";
               }
-            } else {
+      } else {
               // No claimId, try to get from appointment data
               vin = apt.vin || apt.vehicleVin || apt.vehicle?.vin || apt.claim?.vin || "";
               customerName = apt.customerName || apt.intakeContactName || apt.claim?.intakeContactName || "";
@@ -534,8 +534,8 @@ export default function ReceiveAppointment() {
                 <Stack direction="row" spacing={1}>
                   {apt.status === "BOOKED" && (
                     <Tooltip title="Bắt đầu ca làm việc">
-                      <Button
-                        variant="contained"
+                  <Button
+                    variant="contained"
                         color="success"
                         size="small"
                         onClick={() => handleStartAppointment(apt)}
@@ -549,19 +549,19 @@ export default function ReceiveAppointment() {
                     <Tooltip title="Cập nhật trạng thái">
                       <Button
                         variant="outlined"
-                        size="small"
-                        startIcon={<UpdateIcon />}
-                        onClick={() => {
-                          const initialStatus = (apt.status === "IN_PROGRESS" || apt.status === "DONE") 
-                            ? apt.status 
-                            : "IN_PROGRESS";
-                          setStatusDialog({ open: true, appointment: apt, newStatus: initialStatus });
-                        }}
-                        sx={{ textTransform: 'none' }}
-                      >
+                    size="small"
+                    startIcon={<UpdateIcon />}
+                    onClick={() => {
+                      const initialStatus = (apt.status === "IN_PROGRESS" || apt.status === "DONE") 
+                        ? apt.status 
+                        : "IN_PROGRESS";
+                      setStatusDialog({ open: true, appointment: apt, newStatus: initialStatus });
+                    }}
+                    sx={{ textTransform: 'none' }}
+                  >
                         Cập nhật
-                      </Button>
-                    </Tooltip>
+                  </Button>
+                </Tooltip>
                   )}
                 </Stack>
               )}
@@ -801,13 +801,13 @@ export default function ReceiveAppointment() {
                     </TableCell>
                     <TableCell>
                       <Stack direction="row" spacing={0.5} alignItems="center">
-                        <IconButton
-                          size="small"
-                          onClick={() => setDetailDialog({ open: true, appointment: apt })}
-                        >
-                          <InfoIcon />
-                        </IconButton>
-                        {canUpdate && (
+                      <IconButton
+                        size="small"
+                        onClick={() => setDetailDialog({ open: true, appointment: apt })}
+                      >
+                        <InfoIcon />
+                      </IconButton>
+                      {canUpdate && (
                           <>
                             {apt.status === "BOOKED" && (
                               <Tooltip title="Bắt đầu ca làm việc">
@@ -824,19 +824,19 @@ export default function ReceiveAppointment() {
                             )}
                           {(apt.status !== "BOOKED" && apt.status !== "IN_PROGRESS") && (
                             <Tooltip title="Cập nhật">
-                              <IconButton
-                                size="small"
-                                onClick={() => {
-                                  const initialStatus = (apt.status === "IN_PROGRESS" || apt.status === "DONE") 
-                                    ? apt.status 
-                                    : "IN_PROGRESS";
-                                  setStatusDialog({ open: true, appointment: apt, newStatus: initialStatus });
-                                }}
-                              >
-                                <UpdateIcon />
-                              </IconButton>
+                        <IconButton
+                          size="small"
+                          onClick={() => {
+                            const initialStatus = (apt.status === "IN_PROGRESS" || apt.status === "DONE") 
+                              ? apt.status 
+                              : "IN_PROGRESS";
+                            setStatusDialog({ open: true, appointment: apt, newStatus: initialStatus });
+                          }}
+                        >
+                          <UpdateIcon />
+                        </IconButton>
                             </Tooltip>
-                          )}
+                      )}
                           </>
                         )}
                       </Stack>
@@ -873,7 +873,7 @@ export default function ReceiveAppointment() {
           borderColor: 'divider'
         }}>
           <Typography variant="h6" sx={{ fontWeight: 600 }}>
-            Chi tiết lịch hẹn
+          Chi tiết lịch hẹn
           </Typography>
           <IconButton 
             onClick={() => setDetailDialog({ open: false, appointment: null })}
@@ -887,20 +887,20 @@ export default function ReceiveAppointment() {
             <Box>
               {/* Thông tin cơ bản */}
               <Grid container spacing={3}>
-                <Grid item xs={12} md={6}>
+              <Grid item xs={12} md={6}>
                   <Stack spacing={2}>
                     <Box>
                       <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 0.5 }}>
                         VIN
-                      </Typography>
+                </Typography>
                       <Typography variant="body1" sx={{ fontWeight: 500 }}>
                         {detailDialog.appointment.vin && detailDialog.appointment.vin !== "—" ? detailDialog.appointment.vin : "N/A"}
-                      </Typography>
+                </Typography>
                     </Box>
                     <Box>
                       <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 0.5 }}>
                         Khách hàng
-                      </Typography>
+                </Typography>
                       <Typography variant="body1">
                         {detailDialog.appointment.customerName && detailDialog.appointment.customerName !== "—" ? detailDialog.appointment.customerName : "N/A"}
                       </Typography>
@@ -922,35 +922,35 @@ export default function ReceiveAppointment() {
                       </Typography>
                     </Box>
                   </Stack>
-                </Grid>
-                <Grid item xs={12} md={6}>
+              </Grid>
+              <Grid item xs={12} md={6}>
                   <Stack spacing={2}>
                     <Box>
                       <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 0.5 }}>
                         Trạng thái
                       </Typography>
-                      <Chip
-                        label={detailDialog.appointment.status}
-                        color={getStatusColor(detailDialog.appointment.status)}
-                        size="small"
+                  <Chip
+                    label={detailDialog.appointment.status}
+                    color={getStatusColor(detailDialog.appointment.status)}
+                    size="small"
                         sx={{ fontWeight: 600 }}
-                      />
+                  />
                     </Box>
                     <Box>
                       <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 0.5 }}>
                         Kỹ năng
-                      </Typography>
+                </Typography>
                       <Typography variant="body1">
                         {detailDialog.appointment.requiredSkill || "N/A"}
-                      </Typography>
+                </Typography>
                     </Box>
                     <Box>
                       <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 0.5 }}>
                         Loại
-                      </Typography>
+                </Typography>
                       <Typography variant="body1">
                         {detailDialog.appointment.type || "N/A"}
-                      </Typography>
+                </Typography>
                     </Box>
                     <Box>
                       <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 0.5 }}>
@@ -961,7 +961,7 @@ export default function ReceiveAppointment() {
                       </Typography>
                     </Box>
                   </Stack>
-                </Grid>
+              </Grid>
               </Grid>
 
               {/* Thời gian làm việc */}
@@ -970,7 +970,7 @@ export default function ReceiveAppointment() {
                   <Divider sx={{ my: 3 }} />
                   <Typography variant="h6" sx={{ mb: 2, fontWeight: 600 }}>
                     Thời gian làm việc
-                  </Typography>
+                    </Typography>
                   <Stack spacing={2}>
                     {detailDialog.appointment.slots.map((slot, idx) => (
                       <Paper 
@@ -987,15 +987,15 @@ export default function ReceiveAppointment() {
                           <Grid item xs={12} sm={6}>
                             <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 0.5 }}>
                               Ngày
-                            </Typography>
+                    </Typography>
                             <Typography variant="body1">
                               {slot.slotDate || "N/A"}
-                            </Typography>
+                    </Typography>
                           </Grid>
                           <Grid item xs={12} sm={6}>
                             <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 0.5 }}>
                               Giờ
-                            </Typography>
+                      </Typography>
                             <Typography variant="body1">
                               {slot.startTime} - {slot.endTime}
                             </Typography>
@@ -1011,8 +1011,8 @@ export default function ReceiveAppointment() {
                             />
                           </Grid>
                         </Grid>
-                      </Paper>
-                    ))}
+                  </Paper>
+                ))}
                   </Stack>
                 </>
               )}
@@ -1035,9 +1035,9 @@ export default function ReceiveAppointment() {
                       }}
                     >
                       <Typography variant="body2" sx={{ whiteSpace: 'pre-wrap' }}>
-                        {detailDialog.appointment.note}
-                      </Typography>
-                    </Paper>
+                      {detailDialog.appointment.note}
+                    </Typography>
+                  </Paper>
                   </Box>
                 </>
               )}

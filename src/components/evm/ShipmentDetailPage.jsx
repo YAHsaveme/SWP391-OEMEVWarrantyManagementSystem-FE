@@ -380,7 +380,7 @@ export default function ShipmentDetailPage({ id: idProp }) {
                                             {s.fromCenterId ? (centerMap[s.fromCenterId] || "Manufacturer") : "Manufacturer"} → {s.toCenterId ? (centerMap[s.toCenterId] || "—") : "—"}
                                         </Typography>
                                         <Typography variant="caption" color="text.secondary">
-                                            {s.trackingNo ? `Tracking: ${s.trackingNo}` : "Chưa có tracking number"}
+                                            {s.trackingNo ? `Mã vận đơn: ${s.trackingNo}` : "Chưa có mã vận đơn"}
                                         </Typography>
                                     </Box>
                                     <Stack direction="row" spacing={1} alignItems="center">
@@ -535,22 +535,22 @@ export default function ShipmentDetailPage({ id: idProp }) {
                 <Stack direction={{ xs: "column", sm: "row" }} spacing={1} alignItems="center">
                     {!isCenterToCenter && (
                         <TextField
-                            label="Tracking No"
+                            label="Mã vận đơn"
                             value={trackingNo}
                             onChange={(e) => setTrackingNo(e.target.value)}
                             size="small"
                             disabled={!canDispatch || busy}
-                            helperText={canDispatch ? "Nhập mã vận đơn trước khi Dispatch" : ""}
+                            helperText={canDispatch ? "Nhập mã vận đơn trước khi gửi" : ""}
                             sx={{ minWidth: 260 }}
                         />
                     )}
                     {isCenterToCenter && (
                         <TextField
-                            label="Tracking No"
+                            label="Mã vận đơn"
                             value={trackingNo}
                             size="small"
                             disabled
-                            helperText="Tracking sẽ được trung tâm nguồn nhập khi dispatch"
+                            helperText="Mã vận đơn sẽ được trung tâm nguồn nhập khi gửi"
                             sx={{ minWidth: 260 }}
                         />
                     )}

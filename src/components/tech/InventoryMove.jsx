@@ -464,19 +464,41 @@ export default function InventoryMove() {
     // Load recall events when claim is selected
     useEffect(() => {
         if (!selectedClaim?.vin) {
+            console.log("[InventoryMove] No VIN in selectedClaim, clearing recall events");
             setRecallEvents([]);
             return;
         }
+        
+        const vin = selectedClaim.vin;
+        console.log("[InventoryMove] Loading recall events for VIN:", vin);
+        
         let mounted = true;
         (async () => {
             setLoadingRecallEvents(true);
             try {
-                const result = await eventService.checkRecallByVin(selectedClaim.vin);
+                const result = await eventService.checkRecallByVin(vin);
+                console.log("[InventoryMove] Recall events API response:", result);
+                
+                // Handle different response formats
+                let events = [];
+                if (Array.isArray(result)) {
+                    events = result;
+                } else if (result?.events && Array.isArray(result.events)) {
+                    events = result.events;
+                } else if (result?.data?.events && Array.isArray(result.data.events)) {
+                    events = result.data.events;
+                } else if (result?.data && Array.isArray(result.data)) {
+                    events = result.data;
+                }
+                
+                console.log("[InventoryMove] Parsed recall events:", events.length, "events");
+                
                 if (mounted) {
-                    setRecallEvents(result.events || []);
+                    setRecallEvents(events);
                 }
             } catch (err) {
-                console.error("Load recall events failed:", err);
+                console.error("[InventoryMove] Load recall events failed:", err);
+                console.error("[InventoryMove] Error details:", err?.response?.data || err.message);
                 if (mounted) {
                     setRecallEvents([]);
                 }
@@ -1354,20 +1376,20 @@ export default function InventoryMove() {
             <Grid container spacing={2}>
                 <Grid item xs={12} md={4}>
                     <Paper sx={{ p: 2, borderRadius: 2 }}>
-                        <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 1 }}>
+                        <Box sx={{ mb: 1 }}>
                             <Typography variant="subtitle1" fontWeight={700}>Phụ tùng thuộc cuộc hẹn</Typography>
                             {recallEvents.length > 0 && (
                                 <Chip
-                                    label="RECALL - Chỉ chọn phụ tùng trong events"
+                                    label="Thu hồi xe - Chỉ chọn phụ tùng trong sự kiện"
                                     color="warning"
                                     size="small"
+                                    sx={{ mt: 0.5 }}
                                 />
                             )}
-                        </Stack>
-                        <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
-                            Thêm phụ tùng và nhập số lượng cần xuất.
-                        </Typography>
-                        {selectedClaim?.claimId && (
+                        </Box>
+                        
+                        {/* Hiển thị "Phụ tùng trong báo giá:" chỉ khi KHÔNG có recall events */}
+                        {selectedClaim?.claimId && recallEvents.length === 0 && (
                             loadingEstimateParts ? (
                                 <Alert severity="info" sx={{ mb: 1 }}>
                                     <Typography variant="caption">Đang tải phụ tùng từ Estimate...</Typography>
@@ -1379,7 +1401,7 @@ export default function InventoryMove() {
                             ) : estimatePartsDisplay.length > 0 ? (
                                 <Alert severity="info" sx={{ mb: 1 }}>
                                     <Typography variant="caption" fontWeight={600}>
-                                        Phụ tùng trong Estimate{latestEstimateMeta?.version ? ` (Version ${latestEstimateMeta.version})` : ""}:
+                                        Phụ tùng trong báo giá:
                                     </Typography>
                                     <Stack spacing={0.25} sx={{ mt: 0.75 }}>
                                         {estimatePartsDisplay.map((item, idx) => (
@@ -1391,10 +1413,96 @@ export default function InventoryMove() {
                                 </Alert>
                             ) : (
                                 <Alert severity="warning" sx={{ mb: 1 }}>
-                                    <Typography variant="caption">Chưa có Estimate nào cho claim này.</Typography>
+                                    <Typography variant="caption">Chưa có báo giá nào cho yêu cầu này.</Typography>
                                 </Alert>
                             )
                         )}
+                        {/* Hiển thị recall events */}
+                        {loadingRecallEvents ? (
+                            <Alert severity="info" sx={{ mb: 1 }}>
+                                <Typography variant="caption">Đang tải sự kiện thu hồi...</Typography>
+                            </Alert>
+                        ) : recallEvents.length > 0 ? (
+                            <Box sx={{ mb: 1 }}>
+                                <Typography variant="caption" fontWeight={600} sx={{ mb: 0.5, display: "block" }}>
+                                    Sự kiện thu hồi xe ({recallEvents.length}):
+                                </Typography>
+                                <Stack spacing={1}>
+                                    {recallEvents.map((event) => (
+                                        <Paper key={event.id || event.name} variant="outlined" sx={{ p: 1.5, bgcolor: "warning.light", opacity: 0.9 }}>
+                                            <Stack spacing={0.5}>
+                                                <Typography variant="body2" fontWeight={600}>{event.name || "—"}</Typography>
+                                                <Typography variant="caption" color="text.secondary">Lý do: {event.reason || "—"}</Typography>
+                                                {event.startDate && (
+                                                    <Typography variant="caption" color="text.secondary">
+                                                        Từ: {new Date(event.startDate).toLocaleDateString("vi-VN")}
+                                                        {event.endDate && ` - Đến: ${new Date(event.endDate).toLocaleDateString("vi-VN")}`}
+                                                    </Typography>
+                                                )}
+                                                {(() => {
+                                                    // Parse affectedParts từ event
+                                                    let affectedPartIds = [];
+                                                    
+                                                    if (event.affectedPartsJson) {
+                                                        try {
+                                                            const parsed = typeof event.affectedPartsJson === 'string' 
+                                                                ? JSON.parse(event.affectedPartsJson) 
+                                                                : event.affectedPartsJson;
+                                                            if (Array.isArray(parsed)) {
+                                                                affectedPartIds = parsed.map(item => String(item));
+                                                            }
+                                                        } catch (err) {
+                                                            console.warn("[InventoryMove] Failed to parse affectedPartsJson:", err);
+                                                        }
+                                                    }
+                                                    
+                                                    if (affectedPartIds.length === 0 && Array.isArray(event.affectedParts)) {
+                                                        affectedPartIds = event.affectedParts.map(item => String(item));
+                                                    }
+                                                    
+                                                    // Tìm part objects từ IDs
+                                                    const affectedPartObjects = affectedPartIds
+                                                        .map(partId => availablePartsList.find(p => String(p.partId) === partId || String(p.id) === partId))
+                                                        .filter(Boolean);
+                                                    
+                                                    if (affectedPartObjects.length > 0 || affectedPartIds.length > 0) {
+                                                        return (
+                                                            <Box>
+                                                                <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 600 }}>
+                                                                    Phụ tùng bị ảnh hưởng:
+                                                                </Typography>
+                                                                <Stack spacing={0.25} sx={{ mt: 0.5, pl: 1 }}>
+                                                                    {affectedPartObjects.length > 0 ? (
+                                                                        affectedPartObjects.map((part, idx) => (
+                                                                            <Typography key={part.partId || idx} variant="caption" sx={{ display: "block" }}>
+                                                                                • {part.partName || part.partNo || part.partId}
+                                                                            </Typography>
+                                                                        ))
+                                                                    ) : (
+                                                                        affectedPartIds.map((partId, idx) => (
+                                                                            <Typography key={idx} variant="caption" sx={{ display: "block", color: "text.secondary" }}>
+                                                                                • Part ID: {partId}
+                                                                            </Typography>
+                                                                        ))
+                                                                    )}
+                                                                </Stack>
+                                                            </Box>
+                                                        );
+                                                    }
+                                                    return null;
+                                                })()}
+                                            </Stack>
+                                        </Paper>
+                                    ))}
+                                </Stack>
+                            </Box>
+                        ) : selectedClaim?.vin ? (
+                            <Alert severity="info" sx={{ mb: 1 }}>
+                                <Typography variant="caption">Không có sự kiện thu hồi cho VIN này.</Typography>
+                            </Alert>
+                        ) : null}
+                        
+                        {/* Hiển thị "Phụ tùng được phép chọn:" chỉ khi CÓ recall events */}
                         {recallEvents.length > 0 && (affectedPartsFromRecall.ids.length > 0 || affectedPartsFromRecall.names.length > 0) && (
                             <Alert severity="info" sx={{ mb: 1 }}>
                                 <Typography variant="caption">

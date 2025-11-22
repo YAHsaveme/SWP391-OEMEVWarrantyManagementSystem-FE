@@ -47,6 +47,7 @@ import diagnosticsService from "../../services/diagnosticsService";
 import eventService from "../../services/eventService";
 import vehicleService from "../../services/vehicleService";
 import vehicleWarrantyService from "../../services/vehicleWarrantyService";
+import partService from "../../services/partService";
 import { uploadToCloudinary } from "../../utils/cloudinary";
 
 // Vehicle service — dùng để lấy thông tin khách hàng theo VIN
@@ -129,6 +130,7 @@ export default function WarrantyClaimsPage() {
   const [statusFilter, setStatusFilter] = useState("all");
 
   const [vehicleNames, setVehicleNames] = useState({});
+  const [parts, setParts] = useState([]);
 
   const [createOpen, setCreateOpen] = useState(false);
   const [viewOpen, setViewOpen] = useState(false);
@@ -179,6 +181,20 @@ export default function WarrantyClaimsPage() {
     }
   }, [claims]);
 
+  // Load parts để map ID sang tên
+  useEffect(() => {
+    const fetchParts = async () => {
+      try {
+        const data = await partService.getActive();
+        setParts(Array.isArray(data) ? data.filter(p => !p.isDelete) : []);
+      } catch (e) {
+        console.error("Lỗi tải Parts:", e);
+        setParts([]);
+      }
+    };
+    fetchParts();
+  }, []);
+
   useEffect(() => {
     let mounted = true;
     const fetch = async () => {
@@ -190,7 +206,14 @@ export default function WarrantyClaimsPage() {
         } else {
           data = await claimService.getByStatus(statusFilter);
         }
-        if (mounted) setClaims(Array.isArray(data) ? data : [data]);
+        const arr = Array.isArray(data) ? data : [data];
+        // Sort theo ngày tạo (mới nhất trước)
+        arr.sort((a, b) => {
+          const dateA = new Date(a.openedAt || a.createdAt || a.errorDate || 0).getTime();
+          const dateB = new Date(b.openedAt || b.createdAt || b.errorDate || 0).getTime();
+          return dateB - dateA; // Mới nhất trước
+        });
+        if (mounted) setClaims(arr);
       } catch (err) {
         console.error("Fetch claims failed:", err);
         setSnack({ open: true, message: "Failed to load claims", severity: "error" });
@@ -322,7 +345,7 @@ export default function WarrantyClaimsPage() {
               onClick={() => setCreateOpen(true)}
               sx={{ whiteSpace: "nowrap", minWidth: 130 }}
             >
-              Tạo bảo hành
+              Tạo yêu cầu 
             </Button>
           </Stack>
         </Grid>
@@ -335,7 +358,7 @@ export default function WarrantyClaimsPage() {
             <CardContent>
               <Stack direction={{ xs: "column", sm: "row" }} spacing={2} justifyContent="space-between">
                 <Box flex={1}>
-                  <Stack direction="row" spacing={1.5} alignItems="center">
+                  <Stack direction="row" spacing={1.5} alignItems="center" flexWrap="wrap">
                     <Typography variant="h6" fontWeight={700}>
                       {vehicleNames[claim.vin] || claim.intakeContactName || "—"}
                     </Typography>
@@ -346,6 +369,19 @@ export default function WarrantyClaimsPage() {
                       variant={claim.status === "APPROVED" ? "filled" : "outlined"}
                       sx={{ fontWeight: 700 }}
                     />
+                    {(() => {
+                      const claimType = claim.claimType || "WARRANTY";
+                      const typeLabel = claimType === "RECALL" ? "Thu hồi" : "Bảo hành";
+                      const typeColor = claimType === "RECALL" ? "warning" : "info";
+                      return (
+                        <Chip
+                          size="small"
+                          label={typeLabel}
+                          color={typeColor}
+                          variant="outlined"
+                        />
+                      );
+                    })()}
                   </Stack>
 
                   <Stack spacing={1} sx={{ mt: 1 }}>
@@ -429,7 +465,7 @@ export default function WarrantyClaimsPage() {
           } catch (err) {
             console.error("Create claim failed:", err);
             const errorData = err.response?.data;
-            let message = "Tạo claim thất bại, vui lòng thử lại sau!";
+            let message = "Tạo yêu cầu thất bại, vui lòng thử lại sau!";
             if (errorData) {
               if (typeof errorData === "string") {
                 message = errorData;
@@ -455,6 +491,7 @@ export default function WarrantyClaimsPage() {
       <ViewOnlyDialog
         open={viewOpen}
         claim={activeClaim}
+        parts={parts}
         onClose={() => setViewOpen(false)}
       />
 
@@ -586,30 +623,98 @@ function CreateClaimDialog({ open, onClose, onCreate, setSnack }) {
   // Danh sách vehicles đã kích hoạt bảo hành
   const [vehiclesWithWarranty, setVehiclesWithWarranty] = useState([]);
   const [loadingVehicles, setLoadingVehicles] = useState(false);
+  // Danh sách VINs đã có claim COMPLETED (để filter bỏ khỏi dropdown)
+  const [completedVins, setCompletedVins] = useState(new Set());
+  // Danh sách VINs có recall (để hiển thị trong dropdown)
+  const [recallVins, setRecallVins] = useState(new Set());
+  // Danh sách VINs đã có claim recall COMPLETED (để check logic)
+  const [recallCompletedVins, setRecallCompletedVins] = useState(new Set());
 
-  // Load danh sách vehicles đã kích hoạt bảo hành
+  // Load danh sách vehicles đã kích hoạt bảo hành (và filter bỏ VINs có claim COMPLETED)
   const loadVehicles = useCallback(async () => {
     setLoadingVehicles(true);
     try {
-      // Thử lấy vehicles đã có warranty
-      const data = await vehicleService.getWithWarranty();
-      const vehicles = Array.isArray(data) ? data : (data?.data || data?.vehicles || []);
-      setVehiclesWithWarranty(vehicles);
-    } catch (err) {
-      console.error("Load vehicles with warranty failed:", err);
-      // Fallback: lấy tất cả vehicles
+      // 1. Load completed claims để lấy VINs cần filter
+      let completedVinsSet = new Set();
       try {
-        const allData = await vehicleService.getAll();
-        const allVehicles = Array.isArray(allData) ? allData : (allData?.data || []);
-        setVehiclesWithWarranty(allVehicles);
-      } catch (err2) {
-        console.error("Load all vehicles failed:", err2);
-        setVehiclesWithWarranty([]);
+        const completedData = await claimService.getByStatus(CLAIM_STATUS.COMPLETED);
+        const completed = Array.isArray(completedData) ? completedData : (completedData ? [completedData] : []);
+        completedVinsSet = new Set(completed.map(c => c.vin).filter(Boolean));
+        // Chỉ set state nếu có thay đổi
+        setCompletedVins(prev => {
+          const prevSet = new Set(prev);
+          if (prevSet.size === completedVinsSet.size && 
+              [...prevSet].every(v => completedVinsSet.has(v))) {
+            return prev; // Không thay đổi, return previous để tránh re-render
+          }
+          return completedVinsSet;
+        });
+      } catch (err) {
+        console.error("Load completed claims failed:", err);
       }
+
+      // 2. Lấy tất cả vehicles (sẽ filter theo completed claims)
+      const data = await vehicleService.getAll();
+      const vehicles = Array.isArray(data) ? data : (data?.data || data?.vehicles || []);
+      console.log("Loaded vehicles count:", vehicles.length);
+      console.log("Completed VINs to filter:", completedVinsSet.size);
+      // Filter bỏ các VIN đã có claim COMPLETED
+      let filtered = vehicles.filter(v => {
+        const vin = v.vin || v.id;
+        return !completedVinsSet.has(vin);
+      });
+      console.log("Filtered vehicles count:", filtered.length);
+      
+      // Sort theo ngày đăng ký VIN (createdAt của vehicle) - mới nhất trước
+      filtered.sort((a, b) => {
+        // Ưu tiên createdAt, sau đó created_date, cuối cùng là id
+        const dateA = a.createdAt || a.created_date || a.id || "";
+        const dateB = b.createdAt || b.created_date || b.id || "";
+        const timeA = dateA ? new Date(dateA).getTime() : 0;
+        const timeB = dateB ? new Date(dateB).getTime() : 0;
+        if (timeA !== timeB) return timeB - timeA; // Mới nhất trước
+        // Nếu không có date, sort theo VIN ngược lại (Z->A) để mới hơn lên trước
+        const vinA = (a.vin || a.id || "").toString();
+        const vinB = (b.vin || b.id || "").toString();
+        return vinB.localeCompare(vinA);
+      });
+      
+      setVehiclesWithWarranty(filtered);
+      
+      // Load recall events sau (async, không block UI) - chỉ check cho vehicles đã filter
+      if (filtered.length > 0) {
+        (async () => {
+          try {
+            const recallVinsSet = new Set();
+            // Chỉ check recall cho các vehicles đã được filter (tối đa 20 để không quá chậm)
+            const vehiclesToCheck = filtered.slice(0, 20);
+            await Promise.all(
+              vehiclesToCheck.map(async (vehicle) => {
+                const vin = vehicle.vin || vehicle.id;
+                if (!vin) return;
+                try {
+                  const recallResult = await eventService.checkRecallByVin(vin);
+                  if (recallResult?.hasRecall && recallResult?.events?.length > 0) {
+                    recallVinsSet.add(vin);
+                  }
+                } catch (err) {
+                  // Ignore lỗi check recall
+                }
+              })
+            );
+            setRecallVins(recallVinsSet);
+          } catch (err) {
+            console.error("Load recall events failed:", err);
+          }
+        })();
+      }
+    } catch (err) {
+      console.error("Load vehicles failed:", err);
+      setVehiclesWithWarranty([]);
     } finally {
       setLoadingVehicles(false);
     }
-  }, []);
+  }, []); // Bỏ dependency completedVins để tránh re-render vô hạn
 
   // Load danh sách vehicles khi dialog mở
   useEffect(() => {
@@ -654,7 +759,7 @@ function CreateClaimDialog({ open, onClose, onCreate, setSnack }) {
     checkWarranty();
   }, [vin]);
 
-  // Auto-check recall khi VIN thay đổi
+  // Auto-check recall khi VIN thay đổi (check ngay lập tức, không debounce)
   useEffect(() => {
     const checkRecall = async () => {
       if (!vin?.trim() || vin.trim().length < 17) {
@@ -665,28 +770,39 @@ function CreateClaimDialog({ open, onClose, onCreate, setSnack }) {
       try {
         setRecallCheck(prev => ({ ...prev, checking: true }));
         const result = await eventService.checkRecallByVin(vin.trim());
+        const hasRecall = result.hasRecall || false;
+        
+        // Check xem VIN này đã có claim recall COMPLETED chưa
+        let hasRecallCompleted = false;
+        if (hasRecall) {
+          try {
+            // Load tất cả claims của VIN này
+            const vinClaims = await claimService.getByVin(vin.trim());
+            const claims = Array.isArray(vinClaims) ? vinClaims : (vinClaims ? [vinClaims] : []);
+            // Check xem có claim nào có claimType = RECALL và status = COMPLETED không
+            hasRecallCompleted = claims.some(claim => 
+              (claim.claimType === "RECALL" || claim.claimType === "recall") && 
+              claim.status === CLAIM_STATUS.COMPLETED
+            );
+          } catch (err) {
+            console.error("Check recall completed claims failed:", err);
+          }
+        }
+        
         setRecallCheck({
           checking: false,
-          hasRecall: result.hasRecall || false,
-          events: result.events || []
+          hasRecall: hasRecall,
+          events: result.events || [],
+          hasRecallCompleted: hasRecallCompleted
         });
-
-        // Auto-suggest set claimType = RECALL nếu có recall
-        if (result.hasRecall && claimType !== "RECALL") {
-          // Chỉ suggest, không auto-set để user có thể quyết định
-        }
       } catch (err) {
         console.error("Check recall failed:", err);
-        setRecallCheck({ checking: false, hasRecall: false, events: [] });
+        setRecallCheck({ checking: false, hasRecall: false, events: [], hasRecallCompleted: false });
       }
     };
 
-    // Debounce để tránh gọi API quá nhiều
-    const timer = setTimeout(() => {
-      checkRecall();
-    }, 500);
-
-    return () => clearTimeout(timer);
+    // Check ngay lập tức khi VIN thay đổi (không debounce để ẩn thông báo nhanh hơn)
+    checkRecall();
   }, [vin]);
 
   const handleSubmit = async (e) => {
@@ -743,7 +859,7 @@ function CreateClaimDialog({ open, onClose, onCreate, setSnack }) {
   return (
     <Dialog open={open} onClose={onClose} fullWidth maxWidth="md">
       <form onSubmit={handleSubmit} noValidate>
-        <DialogTitle>Create Warranty Claim</DialogTitle>
+        <DialogTitle>Tạo yêu cầu</DialogTitle>
         <DialogContent dividers>
           <Grid container spacing={2}>
             <Grid item xs={12} md={6}>
@@ -770,7 +886,6 @@ function CreateClaimDialog({ open, onClose, onCreate, setSnack }) {
                     {...params}
                     label="VIN"
                     required
-                    helperText="Chọn VIN từ xe đã kích hoạt bảo hành (chỉ được tạo claim cho xe đã kích hoạt)"
                     InputProps={{
                       ...params.InputProps,
                       endAdornment: (
@@ -797,16 +912,28 @@ function CreateClaimDialog({ open, onClose, onCreate, setSnack }) {
                 renderOption={(props, option) => {
                   const vinStr = typeof option === "string" ? option : (option.vin || option.id || "");
                   const modelCode = typeof option === "object" ? option.modelCode : "";
+                  const hasRecall = recallVins.has(vinStr);
                   return (
                     <Box component="li" {...props} key={vinStr}>
-                      <Box>
-                        <Typography variant="body2" sx={{ fontWeight: 600 }}>
-                          {vinStr}
-                        </Typography>
-                        {modelCode && (
-                          <Typography variant="caption" color="text.secondary">
-                            Model: {modelCode}
+                      <Box sx={{ width: "100%", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                        <Box>
+                          <Typography variant="body2" sx={{ fontWeight: 600 }}>
+                            {vinStr}
                           </Typography>
+                          {modelCode && (
+                            <Typography variant="caption" color="text.secondary">
+                              Model: {modelCode}
+                            </Typography>
+                          )}
+                        </Box>
+                        {hasRecall && (
+                          <Chip
+                            label="Thu hồi"
+                            size="small"
+                            color="warning"
+                            variant="outlined"
+                            sx={{ ml: 1 }}
+                          />
                         )}
                       </Box>
                     </Box>
@@ -815,17 +942,18 @@ function CreateClaimDialog({ open, onClose, onCreate, setSnack }) {
               />
               {vehiclesWithWarranty.length === 0 && !loadingVehicles && (
                 <Typography variant="caption" color="text.secondary" sx={{ mt: 0.5, display: "block" }}>
-                  Đang tải danh sách vehicles...
+                  Đang tải danh sách xe máy điện...
                 </Typography>
               )}
-              {vin && warrantyCheck.isActivated === false && (
+              {vin && warrantyCheck.isActivated === false && !recallCheck.checking && 
+               !(recallCheck.hasRecall && !recallCheck.hasRecallCompleted) && (
                 <Alert severity="warning" sx={{ mt: 1, width: "100%" }}>
-                  VIN này chưa kích hoạt bảo hành. Vui lòng kích hoạt bảo hành trước khi tạo claim.
+                  VIN này chưa kích hoạt bảo hành. Vui lòng kích hoạt bảo hành trước khi tạo yêu cầu.
                 </Alert>
               )}
               {vin && warrantyCheck.isActivated === true && (
                 <Alert severity="success" sx={{ mt: 1, width: "100%" }}>
-                  VIN đã kích hoạt bảo hành. Có thể tạo claim.
+                  VIN đã kích hoạt bảo hành. Có thể tạo yêu cầu.
                 </Alert>
               )}
             </Grid>
@@ -862,7 +990,7 @@ function CreateClaimDialog({ open, onClose, onCreate, setSnack }) {
                 }}
                 disabled={!vin?.trim() || vin.trim().length < 17 || recallCheck.checking}
               >
-                {recallCheck.checking ? <CircularProgress size={20} /> : "Kiểm tra VIN có thuộc Recall"}
+                {recallCheck.checking ? <CircularProgress size={20} /> : "Kiểm tra VIN có thuộc xe thu hồi không"}
               </Button>
             </Grid>
 
@@ -871,7 +999,7 @@ function CreateClaimDialog({ open, onClose, onCreate, setSnack }) {
               <Grid item xs={12}>
                 <Alert severity="warning" sx={{ mb: 1 }}>
                   <Typography variant="subtitle2" fontWeight={700} gutterBottom>
-                    ⚠️ Xe này bị ảnh hưởng bởi {recallCheck.events.length} sự kiện Recall:
+                    ⚠️ Xe này bị ảnh hưởng bởi {recallCheck.events.length} sự kiện:
                   </Typography>
                   <Stack spacing={0.5} sx={{ mt: 1 }}>
                     {recallCheck.events.map((event, idx) => (
@@ -880,16 +1008,13 @@ function CreateClaimDialog({ open, onClose, onCreate, setSnack }) {
                       </Typography>
                     ))}
                   </Stack>
-                  <Typography variant="body2" sx={{ mt: 1, fontStyle: "italic" }}>
-                    Vui lòng chọn Claim Type = "RECALL" để xử lý đúng loại claim này.
-                  </Typography>
                 </Alert>
               </Grid>
             )}
 
             <Grid item xs={12} md={6}>
               <TextField
-                label="Error Date"
+                label="Ngày lỗi"
                 type="datetime-local"
                 value={errorDate}
                 onChange={(e) => setErrorDate(e.target.value)}
@@ -900,7 +1025,7 @@ function CreateClaimDialog({ open, onClose, onCreate, setSnack }) {
             </Grid>
             <Grid item xs={12} md={6}>
               <TextField
-                label="Odometer (km)"
+                label="Quãng đường xe đã chạy (km)"
                 type="number"
                 value={odometerKm}
                 onChange={(e) => setOdometerKm(e.target.value)}
@@ -910,7 +1035,7 @@ function CreateClaimDialog({ open, onClose, onCreate, setSnack }) {
             </Grid>
             <Grid item xs={12}>
               <TextField
-                label="Summary"
+                label="Nội dung"
                 value={summary}
                 onChange={(e) => setSummary(e.target.value)}
                 multiline
@@ -921,16 +1046,16 @@ function CreateClaimDialog({ open, onClose, onCreate, setSnack }) {
             </Grid>
             <Grid item xs={12}>
               <FormControl fullWidth>
-                <InputLabel>Exclusions (Optional)</InputLabel>
+                <InputLabel>Loại trừ (tùy chọn)</InputLabel>
                 <Select
                   multiple
                   value={exclusions}
-                  label="Exclusions (Optional)"
+                  label="Loại trừ (tùy chọn)"
                   onChange={(e) => setExclusions(e.target.value)}
                   renderValue={(selected) =>
                     selected.length > 0
                       ? selected.map(ex => EXCLUSION_LABELS[ex] || ex).join(", ")
-                      : "Chọn exclusions (tùy chọn)"
+                      : "Chọn loại trừ (tùy chọn)"
                   }
                   MenuProps={{
                     PaperProps: {
@@ -950,7 +1075,7 @@ function CreateClaimDialog({ open, onClose, onCreate, setSnack }) {
                   ))}
                 </Select>
                 <Typography variant="caption" sx={{ mt: 0.5, display: "block", color: "text.secondary" }}>
-                  Chọn các exclusions áp dụng cho claim này (có thể để trống)
+                  Chọn các loại trừ áp dụng cho yêu cầu này (có thể để trống)
                 </Typography>
               </FormControl>
             </Grid>
@@ -958,7 +1083,7 @@ function CreateClaimDialog({ open, onClose, onCreate, setSnack }) {
             {/* ⚙️ File Upload Input */}
             <Grid item xs={12}>
               <Button variant="outlined" component="label" fullWidth>
-                Upload Attachments (images/pdf)
+                Tải ảnh
                 <input
                   type="file"
                   multiple
@@ -1062,8 +1187,8 @@ function CreateClaimDialog({ open, onClose, onCreate, setSnack }) {
           </Grid>
         </DialogContent>
         <DialogActions>
-          <Button onClick={onClose} variant="outlined">Cancel</Button>
-          <Button type="submit" variant="contained">Submit Claim</Button>
+          <Button onClick={onClose} variant="outlined">Đóng</Button>
+          <Button type="submit" variant="contained">Gửi yêu cầu</Button>
         </DialogActions>
       </form>
     </Dialog>
@@ -1071,7 +1196,7 @@ function CreateClaimDialog({ open, onClose, onCreate, setSnack }) {
 }
 
 /* ---------- View Only Dialog - List format with Diagnostics, Estimates, Events ---------- */
-function ViewOnlyDialog({ open, onClose, claim }) {
+function ViewOnlyDialog({ open, onClose, claim, parts: parentParts = [] }) {
   const [vehicleInfo, setVehicleInfo] = useState(null);
   const [centerName, setCenterName] = useState("");
   const [currentUser, setCurrentUser] = useState(null);
@@ -1079,6 +1204,49 @@ function ViewOnlyDialog({ open, onClose, claim }) {
   const [estimates, setEstimates] = useState([]);
   const [recallEvents, setRecallEvents] = useState([]);
   const [loadingData, setLoadingData] = useState(false);
+  const [parts, setParts] = useState(parentParts);
+  
+  // Load parts nếu chưa có từ parent
+  useEffect(() => {
+    if (parentParts.length > 0) {
+      setParts(parentParts);
+      console.log("[ViewOnlyDialog] Using parent parts:", parentParts.length);
+      if (parentParts.length > 0) {
+        console.log("[ViewOnlyDialog] Sample parent part:", {
+          id: parentParts[0].id,
+          uuid: parentParts[0].uuid,
+          partId: parentParts[0].partId,
+          partName: parentParts[0].partName,
+          partNo: parentParts[0].partNo
+        });
+      }
+    } else {
+      const fetchParts = async () => {
+        try {
+          const data = await partService.getActive();
+          const partsList = Array.isArray(data) ? data.filter(p => !p.isDelete) : [];
+          setParts(partsList);
+          console.log("[ViewOnlyDialog] Loaded parts from API:", partsList.length);
+          if (partsList.length > 0) {
+            console.log("[ViewOnlyDialog] Sample part from API:", {
+              id: partsList[0].id,
+              uuid: partsList[0].uuid,
+              partId: partsList[0].partId,
+              partName: partsList[0].partName,
+              partNo: partsList[0].partNo,
+              allKeys: Object.keys(partsList[0])
+            });
+          }
+        } catch (e) {
+          console.error("[ViewOnlyDialog] Lỗi tải Parts:", e);
+          setParts([]);
+        }
+      };
+      if (open) {
+        fetchParts();
+      }
+    }
+  }, [open, parentParts]);
 
   useEffect(() => {
     const fetchCurrentUser = async () => {
@@ -1385,20 +1553,273 @@ function ViewOnlyDialog({ open, onClose, claim }) {
                             {renderListItem("Reason", event.reason || "—")}
                             {renderListItem("Start Date", event.startDate ? new Date(event.startDate).toLocaleString("vi-VN") : "—")}
                             {renderListItem("End Date", event.endDate ? new Date(event.endDate).toLocaleString("vi-VN") : "—")}
-                            {event.affectedParts && event.affectedParts.length > 0 && (
-                              <Box>
-                                <Typography variant="body2" color="text.secondary" sx={{ mb: 0.5, fontWeight: 600 }}>
-                                  Affected Parts:
-                                </Typography>
-                                <Stack spacing={0.5}>
-                                  {event.affectedParts.map((part, idx) => (
-                                    <Typography key={idx} variant="body2" sx={{ pl: 2 }}>
-                                      • {part}
+                            {(() => {
+                              // Parse affectedParts từ event
+                              let affectedPartIds = [];
+                              
+                              console.log("[WarrantyClaim] Event affectedParts data:", {
+                                affectedParts: event.affectedParts,
+                                affectedPart: event.affectedPart, // Thử số ít
+                                affectedPartsJson: event.affectedPartsJson,
+                                affectedPartJson: event.affectedPartJson, // Thử số ít
+                                affected_parts: event.affected_parts,
+                                affected_part: event.affected_part, // Thử số ít
+                                partsListLength: parts.length,
+                                eventId: event.id,
+                                eventName: event.name,
+                                allEventKeys: Object.keys(event) // Log tất cả keys để debug
+                              });
+                              if (parts.length > 0) {
+                                console.log("[WarrantyClaim] Sample parts for matching:", parts.slice(0, 2).map(p => ({
+                                  id: p.id,
+                                  uuid: p.uuid,
+                                  partId: p.partId,
+                                  partName: p.partName,
+                                  partNo: p.partNo,
+                                  idType: typeof p.id,
+                                  idValue: String(p.id)
+                                })));
+                              }
+                              
+                              // Thử parse từ nhiều field có thể có
+                              // 1. affectedPartsJson (số nhiều)
+                              if (event.affectedPartsJson) {
+                                try {
+                                  const parsed = typeof event.affectedPartsJson === 'string' 
+                                    ? JSON.parse(event.affectedPartsJson) 
+                                    : event.affectedPartsJson;
+                                  if (Array.isArray(parsed)) {
+                                    affectedPartIds = parsed.map(item => String(item));
+                                  } else if (parsed && typeof parsed === 'string') {
+                                    affectedPartIds = [String(parsed)];
+                                  } else if (parsed && typeof parsed === 'object') {
+                                    if (parsed.id) affectedPartIds = [String(parsed.id)];
+                                    else if (parsed.partId) affectedPartIds = [String(parsed.partId)];
+                                  }
+                                } catch (err) {
+                                  console.warn("[WarrantyClaim] Failed to parse affectedPartsJson:", err);
+                                }
+                              }
+                              
+                              // 2. affectedPartJson (số ít)
+                              if (affectedPartIds.length === 0 && event.affectedPartJson) {
+                                try {
+                                  const parsed = typeof event.affectedPartJson === 'string' 
+                                    ? JSON.parse(event.affectedPartJson) 
+                                    : event.affectedPartJson;
+                                  if (Array.isArray(parsed)) {
+                                    affectedPartIds = parsed.map(item => String(item));
+                                  } else if (parsed && typeof parsed === 'string') {
+                                    affectedPartIds = [String(parsed)];
+                                  } else if (parsed && typeof parsed === 'object') {
+                                    if (parsed.id) affectedPartIds = [String(parsed.id)];
+                                    else if (parsed.partId) affectedPartIds = [String(parsed.partId)];
+                                  }
+                                } catch (err) {
+                                  console.warn("[WarrantyClaim] Failed to parse affectedPartJson:", err);
+                                }
+                              }
+                              
+                              // 3. affectedParts (số nhiều)
+                              if (affectedPartIds.length === 0) {
+                                if (Array.isArray(event.affectedParts)) {
+                                  affectedPartIds = event.affectedParts.map(item => {
+                                    if (typeof item === 'object' && item !== null) {
+                                      return String(item.id || item.partId || item.uuid || item.part || item);
+                                    }
+                                    return String(item);
+                                  });
+                                } else if (event.affectedParts) {
+                                  if (typeof event.affectedParts === 'object' && event.affectedParts !== null) {
+                                    affectedPartIds = [String(event.affectedParts.id || event.affectedParts.partId || event.affectedParts.uuid || event.affectedParts.part || event.affectedParts)];
+                                  } else {
+                                    affectedPartIds = [String(event.affectedParts)];
+                                  }
+                                }
+                              }
+                              
+                              // 4. affectedPart (số ít)
+                              if (affectedPartIds.length === 0 && event.affectedPart) {
+                                if (Array.isArray(event.affectedPart)) {
+                                  affectedPartIds = event.affectedPart.map(item => {
+                                    if (typeof item === 'object' && item !== null) {
+                                      return String(item.id || item.partId || item.uuid || item.part || item);
+                                    }
+                                    return String(item);
+                                  });
+                                } else if (typeof event.affectedPart === 'object' && event.affectedPart !== null) {
+                                  affectedPartIds = [String(event.affectedPart.id || event.affectedPart.partId || event.affectedPart.uuid || event.affectedPart.part || event.affectedPart)];
+                                } else {
+                                  affectedPartIds = [String(event.affectedPart)];
+                                }
+                              }
+                              
+                              // 5. affected_parts (snake_case số nhiều)
+                              if (affectedPartIds.length === 0 && event.affected_parts) {
+                                if (Array.isArray(event.affected_parts)) {
+                                  affectedPartIds = event.affected_parts.map(item => {
+                                    if (typeof item === 'object' && item !== null) {
+                                      return String(item.id || item.partId || item.uuid || item.part || item);
+                                    }
+                                    return String(item);
+                                  });
+                                } else if (typeof event.affected_parts === 'object' && event.affected_parts !== null) {
+                                  affectedPartIds = [String(event.affected_parts.id || event.affected_parts.partId || event.affected_parts.uuid || event.affected_parts.part || event.affected_parts)];
+                                } else {
+                                  affectedPartIds = [String(event.affected_parts)];
+                                }
+                              }
+                              
+                              // 6. affected_part (snake_case số ít)
+                              if (affectedPartIds.length === 0 && event.affected_part) {
+                                if (Array.isArray(event.affected_part)) {
+                                  affectedPartIds = event.affected_part.map(item => {
+                                    if (typeof item === 'object' && item !== null) {
+                                      return String(item.id || item.partId || item.uuid || item.part || item);
+                                    }
+                                    return String(item);
+                                  });
+                                } else if (typeof event.affected_part === 'object' && event.affected_part !== null) {
+                                  affectedPartIds = [String(event.affected_part.id || event.affected_part.partId || event.affected_part.uuid || event.affected_part.part || event.affected_part)];
+                                } else {
+                                  affectedPartIds = [String(event.affected_part)];
+                                }
+                              }
+                              
+                              console.log("[WarrantyClaim] Parsed affectedPartIds:", affectedPartIds);
+                              
+                              // Tìm part objects từ IDs - kiểm tra nhiều field có thể
+                              const affectedPartObjects = affectedPartIds
+                                .map(partId => {
+                                  const partIdStr = String(partId).trim();
+                                  const partIdStrLower = partIdStr.toLowerCase();
+                                  
+                                  // Thử match với nhiều field và format khác nhau
+                                  const found = parts.find(p => {
+                                    // Thử các field có thể có
+                                    const possibleIds = [
+                                      p.id,
+                                      p.uuid,
+                                      p.partId,
+                                      p._id,
+                                      p.ID,
+                                      p.UUID,
+                                      p.PartId
+                                    ].filter(Boolean).map(id => String(id).trim());
+                                    
+                                    // Match exact (case-sensitive) trước
+                                    if (possibleIds.some(id => id === partIdStr)) {
+                                      return true;
+                                    }
+                                    
+                                    // Match case-insensitive
+                                    const possibleIdsLower = possibleIds.map(id => id.toLowerCase());
+                                    if (possibleIdsLower.some(id => id === partIdStrLower)) {
+                                      return true;
+                                    }
+                                    
+                                    return false;
+                                  });
+                                  
+                                  if (found) {
+                                    console.log("[WarrantyClaim] ✅ Found part:", { 
+                                      searchId: partId,
+                                      foundId: found.id,
+                                      foundUuid: found.uuid,
+                                      foundPartId: found.partId,
+                                      partName: found.partName || found.partNo || found.name,
+                                      allFields: Object.keys(found)
+                                    });
+                                  } else {
+                                    console.warn("[WarrantyClaim] ❌ Part not found:", {
+                                      searchId: partId,
+                                      searchIdType: typeof partId,
+                                      totalParts: parts.length
+                                    });
+                                    if (parts.length > 0) {
+                                      console.warn("[WarrantyClaim] First 3 parts for comparison:", parts.slice(0, 3).map(p => ({
+                                        id: p.id,
+                                        idType: typeof p.id,
+                                        uuid: p.uuid,
+                                        partId: p.partId,
+                                        _id: p._id,
+                                        name: p.partName || p.partNo || p.name,
+                                        allKeys: Object.keys(p)
+                                      })));
+                                    }
+                                  }
+                                  return found;
+                                })
+                                .filter(Boolean);
+                              
+                              if (affectedPartIds.length > 0) {
+                                return (
+                                  <Box>
+                                    <Typography variant="body2" color="text.secondary" sx={{ mb: 0.5, fontWeight: 600 }}>
+                                      Affected Parts:
                                     </Typography>
-                                  ))}
-                                </Stack>
-                              </Box>
-                            )}
+                                    <Stack spacing={0.5}>
+                                      {affectedPartObjects.length > 0 ? (
+                                        // Hiển thị tên part nếu tìm thấy
+                                        affectedPartObjects.map((part, idx) => {
+                                          const partName = part.partName || part.partNo || part.name;
+                                          if (!partName) {
+                                            console.warn("[WarrantyClaim] Part found but no name:", part);
+                                          }
+                                          return (
+                                            <Typography key={part.id || part.uuid || idx} variant="body2" sx={{ pl: 2 }}>
+                                              • {partName || `Part ID: ${part.id || part.uuid || part.partId}`}
+                                            </Typography>
+                                          );
+                                        })
+                                      ) : (
+                                        // Nếu không tìm thấy part objects, thử tìm lại với parts list mới nhất
+                                        affectedPartIds.map((partId, idx) => {
+                                          const partIdStr = String(partId).trim();
+                                          const partIdStrLower = partIdStr.toLowerCase();
+                                          
+                                          // Thử match lại với nhiều field
+                                          const part = parts.find(p => {
+                                            const possibleIds = [
+                                              p.id,
+                                              p.uuid,
+                                              p.partId,
+                                              p._id
+                                            ].filter(Boolean).map(id => String(id).trim());
+                                            
+                                            // Match exact
+                                            if (possibleIds.some(id => id === partIdStr)) {
+                                              return true;
+                                            }
+                                            
+                                            // Match case-insensitive
+                                            const possibleIdsLower = possibleIds.map(id => id.toLowerCase());
+                                            if (possibleIdsLower.some(id => id === partIdStrLower)) {
+                                              return true;
+                                            }
+                                            
+                                            return false;
+                                          });
+                                          
+                                          const partName = part ? (part.partName || part.partNo || part.name) : null;
+                                          
+                                          if (part && !partName) {
+                                            console.warn("[WarrantyClaim] Part found but no name:", part);
+                                          }
+                                          
+                                          return (
+                                            <Typography key={idx} variant="body2" sx={{ pl: 2, color: partName ? "text.primary" : "text.secondary" }}>
+                                              • {partName || `Part ID: ${partId}`}
+                                            </Typography>
+                                          );
+                                        })
+                                      )}
+                                    </Stack>
+                                  </Box>
+                                );
+                              }
+                              return null;
+                            })()}
                             {event.exclusions && event.exclusions.length > 0 && (
                               <Box>
                                 <Typography variant="body2" color="text.secondary" sx={{ mb: 0.5, fontWeight: 600 }}>
@@ -1553,10 +1974,10 @@ function UpdateClaimDialog({ open, onClose, claim, onUpdateStatus, onUpdateClaim
 
   return (
     <Dialog open={open} onClose={onClose} fullWidth maxWidth="md">
-      <DialogTitle>Update Claim</DialogTitle>
+      <DialogTitle>Cập nhật yêu cầu</DialogTitle>
       <DialogContent dividers>
         {!claim ? (
-          <Typography color="text.secondary">No claim selected.</Typography>
+          <Typography color="text.secondary">Không có yêu cầu được chọn.</Typography>
         ) : (
           <Grid container spacing={2}>
             <Grid item xs={12} sm={6}>
@@ -1569,26 +1990,10 @@ function UpdateClaimDialog({ open, onClose, claim, onUpdateStatus, onUpdateClaim
               />
             </Grid>
 
-            <Grid item xs={12} sm={6}>
-              <TextField
-                label="Status"
-                value={status}
-                onChange={(e) => setStatus(e.target.value)}
-                fullWidth
-                select
-              >
-                <MenuItem value={CLAIM_STATUS.DIAGNOSING}>Chẩn đoán</MenuItem>
-                <MenuItem value={CLAIM_STATUS.ESTIMATING}>Báo giá</MenuItem>
-                <MenuItem value={CLAIM_STATUS.UNDER_REVIEW}>Đang xem xét</MenuItem>
-                <MenuItem value={CLAIM_STATUS.APPROVED}>Đã chấp thuận</MenuItem>
-                <MenuItem value={CLAIM_STATUS.COMPLETED}>Đã hoàn thành</MenuItem>
-                <MenuItem value={CLAIM_STATUS.REJECTED}>Đã từ chối</MenuItem>
-              </TextField>
-            </Grid>
 
             <Grid item xs={12} sm={6}>
               <TextField
-                label="Error Date"
+                label="Ngày lỗi"
                 type="datetime-local"
                 value={editErrorDate}
                 onChange={(e) => setEditErrorDate(e.target.value)}
@@ -1599,19 +2004,19 @@ function UpdateClaimDialog({ open, onClose, claim, onUpdateStatus, onUpdateClaim
 
             <Grid item xs={12}>
               <TextField
-                label="Exclusion (Optional)"
+                label="Loại trừ (tùy chọn)"
                 multiline
                 minRows={2}
                 value={claim.exclusion || ""}
                 fullWidth
                 InputProps={{ readOnly: true }}
-                helperText="Read-only field"
+                
               />
             </Grid>
 
             <Grid item xs={12} sm={6}>
               <TextField
-                label="Odometer (km)"
+                label="Quãng đường xe đã chạy (km)"
                 type="number"
                 value={editOdometer}
                 onChange={(e) => setEditOdometer(e.target.value)}
@@ -1621,7 +2026,7 @@ function UpdateClaimDialog({ open, onClose, claim, onUpdateStatus, onUpdateClaim
 
             <Grid item xs={12}>
               <TextField
-                label="Summary"
+                label="Nội dung"
                 multiline
                 minRows={3}
                 value={editSummary}
@@ -1633,7 +2038,7 @@ function UpdateClaimDialog({ open, onClose, claim, onUpdateStatus, onUpdateClaim
             {/* File upload for new attachments */}
             <Grid item xs={12}>
               <Button variant="outlined" component="label" fullWidth>
-                Add Attachments (images/pdf)
+                Thêm ảnh đính kèm 
                 <input
                   type="file"
                   multiple
@@ -1653,7 +2058,7 @@ function UpdateClaimDialog({ open, onClose, claim, onUpdateStatus, onUpdateClaim
 
               {files.length > 0 && (
                 <Box sx={{ mt: 1 }}>
-                  <Typography variant="subtitle2">New Files:</Typography>
+                  <Typography variant="subtitle2">Ảnh đính kèm</Typography>
                   <Stack spacing={1} sx={{ mt: 0.5 }}>
                     {files.map((f, index) => {
                       const fileName = f.file.name;
@@ -1736,7 +2141,7 @@ function UpdateClaimDialog({ open, onClose, claim, onUpdateStatus, onUpdateClaim
               {Array.isArray(claim.attachmentUrls) && claim.attachmentUrls.filter((url) => url && url !== "string").length > 0 && (
                 <Box sx={{ mt: 2 }}>
                   <Typography variant="subtitle2" sx={{ mb: 0.5 }}>
-                    Existing Attachments:
+                    Ảnh đính kèm
                   </Typography>
                   <Stack spacing={0.5}>
                     {claim.attachmentUrls
@@ -1797,7 +2202,7 @@ function UpdateClaimDialog({ open, onClose, claim, onUpdateStatus, onUpdateClaim
 
       <DialogActions>
         <Button onClick={onClose} variant="outlined">
-          Cancel
+          Đóng
         </Button>
 
         <Button
@@ -1805,7 +2210,7 @@ function UpdateClaimDialog({ open, onClose, claim, onUpdateStatus, onUpdateClaim
           variant="contained"
           disabled={savingAll}
         >
-          {savingAll ? <CircularProgress size={20} /> : "Save"}
+          {savingAll ? <CircularProgress size={20} /> : "Lưu"}
         </Button>
       </DialogActions>
     </Dialog>

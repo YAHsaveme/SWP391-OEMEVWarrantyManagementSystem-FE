@@ -92,10 +92,66 @@ export default function Estimates() {
     const loadClaims = async () => {
         try {
             setLoading(true);
-            const data = await claimService.getAll();
+            // Lấy claims có trạng thái ESTIMATING hoặc đã có báo giá (để xem)
+            let data;
+            try {
+                // Load ESTIMATING claims
+                const estimatingData = await claimService.getByStatus(CLAIM_STATUS.ESTIMATING);
+                const estimatingClaims = Array.isArray(estimatingData) ? estimatingData : (estimatingData ? [estimatingData] : []);
+                
+                // Load tất cả claims để tìm những claims đã có estimate (APPROVED, UNDER_REVIEW, etc.)
+                const allData = await claimService.getAll();
+                const allClaims = Array.isArray(allData) ? allData : (allData ? [allData] : []);
+                
+                // Lấy danh sách claimIds đã có estimate (chỉ check một số status có thể có estimate)
+                const claimsWithEstimates = new Set();
+                const claimsToCheck = allClaims.filter(c => 
+                    c.status === CLAIM_STATUS.APPROVED || 
+                    c.status === CLAIM_STATUS.UNDER_REVIEW ||
+                    c.status === CLAIM_STATUS.COMPLETED
+                );
+                
+                // Check estimates cho các claims có thể có (giới hạn để không quá chậm)
+                await Promise.all(
+                    claimsToCheck.slice(0, 50).map(async (claim) => {
+                        try {
+                            const estimates = await estimatesService.getByClaim(claim.id);
+                            const estimatesArr = Array.isArray(estimates) ? estimates : (estimates ? [estimates] : []);
+                            if (estimatesArr.length > 0) {
+                                claimsWithEstimates.add(claim.id);
+                            }
+                        } catch (err) {
+                            // Ignore errors
+                        }
+                    })
+                );
+                
+                // Kết hợp: ESTIMATING + claims đã có estimate
+                const combined = [
+                    ...estimatingClaims,
+                    ...allClaims.filter(c => claimsWithEstimates.has(c.id) && c.status !== CLAIM_STATUS.ESTIMATING)
+                ];
+                
+                // Remove duplicates
+                const uniqueClaims = Array.from(
+                    new Map(combined.map(c => [c.id, c])).values()
+                );
+                
+                data = uniqueClaims;
+                console.log("Loaded ESTIMATING + claims with estimates:", data.length);
+            } catch (err) {
+                console.warn("Load claims failed, trying getAll:", err);
+                // Fallback: load tất cả
+                const allData = await claimService.getAll();
+                data = Array.isArray(allData) ? allData : (allData ? [allData] : []);
+                console.log("Fallback: Loaded all claims:", data.length);
+            }
+
+            const claimsArray = Array.isArray(data) ? data : (data ? [data] : []);
+            console.log("Total claims to process:", claimsArray.length);
 
             const enriched = await Promise.all(
-                (Array.isArray(data) ? data : data ? [data] : []).map(async (claim) => {
+                claimsArray.map(async (claim) => {
                     let customerName = "Không rõ";
 
                     if (claim.vin) {
@@ -109,7 +165,7 @@ export default function Estimates() {
                                 "Không rõ";
                         } catch (error) {
                             if (error.message?.includes("VIN không hợp lệ")) {
-                                // VIN không có trong DB hoặc backend trả 400 → chỉ hiển thị “Không rõ”
+                                // VIN không có trong DB hoặc backend trả 400 → chỉ hiển thị "Không rõ"
                                 console.info(`⚠️ VIN ${claim.vin} không tồn tại trong hệ thống.`);
                             } else {
                                 console.warn(`❌ Lỗi khi lấy thông tin khách hàng VIN: ${claim.vin}`, error);
@@ -121,7 +177,16 @@ export default function Estimates() {
                 })
             );
 
+            console.log("Enriched claims count:", enriched.length);
             setClaims(enriched);
+            
+            if (enriched.length === 0) {
+                setSnack({
+                    open: true,
+                    message: "Không có claims nào có trạng thái ESTIMATING",
+                    severity: "info",
+                });
+            }
         } catch (err) {
             console.error("Load claims failed:", err);
             setSnack({
@@ -240,10 +305,10 @@ export default function Estimates() {
                 <ReceiptIcon sx={{ fontSize: 40, color: "primary.main" }} />
                 <Box>
                     <Typography variant="h4" fontWeight={700}>
-                        Quản lý Báo giá (Estimates)
+                        Quản lý Báo giá 
                     </Typography>
                     <Typography variant="body2" color="text.secondary">
-                        Tạo, xem, và quản lý nhiều version báo giá cho mỗi claim.
+                        Tạo, xem, và quản lý báo giá cho hồ sơ bảo hành.
                     </Typography>
                 </Box>
             </Stack>
@@ -255,7 +320,7 @@ export default function Estimates() {
                         <TextField
                             fullWidth
                             size="small"
-                            placeholder="Tìm kiếm theo VIN, summary, hoặc tên người liên hệ..."
+                            placeholder="Tìm kiếm theo VIN, hoặc tên người liên hệ..."
                             value={searchQuery}
                             onChange={(e) => setSearchQuery(e.target.value)}
                             InputProps={{
@@ -385,9 +450,9 @@ function EstimatesDialog({ open, onClose, claim, parts, partsLoading, setSnack }
     const [loadingLocal, setLoadingLocal] = React.useState(false);
     const [editing, setEditing] = React.useState(null);
     const [creating, setCreating] = React.useState(false);
-    const [showOnlyLatest, setShowOnlyLatest] = React.useState(true);
+    const [showOnlyLatest] = React.useState(true); // Luôn chỉ hiển thị version mới nhất
     const [versionToView, setVersionToView] = React.useState(null);
-    const [compareMode, setCompareMode] = React.useState({ on: false, otherVersion: null });
+    const [compareMode, setCompareMode] = React.useState({ on: false, otherVersion: null }); // Compare mode (ẩn UI nhưng vẫn cần setter)
     const [viewMode, setViewMode] = React.useState(false); // true = view only, false = edit mode
     const [recallEvents, setRecallEvents] = React.useState([]);
     const [loadingEvents, setLoadingEvents] = React.useState(false);
@@ -664,13 +729,13 @@ function EstimatesDialog({ open, onClose, claim, parts, partsLoading, setSnack }
             const payload = buildPayloadForApi();
             const created = await estimatesService.create(payload);
             setList((prev) => [created, ...prev]);
-            setSnack?.({ open: true, message: "Tạo estimate thành công", severity: "success" });
+            setSnack?.({ open: true, message: "Tạo báo giá thành công", severity: "success" });
             setCreating(false);
             window.dispatchEvent(new CustomEvent("claim-updated", { detail: { ...claim, lastEstimate: created } }));
         } catch (err) {
             console.error("Create estimate error:", err);
             const msg = err?.response?.data || err;
-            let friendlyMessage = "Tạo estimate thất bại";
+            let friendlyMessage = "Tạo báo giá thất bại";
 
             // Check for specific error messages
             if (typeof msg === "object" && msg.message) {
@@ -709,12 +774,12 @@ function EstimatesDialog({ open, onClose, claim, parts, partsLoading, setSnack }
             const payload = buildPayloadForApi();
             const updated = await estimatesService.update(editing.id, payload);
             setList((prev) => prev.map((p) => (p.id === updated.id ? updated : p)));
-            setSnack?.({ open: true, message: "Cập nhật estimate thành công", severity: "success" });
+            setSnack?.({ open: true, message: "Cập nhật báo giá thành công", severity: "success" });
             setEditing(null);
             window.dispatchEvent(new CustomEvent("claim-updated", { detail: { ...claim, lastEstimate: updated } }));
         } catch (err) {
             console.error("Update estimate error:", err);
-            setSnack?.({ open: true, message: "Cập nhật estimate thất bại", severity: "error" });
+            setSnack?.({ open: true, message: "Cập nhật báo giá thất bại", severity: "error" });
         } finally {
             setLoadingLocal(false);
         }
@@ -730,7 +795,7 @@ function EstimatesDialog({ open, onClose, claim, parts, partsLoading, setSnack }
             setVersionToView(null); // Clear view mode
         } catch (err) {
             console.error("Load estimate failed:", err);
-            setSnack?.({ open: true, message: "Không tải được estimate", severity: "error" });
+            setSnack?.({ open: true, message: "Không tải được báo giá", severity: "error" });
         } finally {
             setLoadingLocal(false);
         }
@@ -747,7 +812,7 @@ function EstimatesDialog({ open, onClose, claim, parts, partsLoading, setSnack }
             setCompareMode({ on: false, otherVersion: null });
         } catch (err) {
             console.error("Load estimate for view failed:", err);
-            setSnack?.({ open: true, message: "Không tải được estimate", severity: "error" });
+            setSnack?.({ open: true, message: "Không tải được báo giá", severity: "error" });
         } finally {
             setLoadingLocal(false);
         }
@@ -800,7 +865,7 @@ function EstimatesDialog({ open, onClose, claim, parts, partsLoading, setSnack }
                     <ReceiptIcon color="primary" />
                     <Box>
                         <Typography variant="h6" fontWeight={700}>
-                            Estimates cho Claim
+                            Báo giá cho Claim
                         </Typography>
                         <Typography variant="caption" color="text.secondary">
                             VIN: {claim?.vin || "—"} • Khách: {claim?.intakeContactName || "—"}
@@ -809,7 +874,7 @@ function EstimatesDialog({ open, onClose, claim, parts, partsLoading, setSnack }
                 </Stack>
             </DialogTitle>
             <DialogContent dividers>
-                {/* top controls: Create button, version selector, show latest toggle, compare */}
+                {/* top controls: Create button only */}
                 <Stack direction={{ xs: "column", md: "row" }} spacing={2} alignItems="center" sx={{ mb: 2 }}>
                     <Button
                         variant="contained"
@@ -825,57 +890,18 @@ function EstimatesDialog({ open, onClose, claim, parts, partsLoading, setSnack }
                         }}
                         sx={{ minWidth: 160 }}
                     >
-                        Tạo Estimate mới
+                        Tạo Báo giá mới
                     </Button>
-
-                    <FormControl size="small" sx={{ minWidth: 160 }}>
-                        <InputLabel id="version-select-label">Chọn version</InputLabel>
-                        <Select
-                            labelId="version-select-label"
-                            label="Chọn version"
-                            value={versionToView ? (versionToView.versionNo ?? versionToView.version ?? "") : ""}
-                            onChange={(e) => handleViewVersion(e.target.value)}
-                        >
-                            <MenuItem value="">-- Chọn version --</MenuItem>
-                            {versions.map((v) => (
-                                <MenuItem key={v} value={v}>Version {v}</MenuItem>
-                            ))}
-                        </Select>
-                    </FormControl>
-
-                    <FormGroup>
-                        <FormControlLabel
-                            control={<Checkbox checked={showOnlyLatest} onChange={(e) => setShowOnlyLatest(e.target.checked)} />}
-                            label="Chỉ hiển thị version mới nhất"
-                        />
-                    </FormGroup>
-
-                    <Tooltip title="So sánh với một version khác (chọn version và click 'So sánh')">
-                        <Button
-                            variant="contained"
-                            startIcon={<CompareIcon />}
-                            onClick={() => {
-                                if (!versionToView) {
-                                    setSnack?.({ open: true, message: "Vui lòng chọn một version để bắt đầu so sánh", severity: "info" });
-                                    return;
-                                }
-                                // prompt user to choose other version via small select below (we reuse versions list UI)
-                                setCompareMode((m) => ({ ...m, on: !m.on }));
-                            }}
-                        >
-                            {compareMode.on ? "Hủy So sánh" : "So sánh"}
-                        </Button>
-                    </Tooltip>
                 </Stack>
 
                 {/* list of estimates (versions) */}
                 <Typography variant="subtitle1" fontWeight={600} sx={{ mb: 1 }}>
-                    Danh sách Estimates hiện có (phiên bản)
+                    Danh sách Báo giá hiện có
                 </Typography>
 
                 {loadingLocal ? <CircularProgress /> : (
                     <Stack spacing={1} sx={{ mb: 2 }}>
-                        {list.length === 0 && <Typography color="text.secondary">Chưa có estimate nào</Typography>}
+                        {list.length === 0 && <Typography color="text.secondary">Chưa có báo giá nào</Typography>}
 
                         {(showOnlyLatest ? (() => {
                             const sorted = [...list].sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
@@ -894,7 +920,7 @@ function EstimatesDialog({ open, onClose, claim, parts, partsLoading, setSnack }
                                         <Stack direction="row" justifyContent="space-between" alignItems="center">
                                             <Stack direction="row" spacing={1} alignItems="center">
                                                 <CheckCircleIcon color="success" fontSize="small" />
-                                                <Typography fontWeight={700}>Version {e.versionNo ?? e.version ?? "—"} • {new Date(e.createdAt || e.createdAt).toLocaleString("vi-VN")}</Typography>
+                                                <Typography fontWeight={700}>{new Date(e.createdAt || e.createdAt).toLocaleString("vi-VN")}</Typography>
                                             </Stack>
 
                                             <Stack direction="row" spacing={1}>
@@ -942,7 +968,7 @@ function EstimatesDialog({ open, onClose, claim, parts, partsLoading, setSnack }
                     <Stack spacing={2}>
                         <Stack direction="row" spacing={1} alignItems="center" justifyContent="space-between">
                             <Typography variant="subtitle1" fontWeight={600}>
-                                {editing ? "Chỉnh sửa Estimate" : "Tạo Estimate mới"}
+                                {editing ? "Chỉnh sửa Báo giá" : "Tạo Báo giá mới"}
                             </Typography>
                             <Stack direction="row" spacing={1}>
                                 <Button variant="contained" size="small" onClick={() => { setCreating(true); setEditing(null); setForm(emptyForm); setViewMode(false); }}>Tạo mới</Button>
@@ -1078,12 +1104,12 @@ function EstimatesDialog({ open, onClose, claim, parts, partsLoading, setSnack }
                             {editing ? (
                                 <>
                                     <Button variant="outlined" onClick={() => { setCreating(false); setEditing(null); setForm(emptyForm); setViewMode(false); }}>Hủy</Button>
-                                    <Button variant="contained" onClick={handleUpdate} disabled={loadingLocal}>{loadingLocal ? <CircularProgress size={20} /> : "Cập nhật Estimate"}</Button>
+                                    <Button variant="contained" onClick={handleUpdate} disabled={loadingLocal}>{loadingLocal ? <CircularProgress size={20} /> : "Cập nhật Báo giá"}</Button>
                                 </>
                             ) : (
                                 <>
                                     <Button variant="outlined" onClick={() => { setCreating(false); setEditing(null); setForm(emptyForm); setViewMode(false); }}>Đặt lại</Button>
-                                    <Button variant="contained" onClick={handleCreate} disabled={loadingLocal}>{loadingLocal ? <CircularProgress size={20} /> : "Tạo Estimate"}</Button>
+                                    <Button variant="contained" onClick={handleCreate} disabled={loadingLocal}>{loadingLocal ? <CircularProgress size={20} /> : "Tạo Báo giá"}</Button>
                                 </>
                             )}
                         </Stack>
@@ -1094,7 +1120,7 @@ function EstimatesDialog({ open, onClose, claim, parts, partsLoading, setSnack }
                 {viewMode && versionToView && (
                     <>
                         <Divider sx={{ my: 2 }} />
-                        <Typography variant="subtitle1" fontWeight={600} sx={{ mb: 1 }}>Xem chi tiết Estimate (Chế độ xem - Không thể chỉnh sửa)</Typography>
+                        <Typography variant="subtitle1" fontWeight={600} sx={{ mb: 1 }}>Xem chi tiết Báo giá (Chế độ xem - Không thể chỉnh sửa)</Typography>
                         {loadingLocal ? <CircularProgress /> : (
                             <Box>
                                 <Card variant="outlined" sx={{ p: 2, bgcolor: "action.hover" }}>
@@ -1102,7 +1128,7 @@ function EstimatesDialog({ open, onClose, claim, parts, partsLoading, setSnack }
                                         <Stack spacing={2}>
                                             <Stack direction="row" spacing={2} alignItems="center" justifyContent="space-between">
                                                 <Typography variant="h6" fontWeight={700}>
-                                                    Version {versionToView.versionNo ?? versionToView.version ?? "—"} • {new Date(versionToView.createdAt || Date.now()).toLocaleString("vi-VN")}
+                                                    {new Date(versionToView.createdAt || Date.now()).toLocaleString("vi-VN")}
                                                 </Typography>
                                                 <Chip label="Chế độ xem" color="info" size="small" />
                                             </Stack>
@@ -1236,13 +1262,13 @@ function EstimatesDialog({ open, onClose, claim, parts, partsLoading, setSnack }
                 {!viewMode && versionToView && (
                     <>
                         <Divider sx={{ my: 2 }} />
-                        <Typography variant="subtitle1" fontWeight={600} sx={{ mb: 1 }}>Xem chi tiết version đã chọn</Typography>
+                        <Typography variant="subtitle1" fontWeight={600} sx={{ mb: 1 }}>Xem chi tiết báo giá đã chọn</Typography>
                         {loadingLocal ? <CircularProgress /> : (
                             <Box>
                                 <Card variant="outlined" sx={{ p: 2 }}>
                                     <CardContent>
                                         <Stack spacing={1}>
-                                            <Typography variant="h6">Version {versionToView.versionNo ?? versionToView.version ?? "—"} • {new Date(versionToView.createdAt || Date.now()).toLocaleString("vi-VN")}</Typography>
+                                            <Typography variant="h6">{new Date(versionToView.createdAt || Date.now()).toLocaleString("vi-VN")}</Typography>
                                             <Typography variant="body2">Ghi chú: {versionToView.note || "—"}</Typography>
                                             <Typography variant="subtitle2">Phụ tùng:</Typography>
                                             {((() => {
@@ -1273,14 +1299,14 @@ function EstimatesDialog({ open, onClose, claim, parts, partsLoading, setSnack }
                         <Card variant="outlined" sx={{ mb: 2 }}>
                             <CardContent>
                                 <Typography variant="h6" gutterBottom sx={{ mb: 2, fontWeight: 700 }}>
-                                    Recall Events ({recallEvents.length})
+                                    Sự kiện thu hồi xe ({recallEvents.length})
                                 </Typography>
                                 {loadingEvents ? (
                                     <Box sx={{ display: "flex", justifyContent: "center", py: 2 }}>
                                         <CircularProgress />
                                     </Box>
                                 ) : recallEvents.length === 0 ? (
-                                    <Typography color="text.secondary">Không có recall events cho VIN này</Typography>
+                                    <Typography color="text.secondary">Không có sự kiện thu hồi cho VIN này</Typography>
                                 ) : (
                                     <Stack spacing={2}>
                                         {recallEvents.map((event) => (
@@ -1292,20 +1318,62 @@ function EstimatesDialog({ open, onClose, claim, parts, partsLoading, setSnack }
                                                         <Row label="Reason" value={event.reason || "—"} />
                                                         <Row label="Start Date" value={event.startDate ? new Date(event.startDate).toLocaleString("vi-VN") : "—"} />
                                                         <Row label="End Date" value={event.endDate ? new Date(event.endDate).toLocaleString("vi-VN") : "—"} />
-                                                        {event.affectedParts && event.affectedParts.length > 0 && (
-                                                            <Box>
-                                                                <Typography variant="body2" color="text.secondary" sx={{ mb: 0.5, fontWeight: 600 }}>
-                                                                    Affected Parts:
-                                                                </Typography>
-                                                                <Stack spacing={0.5}>
-                                                                    {event.affectedParts.map((part, idx) => (
-                                                                        <Typography key={idx} variant="body2" sx={{ pl: 2 }}>
-                                                                            • {part}
+                                                        {(() => {
+                                                            // Parse affectedParts từ event
+                                                            let affectedPartIds = [];
+                                                            
+                                                            // Thử parse từ affectedPartsJson trước
+                                                            if (event.affectedPartsJson) {
+                                                                try {
+                                                                    const parsed = typeof event.affectedPartsJson === 'string' 
+                                                                        ? JSON.parse(event.affectedPartsJson) 
+                                                                        : event.affectedPartsJson;
+                                                                    if (Array.isArray(parsed)) {
+                                                                        affectedPartIds = parsed.map(item => String(item));
+                                                                    }
+                                                                } catch (err) {
+                                                                    console.warn("[Estimates] Failed to parse affectedPartsJson:", err);
+                                                                }
+                                                            }
+                                                            
+                                                            // Fallback: dùng affectedParts nếu có
+                                                            if (affectedPartIds.length === 0 && Array.isArray(event.affectedParts)) {
+                                                                affectedPartIds = event.affectedParts.map(item => String(item));
+                                                            }
+                                                            
+                                                            // Tìm part objects từ IDs
+                                                            const affectedPartObjects = affectedPartIds
+                                                                .map(partId => parts.find(p => String(p.id) === partId))
+                                                                .filter(Boolean);
+                                                            
+                                                            if (affectedPartIds.length > 0) {
+                                                                return (
+                                                                    <Box>
+                                                                        <Typography variant="body2" color="text.secondary" sx={{ mb: 0.5, fontWeight: 600 }}>
+                                                                            Affected Parts:
                                                                         </Typography>
-                                                                    ))}
-                                                                </Stack>
-                                                            </Box>
-                                                        )}
+                                                                        <Stack spacing={0.5}>
+                                                                            {affectedPartObjects.length > 0 ? (
+                                                                                // Hiển thị tên part nếu tìm thấy
+                                                                                affectedPartObjects.map((part, idx) => (
+                                                                                    <Typography key={part.id || idx} variant="body2" sx={{ pl: 2 }}>
+                                                                                        • {part.partName || part.partNo || part.id}
+                                                                                    </Typography>
+                                                                                ))
+                                                                            ) : (
+                                                                                // Nếu không tìm thấy part objects (có thể part đã bị xóa), hiển thị ID
+                                                                                affectedPartIds.map((partId, idx) => (
+                                                                                    <Typography key={idx} variant="body2" sx={{ pl: 2, color: "text.secondary" }}>
+                                                                                        • Part ID: {partId}
+                                                                                    </Typography>
+                                                                                ))
+                                                                            )}
+                                                                        </Stack>
+                                                                    </Box>
+                                                                );
+                                                            }
+                                                            return null;
+                                                        })()}
                                                         {event.exclusions && event.exclusions.length > 0 && (
                                                             <Box>
                                                                 <Typography variant="body2" color="text.secondary" sx={{ mb: 0.5, fontWeight: 600 }}>
