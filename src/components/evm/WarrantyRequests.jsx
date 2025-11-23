@@ -16,10 +16,12 @@ import ticketService from "../../services/ticketService";
 import centerService from "../../services/centerService";
 import shipmentService from "../../services/shipmentService";
 import inventoryLotService from "../../services/inventoryLotService";
+import inventoryPartService from "../../services/inventoryPartService";
 import partService from "../../services/partService";
 import diagnosticsService from "../../services/diagnosticsService";
 import estimatesService from "../../services/estimatesService";
 import eventService from "../../services/eventService";
+import authService from "../../services/authService";
 import axiosInstance from "../../services/axiosInstance";
 import { useNavigate } from "react-router-dom";
 
@@ -178,8 +180,78 @@ function ReplenishmentTicketList() {
         loadLockRef.current = true;
         setLoading(true);
         try {
+            // ⚠️ QUAN TRỌNG: EVM staff phải thấy TẤT CẢ tickets từ tất cả centers
+            // Không filter theo centerId, không truyền params để đảm bảo backend trả về tất cả
+            console.log("[WarrantyRequests] Loading tickets for EVM staff...");
+            const currentRole = localStorage.getItem("currentRole");
+            
+            // ⚠️ FIX: Thêm await để lấy user info đúng cách
+            let currentUser = null;
+            try {
+                currentUser = await authService.getCurrentUser();
+            } catch (e) {
+                console.warn("[WarrantyRequests] Failed to get current user:", e);
+                // Fallback: lấy từ localStorage
+                currentUser = authService.getStoredUser();
+            }
+            
+            console.log("[WarrantyRequests] Current user role:", currentRole);
+            console.log("[WarrantyRequests] Current user:", currentUser ? {
+                id: currentUser.id,
+                role: currentUser.role,
+                centerId: currentUser.centerId,
+                center: currentUser.center
+            } : "null");
+            console.log("[WarrantyRequests] Calling ticketService.getAll() without params to get ALL tickets...");
+            
+            // ⚠️ Đảm bảo gọi getAll() mà không có params để backend trả về TẤT CẢ tickets
+            // Nếu backend đang filter theo role, cần sửa backend controller
             const list = await ticketService.getAll();
+            console.log("[WarrantyRequests] Raw tickets from API:", list);
             const arr = Array.isArray(list) ? list : [];
+            console.log("[WarrantyRequests] Loaded tickets:", arr.length);
+            
+            // ⚠️ DEBUG: Kiểm tra xem có tickets từ center 2 không
+            const center2Tickets = arr.filter(t => {
+                const cId = String(t.centerId ?? "");
+                const cName = String(t.centerName ?? "");
+                return cId.includes("2") || cName.toLowerCase().includes("vin 2") || cName.toLowerCase().includes("center 2");
+            });
+            console.log("[WarrantyRequests] Tickets from Center 2 (or similar):", center2Tickets.length);
+            if (center2Tickets.length > 0) {
+                console.log("[WarrantyRequests] Sample Center 2 tickets:", center2Tickets.slice(0, 3).map(t => ({
+                    id: t.id,
+                    centerId: t.centerId,
+                    centerName: t.centerName,
+                    status: t.status,
+                    createdAt: t.createdAt
+                })));
+            } else {
+                console.warn("[WarrantyRequests] ⚠️ KHÔNG TÌM THẤY tickets từ Center 2!");
+            }
+            
+            console.log("[WarrantyRequests] Sample tickets (all centers):", arr.slice(0, 5).map(t => ({
+                id: t.id,
+                centerId: t.centerId,
+                centerName: t.centerName,
+                status: t.status,
+                createdAt: t.createdAt
+            })));
+            
+            // ⚠️ DEBUG: Log tất cả tickets để kiểm tra
+            console.log("[WarrantyRequests] ========== ALL TICKETS DETAILS ==========");
+            arr.forEach((t, idx) => {
+                console.log(`[WarrantyRequests] Ticket ${idx + 1}:`, {
+                    id: t.id,
+                    centerId: t.centerId,
+                    centerName: t.centerName,
+                    status: t.status,
+                    createdAt: t.createdAt,
+                    items: t.items
+                });
+            });
+            console.log("[WarrantyRequests] ===========================================");
+            
             setRows(arr);
 
             // 🟦 Kiểm tra ticket nào có shipment
@@ -208,6 +280,8 @@ function ReplenishmentTicketList() {
 
     // ====== CENTERS (lọc theo trung tâm) ======
     const [centers, setCenters] = useState([]);
+    // ⚠️ QUAN TRỌNG: EVM staff phải thấy TẤT CẢ tickets từ tất cả centers
+    // Không được filter theo centerId của user hiện tại - mặc định là "" (tất cả)
     const [filterCenter, setFilterCenter] = useState("");
     const [shipmentCenters, setShipmentCenters] = useState([]); // Centers cho Center-to-Center shipment
     const [loadingCenters, setLoadingCenters] = useState(false); // Loading state cho suggest-center
@@ -222,6 +296,17 @@ function ReplenishmentTicketList() {
             }
         })();
     }, []);
+
+    // ⚠️ DEBUG: Log khi filterCenter thay đổi để đảm bảo EVM staff thấy TẤT CẢ tickets
+    useEffect(() => {
+        console.log("[WarrantyRequests] filterCenter changed:", filterCenter);
+        if (filterCenter) {
+            console.warn("[WarrantyRequests] ⚠️ WARNING: filterCenter is set to:", filterCenter, "- This will filter tickets!");
+            console.warn("[WarrantyRequests] ⚠️ EVM staff should see ALL tickets, not filtered by center!");
+        } else {
+            console.log("[WarrantyRequests] ✅ filterCenter is empty - showing ALL tickets (correct for EVM staff)");
+        }
+    }, [filterCenter]);
 
     // ====== FILTER STATES ======
     const [filterStatus, setFilterStatus] = useState("all");
@@ -238,6 +323,22 @@ function ReplenishmentTicketList() {
             .trim();
 
     const viewRows = useMemo(() => {
+        console.log("[WarrantyRequests] ========== FILTERING TICKETS ==========");
+        console.log("[WarrantyRequests] viewRows - Filtering tickets:", {
+            totalRows: rows.length,
+            filterCenter,
+            filterStatus,
+            searchQuery: q
+        });
+        
+        // ⚠️ DEBUG: Log tất cả tickets trước khi filter
+        console.log("[WarrantyRequests] All tickets before filter:", rows.map(t => ({
+            id: t.id,
+            centerId: t.centerId,
+            centerName: t.centerName,
+            status: t.status
+        })));
+        
         const needle = norm(q);
         const filtered = rows.filter((t) => {
             const cId = String(t.centerId ?? "");
@@ -246,16 +347,36 @@ function ReplenishmentTicketList() {
                 !filterCenter ||
                 cId === String(filterCenter) ||
                 cName === filterCenter;
-            if (!matchesCenter) return false;
+            if (!matchesCenter) {
+                console.log(`[WarrantyRequests] ❌ Filtered out ticket ${t.id} - center mismatch: centerId="${cId}", centerName="${cName}" vs filterCenter="${filterCenter}"`);
+                return false;
+            }
 
-            if (filterStatus !== "all" && t.status !== filterStatus) return false;
+            if (filterStatus !== "all" && t.status !== filterStatus) {
+                console.log(`[WarrantyRequests] ❌ Filtered out ticket ${t.id} - status mismatch: ${t.status} vs ${filterStatus}`);
+                return false;
+            }
 
             const item = Array.isArray(t.items) && t.items[0] ? t.items[0] : {};
             const cStr = norm(cName || cId);
             const pStr = norm(item.partName || item.partNo || item.partId);
-            if (needle && !(cStr.includes(needle) || pStr.includes(needle))) return false;
+            if (needle && !(cStr.includes(needle) || pStr.includes(needle))) {
+                console.log(`[WarrantyRequests] ❌ Filtered out ticket ${t.id} - search mismatch: needle="${needle}"`);
+                return false;
+            }
+            console.log(`[WarrantyRequests] ✅ Ticket ${t.id} passed all filters`);
             return true;
         });
+        
+        console.log("[WarrantyRequests] Filtered tickets count:", filtered.length);
+        console.log("[WarrantyRequests] Filtered tickets:", filtered.map(t => ({
+            id: t.id,
+            centerId: t.centerId,
+            centerName: t.centerName,
+            status: t.status
+        })));
+        console.log("[WarrantyRequests] ======================================");
+        console.log("[WarrantyRequests] viewRows - Filtered tickets:", filtered.length);
 
         const orderStatus = { UNDER_REVIEW: 1, REJECTED: 2, APPROVED: 3, IN_PROGRESS: 4, COMPLETED: 5 };
         return [...filtered].sort((a, b) => {
@@ -667,7 +788,7 @@ function ReplenishmentTicketList() {
 
             // Gọi suggest-center (endpoint đúng theo Swagger)
             const response = await shipmentService.suggestCenter({ partQuantities });
-            
+
             console.log("[suggestCenter] Response for ticket:", response);
             
             // ⚠️ LUÔN LUÔN verify bằng suggestPartLots vì suggestCenter có thể trả về sai
@@ -751,26 +872,101 @@ function ReplenishmentTicketList() {
                     console.log("[loadCenterSuggestions] Required quantities:", requiredByPartId);
                     console.log("[loadCenterSuggestions] Part quantities for API:", partQuantities);
                     
-                    // Gọi suggestPartLots cho tất cả centers để verify số lượng thực tế
+                    // ⚠️ QUAN TRỌNG: Load partInfo để biết part nào là serialized
+                    // Nếu chưa có partInfoMap, cần load trước
+                    let partInfo = partInfoMap || {};
+                    const partIdsToCheck = Array.from(new Set(partQuantities.map(pq => pq.partId).filter(Boolean)));
+                    const missingPartIds = partIdsToCheck.filter(pid => !partInfo[pid]);
+                    
+                    if (missingPartIds.length > 0) {
+                        console.log(`[Verify] Loading part info for ${missingPartIds.length} parts:`, missingPartIds);
+                        try {
+                            const allParts = await partService.getAll();
+                            const partsArray = Array.isArray(allParts) ? allParts : [];
+                            missingPartIds.forEach(pid => {
+                                const part = partsArray.find(p => (p.id || p._id) === pid);
+                                if (part) {
+                                    const raw = part.isSerialized;
+                                    const isSerialized = typeof raw === "boolean" ? raw
+                                        : typeof raw === "number" ? raw === 1
+                                        : typeof raw === "string" ? ["1", "true"].includes(raw.toLowerCase())
+                                        : false;
+                                    partInfo[pid] = { isSerialized, partNo: part.partNo || "", partName: part.partName || "" };
+                                }
+                            });
+                            console.log(`[Verify] Loaded part info:`, partInfo);
+                        } catch (e) {
+                            console.warn(`[Verify] Failed to load part info:`, e);
+                        }
+                    }
+                    
+                    // ⚠️ DÙNG suggestPartLots để verify số lượng thực tế từ InventoryLots
+                    // Không dùng suggest-center trực tiếp để đánh giá đủ hay thiếu
                     const verificationPromises = Array.from(centerMap.keys()).map(async (centerId) => {
                         try {
-                            console.log(`[Verify] Checking center ${centerId} with partQuantities:`, partQuantities);
+                            console.log(`[Verify] ========================================`);
+                            console.log(`[Verify] Checking center ${centerId}`);
+                            console.log(`[Verify] PartQuantities to check:`, JSON.stringify(partQuantities, null, 2));
+                            console.log(`[Verify] Required quantities:`, JSON.stringify(requiredByPartId, null, 2));
+                            
+                            // ⚠️ DÙNG suggestPartLots API để lấy số lượng thực tế từ InventoryLots
                             const lotsResult = await shipmentService.suggestPartLots({
                                 centerId: centerId,
                                 partQuantities // Dùng partQuantities từ ticket items
                             });
                             
-                            console.log(`[Verify] Center ${centerId} suggestPartLots response:`, lotsResult);
+                            console.log(`[Verify] Center ${centerId} suggestPartLots FULL response:`, JSON.stringify(lotsResult, null, 2));
                             
                             // Parse available quantity từ suggestPartLots
                             const suggestedItems = Array.isArray(lotsResult?.suggestedItems) ? lotsResult.suggestedItems : [];
                             const accurateAvailabilities = {};
-                            suggestedItems.forEach(si => {
-                                const partId = si.partId;
-                                if (partId) {
-                                    const availQty = Number(si.availableQuantity ?? 0);
-                                    accurateAvailabilities[partId] = (accurateAvailabilities[partId] || 0) + availQty;
-                                    console.log(`[Verify] Center ${centerId}, Part ${partId}: lot ${si.partLotId} has availableQuantity=${availQty}`);
+                            
+                            console.log(`[Verify] Center ${centerId} - suggestPartLots returned ${suggestedItems.length} items:`, suggestedItems);
+                            
+                            // ⚠️ Nếu suggestPartLots trả trống → hiển thị "hết hàng"
+                            if (suggestedItems.length === 0) {
+                                console.warn(`[Verify] ⚠️ Center ${centerId} - suggestPartLots trả về trống → HẾT HÀNG`);
+                                // Set available = 0 cho tất cả parts
+                                Object.keys(requiredByPartId).forEach(partId => {
+                                    accurateAvailabilities[partId] = 0;
+                                });
+                            } else {
+                                // ⚠️ QUAN TRỌNG: Với serialized parts, đếm số lots có availableQuantity > 0
+                                // Với non-serialized parts, cộng dồn availableQuantity
+                                suggestedItems.forEach(si => {
+                                    const partId = si.partId;
+                                    if (!partId) return;
+                                    
+                                    const isSerialized = partInfo[partId]?.isSerialized ?? false;
+                                    const availQty = Number(si.availableQuantity ?? si.suggestedQuantity ?? 0);
+                                    
+                                    // ⚠️ QUAN TRỌNG: Chỉ tính lots có availableQuantity > 0
+                                    if (availQty <= 0) {
+                                        console.log(`[Verify] Center ${centerId}, Part ${partId}: lot ${si.partLotId} - SKIP (availableQuantity=${availQty} <= 0)`);
+                                        return; // Bỏ qua lots không có hàng
+                                    }
+                                    
+                                    if (isSerialized) {
+                                        // Serialized: mỗi lot có availableQuantity > 0 = 1 đơn vị
+                                        // Đếm số lots có availableQuantity > 0
+                                        accurateAvailabilities[partId] = (accurateAvailabilities[partId] || 0) + 1;
+                                        console.log(`[Verify] Center ${centerId}, Part ${partId} (SERIALIZED): lot ${si.partLotId} - availableQuantity=${si.availableQuantity}, counted as 1`);
+                                    } else {
+                                        // Non-serialized: cộng dồn availableQuantity
+                                        accurateAvailabilities[partId] = (accurateAvailabilities[partId] || 0) + availQty;
+                                        console.log(`[Verify] Center ${centerId}, Part ${partId} (NON-SERIALIZED): lot ${si.partLotId} - availableQuantity=${si.availableQuantity}, added=${availQty}`);
+                                    }
+                                });
+                            }
+                            
+                            console.log(`[Verify] Center ${centerId} - Total accurateAvailabilities:`, accurateAvailabilities);
+                            
+                            // ⚠️ QUAN TRỌNG: Kiểm tra xem có part nào không có trong accurateAvailabilities không
+                            // Nếu part không có trong suggestedItems, có nghĩa là center không có part đó
+                            Object.keys(requiredByPartId).forEach(partId => {
+                                if (!(partId in accurateAvailabilities)) {
+                                    accurateAvailabilities[partId] = 0;
+                                    console.warn(`[Verify] ⚠️ Center ${centerId}, Part ${partId}: KHÔNG CÓ trong suggestedItems - set available = 0`);
                                 }
                             });
                             
@@ -779,19 +975,39 @@ function ReplenishmentTicketList() {
                             let partsCanFulfillFullyAccurate = 0;
                             const verificationDetails = [];
                             
+                            console.log(`[Verify] Center ${centerId} - Starting verification. Required:`, requiredByPartId, "Available:", accurateAvailabilities);
+                            
                             Object.keys(requiredByPartId).forEach(partId => {
-                                const required = requiredByPartId[partId];
-                                const available = accurateAvailabilities[partId] || 0;
-                                const isEnough = available >= required;
+                                const required = Number(requiredByPartId[partId]) || 0;
+                                const available = Number(accurateAvailabilities[partId] || 0);
+                                
+                                // ⚠️ QUAN TRỌNG: available phải >= required (không được ít hơn)
+                                const isEnough = available >= required && available > 0;
+                                
                                 verificationDetails.push({ partId, required, available, isEnough });
-                                console.log(`[Verify] Center ${centerId}, Part ${partId}: required=${required}, available=${available}, isEnough=${isEnough}`);
+                                
+                                const partName = partInfo[partId]?.partName || partId;
+                                const isSerialized = partInfo[partId]?.isSerialized ?? false;
+                                const partType = isSerialized ? "SERIALIZED" : "NON-SERIALIZED";
+                                
+                                console.log(`[Verify] Center ${centerId}, Part ${partId} (${partType}): required=${required}, available=${available}, isEnough=${isEnough}`);
                                 
                                 if (isEnough) {
                                     partsCanFulfillFullyAccurate++;
+                                    console.log(`[Verify] ✅ Center ${centerId}, Part ${partName}: ĐỦ HÀNG (${available} >= ${required})`);
                                 } else {
                                     canFulfillAllAccurate = false;
+                                    console.warn(`[Verify] ❌ Center ${centerId}, Part ${partName}: KHÔNG ĐỦ HÀNG - cần ${required}, chỉ có ${available}`);
                                 }
                             });
+                            
+                            // ⚠️ FINAL CHECK: Đảm bảo canFulfillAllAccurate chỉ = true khi TẤT CẢ parts đều đủ
+                            if (canFulfillAllAccurate && verificationDetails.some(d => !d.isEnough)) {
+                                console.error(`[Verify] ❌❌❌ Center ${centerId} - LOGIC ERROR: canFulfillAllAccurate=true nhưng có parts không đủ!`);
+                                canFulfillAllAccurate = false;
+                            }
+                            
+                            console.log(`[Verify] Center ${centerId} - Verification summary: canFulfillAll=${canFulfillAllAccurate}, partsCanFulfillFully=${partsCanFulfillFullyAccurate}`);
                             
                             console.log(`[Verify] Center ${centerId} final result: canFulfillAll=${canFulfillAllAccurate}, details:`, verificationDetails);
                             
@@ -852,17 +1068,53 @@ function ReplenishmentTicketList() {
                 // Convert map thành array và normalize format
                 // ⚠️ CHỈ lấy những centers có canFulfillAll = true (đã được verify)
                 const normalized = Array.from(centerMap.values())
-                    .filter(center => center.canFulfillAll === true) // ⚠️ CHỈ lấy centers đủ hàng
-                    .map(center => ({
-                        centerIds: [center.centerId],
-                        centerNames: [center.centerName],
-                        items: [],
-                        canFulfillAll: true, // ⚠️ Đảm bảo luôn là true vì đã filter
-                        partsCanFulfillFully: center.partsCanFulfillFully,
-                        partAvailabilities: center.partAvailabilities || {},
-                    }));
+                    .filter(center => {
+                        // Double-check: chỉ lấy centers có canFulfillAll = true
+                        const isValid = center.canFulfillAll === true;
+                        if (!isValid) {
+                            console.warn(`[loadCenterSuggestions] ❌ Filtering out center ${center.centerId} (${center.centerName}) - canFulfillAll=${center.canFulfillAll}`);
+                            console.warn(`[loadCenterSuggestions] ❌ Center ${center.centerId} partAvailabilities:`, center.partAvailabilities);
+                            console.warn(`[loadCenterSuggestions] ❌ Center ${center.centerId} requiredByPartId:`, requiredByPartId);
+                        } else {
+                            // Verify lại một lần nữa để chắc chắn
+                            let allPartsEnough = true;
+                            Object.keys(requiredByPartId).forEach(partId => {
+                                const required = Number(requiredByPartId[partId]) || 0;
+                                const available = Number(center.partAvailabilities[partId] || 0);
+                                if (available < required || available === 0) {
+                                    allPartsEnough = false;
+                                    console.error(`[loadCenterSuggestions] ❌❌❌ Center ${center.centerId} - Part ${partId}: available=${available} < required=${required} - KHÔNG ĐỦ!`);
+                                }
+                            });
+                            if (!allPartsEnough) {
+                                console.error(`[loadCenterSuggestions] ❌❌❌ Center ${center.centerId} (${center.centerName}) - KHÔNG ĐỦ HÀNG nhưng canFulfillAll=true - SẼ BỊ LOẠI BỎ!`);
+                                return false; // Loại bỏ center này
+                            }
+                        }
+                        return isValid;
+                    })
+                    .map(center => {
+                        // Log để debug
+                        console.log(`[loadCenterSuggestions] ✅ Including center ${center.centerId} (${center.centerName}) with partAvailabilities:`, center.partAvailabilities);
+                        return {
+                    centerIds: [center.centerId],
+                    centerNames: [center.centerName],
+                    items: [],
+                            canFulfillAll: true, // ⚠️ Đảm bảo luôn là true vì đã filter
+                    partsCanFulfillFully: center.partsCanFulfillFully,
+                            partAvailabilities: center.partAvailabilities || {}, // ⚠️ QUAN TRỌNG: Copy partAvailabilities từ verification
+                        };
+                    });
 
                 console.log(`[loadCenterSuggestions] Final normalized centers (only canFulfillAll=true):`, normalized.length);
+                normalized.forEach((n, idx) => {
+                    console.log(`[loadCenterSuggestions] Normalized center ${idx + 1}:`, {
+                        centerId: n.centerIds[0],
+                        centerName: n.centerNames[0],
+                        canFulfillAll: n.canFulfillAll,
+                        partAvailabilities: n.partAvailabilities
+                    });
+                });
 
                 if (normalized.length === 0) {
                     setHasNoCenters(true);
@@ -1203,7 +1455,7 @@ function ReplenishmentTicketList() {
                     // Lấy required quantity từ ticket items (chính xác hơn)
                     const ticketItemsForSelected = Array.isArray(viewData?.items) 
                         ? viewData.items.filter(item => {
-                            const partId = item.partId || item.part?.id;
+                        const partId = item.partId || item.part?.id;
                             return partId && selectedPartIds.has(partId);
                         })
                         : [];
@@ -1339,15 +1591,37 @@ function ReplenishmentTicketList() {
             const item = shipmentItems.find(i => i.id === itemId);
             if (item && item.partId) {
                 const newQty = Number(value) || 0;
-                const ticketMax = getMaxQuantityByPartId[item.partId] ?? item.requiredQuantity ?? Infinity;
+                
+                // ⚠️ QUAN TRỌNG: Lấy số lượng yêu cầu từ ticket (không được nhỏ hơn)
+                const requiredQty = item.requiredQuantity || 0;
+                const ticketMax = getMaxQuantityByPartId[item.partId] ?? requiredQty ?? Infinity;
+                
                 const lots = availableLots[item.partId] || [];
                 const lot = lots.find(l => (l.id || l.lotId || l.partLotId) === item.partLotId);
                 const lotAvail = lot ? (lot.availableQuantity ?? lot.availableQty ?? Infinity) : Infinity;
-                const cap = Math.min(ticketMax, lotAvail);
-                let finalQty = Math.max(1, Math.min(newQty, cap));
-                if (newQty !== finalQty) {
-                    notify(`Số lượng tối đa cho lot này là ${cap}. Đã điều chỉnh về ${finalQty}.`, "warning");
+                
+                // ⚠️ QUAN TRỌNG: Số lượng PHẢI BẰNG requiredQty (không được ít hơn, không được nhiều hơn)
+                // Nếu user nhập số khác requiredQty, tự động điều chỉnh về requiredQty
+                let finalQty = newQty;
+                
+                // ⚠️ QUAN TRỌNG: Số lượng phải BẰNG yêu cầu ticket
+                if (requiredQty > 0 && newQty !== requiredQty) {
+                    finalQty = requiredQty;
+                    notify(`Số lượng phải = ${requiredQty} (yêu cầu ticket). Đã điều chỉnh về ${finalQty}.`, "warning");
                 }
+                
+                // Kiểm tra không vượt quá tồn kho
+                const maxQty = Math.min(ticketMax, lotAvail);
+                if (finalQty > maxQty) {
+                    finalQty = maxQty;
+                    notify(`Số lượng tối đa cho lot này là ${maxQty}. Đã điều chỉnh về ${finalQty}.`, "warning");
+                }
+                
+                // Đảm bảo >= 1
+                finalQty = Math.max(1, finalQty);
+                
+                console.log(`[updateShipmentItem] Part ${item.partId}: newQty=${newQty}, requiredQty=${requiredQty}, finalQty=${finalQty}, maxQty=${maxQty}`);
+                
                 setShipmentItems(prev => prev.map(i =>
                     i.id === itemId ? { ...i, quantity: finalQty } : i
                 ));
@@ -1392,12 +1666,22 @@ function ReplenishmentTicketList() {
     // Helper: Check xem có đủ hàng để tạo shipment không
     const canCreateShipment = React.useMemo(() => {
         if (!shipmentFromCenterId || shipmentItems.length === 0) return false;
+        if (!viewData?.items || !Array.isArray(viewData.items)) return false;
         
         // Tính tổng số lượng muốn ship cho mỗi partId
         const totalQuantityByPartId = {};
         shipmentItems.forEach(item => {
             if (item.partId) {
                 totalQuantityByPartId[item.partId] = (totalQuantityByPartId[item.partId] || 0) + Number(item.quantity || 0);
+            }
+        });
+        
+        // Tính số lượng yêu cầu từ ticket cho các parts đã chọn
+        const requiredQuantityByPartId = {};
+        viewData.items.forEach(ticketItem => {
+            const partId = ticketItem.partId || ticketItem.part?.id;
+            if (partId && selectedPartIds.has(partId)) {
+                requiredQuantityByPartId[partId] = (requiredQuantityByPartId[partId] || 0) + Number(ticketItem.requireQuantity ?? ticketItem.quantity ?? 0);
             }
         });
         
@@ -1425,14 +1709,65 @@ function ReplenishmentTicketList() {
             const totalAvail = lots.reduce((s, l) => s + Number(l.availableQuantity || 0), 0);
             const totalWantToShip = totalQuantityByPartId[item.partId] || 0;
             
-            // Không đủ hàng
+            // Không đủ hàng trong kho
             if (totalAvail === 0 || totalWantToShip > totalAvail) {
                 return false;
             }
         }
         
+        // ⚠️ QUAN TRỌNG: Kiểm tra số lượng ship phải BẰNG số lượng yêu cầu trong ticket
+        // Chỉ check các parts đã được chọn và có trong shipmentItems
+        const shipmentPartIds = new Set(shipmentItems.map(item => item.partId).filter(Boolean));
+        
+        console.log(`[canCreateShipment] Debug info:`, {
+            selectedPartIds: Array.from(selectedPartIds),
+            shipmentPartIds: Array.from(shipmentPartIds),
+            requiredQuantityByPartId,
+            totalQuantityByPartId,
+            shipmentItems: shipmentItems.map(item => ({ partId: item.partId, quantity: item.quantity }))
+        });
+        
+        // ⚠️ QUAN TRỌNG: Đảm bảo tất cả parts đã chọn đều có trong shipmentItems
+        // Nếu có part được chọn nhưng không có trong shipmentItems, không cho phép tạo shipment
+        for (const partId of selectedPartIds) {
+            if (!shipmentPartIds.has(partId)) {
+                console.log(`[canCreateShipment] ❌ Part ${partId} được chọn nhưng chưa có trong shipmentItems`);
+                return false;
+            }
+        }
+        
+        // Kiểm tra số lượng ship phải BẰNG số lượng yêu cầu cho TẤT CẢ parts đã chọn
+        for (const partId of selectedPartIds) {
+            const required = requiredQuantityByPartId[partId] || 0;
+            const shipping = totalQuantityByPartId[partId] || 0;
+            
+            console.log(`[canCreateShipment] Checking part ${partId}: required=${required}, shipping=${shipping}`);
+            
+            // Nếu ticket không yêu cầu part này (required = 0), không cần check
+            if (required === 0) {
+                console.log(`[canCreateShipment] ⚠️ Part ${partId}: required=0, bỏ qua`);
+                continue;
+            }
+            
+            // ⚠️ QUAN TRỌNG: Số lượng ship PHẢI BẰNG số lượng yêu cầu (không được ít hơn, không được nhiều hơn)
+            if (shipping !== required) {
+                console.log(`[canCreateShipment] ❌ Part ${partId}: required=${required}, shipping=${shipping} - KHÔNG KHỚP (sẽ disable button)`);
+                return false;
+            }
+            
+            console.log(`[canCreateShipment] ✅ Part ${partId}: required=${required}, shipping=${shipping} - KHỚP`);
+        }
+        
+        console.log(`[canCreateShipment] ✅ Tất cả parts đều khớp với yêu cầu ticket - ENABLE button`);
         return true;
-    }, [shipmentFromCenterId, shipmentItems, availableLots]);
+    }, [
+        shipmentFromCenterId, 
+        shipmentItems, // ⚠️ QUAN TRỌNG: Khi quantity thay đổi, shipmentItems sẽ thay đổi và trigger re-calculation
+        availableLots, 
+        viewData?.items, 
+        Array.from(selectedPartIds).sort().join(','), // ⚠️ Convert Set thành string để React detect thay đổi
+        getMaxQuantityByPartId
+    ]);
 
     const createShipment = async () => {
         if (!viewData?.id) return;
@@ -1455,6 +1790,44 @@ function ReplenishmentTicketList() {
                 totalQuantityByPartId[item.partId] = (totalQuantityByPartId[item.partId] || 0) + Number(item.quantity || 0);
             }
         });
+        
+        // ⚠️ QUAN TRỌNG: Validate số lượng ship phải BẰNG số lượng yêu cầu trong ticket
+        const requiredQuantityByPartId = {};
+        if (Array.isArray(viewData?.items)) {
+            viewData.items.forEach(ticketItem => {
+                const partId = ticketItem.partId || ticketItem.part?.id;
+                if (partId && selectedPartIds.has(partId)) {
+                    requiredQuantityByPartId[partId] = (requiredQuantityByPartId[partId] || 0) + Number(ticketItem.requireQuantity ?? ticketItem.quantity ?? 0);
+                }
+            });
+        }
+        
+        // ⚠️ QUAN TRỌNG: Đảm bảo tất cả parts đã chọn đều có trong shipmentItems
+        const shipmentPartIds = new Set(shipmentItems.map(item => item.partId).filter(Boolean));
+        for (const partId of selectedPartIds) {
+            if (!shipmentPartIds.has(partId)) {
+                const ticketItem = viewData.items.find(item => (item.partId || item.part?.id) === partId);
+                const partName = ticketItem?.partName || ticketItem?.part?.name || partId;
+                notify(`Phụ tùng "${partName}" đã được chọn nhưng chưa được thêm vào danh sách ship. Vui lòng kiểm tra lại.`, "error");
+                return;
+            }
+        }
+        
+        // Kiểm tra số lượng ship có khớp với yêu cầu không
+        for (const partId of selectedPartIds) {
+            const required = requiredQuantityByPartId[partId] || 0;
+            const shipping = totalQuantityByPartId[partId] || 0;
+            
+            console.log(`[createShipment] Validating part ${partId}: required=${required}, shipping=${shipping}`);
+            
+            if (required > 0 && shipping !== required) {
+                const partName = shipmentItems.find(item => item.partId === partId)?.partName || partId;
+                notify(`Số lượng ship (${shipping}) không khớp với yêu cầu ticket (${required}) cho "${partName}". Vui lòng điều chỉnh số lượng.`, "error");
+                return;
+            }
+        }
+        
+        console.log(`[createShipment] ✅ Tất cả parts đều khớp với yêu cầu ticket`);
 
         // ⚠️ Validate theo partId (không phải theo từng item) để tránh duplicate check
         const validatedPartIds = new Set();
@@ -1466,45 +1839,93 @@ function ReplenishmentTicketList() {
             if (validatedPartIds.has(item.partId)) continue;
             validatedPartIds.add(item.partId);
             
-            const lots = availableLots[item.partId] || [];
+                const lots = availableLots[item.partId] || [];
             const totalAvail = lots.reduce((s, l) => s + Number(l.availableQuantity || 0), 0);
             
             // Check 1: Center không có tồn kho
-            if (totalAvail === 0) {
+                if (totalAvail === 0) {
                 notify(`Center nguồn không có tồn kho cho "${item.partName || item.partId}". Vui lòng chọn center khác hoặc bỏ chọn phụ tùng này.`, "error");
-                return;
-            }
+                    return;
+                }
             
             // Check 2: Tổng số lượng muốn ship > tồn kho (QUAN TRỌNG NHẤT)
             const totalWantToShip = totalQuantityByPartId[item.partId] || 0;
             if (totalWantToShip > totalAvail) {
                 notify(`Center nguồn chỉ có ${totalAvail}/${totalWantToShip} cho "${item.partName || item.partId}". Vui lòng chọn center khác hoặc giảm số lượng.`, "error");
-                return;
-            }
+                    return;
+                }
             
             console.log(`[createShipment] Part ${item.partId}: totalWantToShip=${totalWantToShip}, totalAvail=${totalAvail}, OK=${totalWantToShip <= totalAvail}`);
         }
         
         // Validate từng item riêng lẻ
         for (const item of shipmentItems) {
-            if (!item.quantity || Number(item.quantity) < 1) {
+                if (!item.quantity || Number(item.quantity) < 1) {
                 notify(`Số lượng phải >= 1 cho "${item.partName || item.partId}"`, "error");
-                return;
-            }
+                    return;
+                }
             
-            if (!item.partLotId) {
+                if (!item.partLotId) {
                 notify(`Vui lòng chọn Part Lot cho "${item.partName || item.partId}"`, "error");
-                return;
-            }
+                    return;
+                }
             
-            // Kiểm tra quantity không vượt quá available quantity của lot đã chọn
+                // Kiểm tra quantity không vượt quá available quantity của lot đã chọn
             const lots = availableLots[item.partId] || [];
-            const selectedLot = lots.find(l => (l.partLotId || l.id) === item.partLotId);
+                const selectedLot = lots.find(l => (l.partLotId || l.id) === item.partLotId);
             if (selectedLot && Number(item.quantity) > Number(selectedLot.availableQuantity || 0)) {
                 notify(`Số lượng cho "${item.partName || item.partId}" (${item.quantity}) vượt quá tồn kho của lot (${selectedLot.availableQuantity})`, "error");
+                    return;
+                }
+        }
+
+        // ⚠️ FINAL VALIDATION: Kiểm tra lại một lần nữa trước khi gửi request
+        // Tính lại số lượng yêu cầu và số lượng ship
+        const finalRequiredByPartId = {};
+        const finalShippingByPartId = {};
+        
+        if (Array.isArray(viewData?.items)) {
+            viewData.items.forEach(ticketItem => {
+                const partId = ticketItem.partId || ticketItem.part?.id;
+                if (partId && selectedPartIds.has(partId)) {
+                    finalRequiredByPartId[partId] = (finalRequiredByPartId[partId] || 0) + Number(ticketItem.requireQuantity ?? ticketItem.quantity ?? 0);
+                }
+            });
+        }
+        
+        shipmentItems.forEach(item => {
+            if (item.partId) {
+                finalShippingByPartId[item.partId] = (finalShippingByPartId[item.partId] || 0) + Number(item.quantity || 0);
+            }
+        });
+        
+        // Validate số lượng một lần nữa
+        for (const partId of selectedPartIds) {
+            const required = finalRequiredByPartId[partId] || 0;
+            const shipping = finalShippingByPartId[partId] || 0;
+            
+            if (required > 0 && shipping !== required) {
+                const partName = shipmentItems.find(item => item.partId === partId)?.partName || partId;
+                notify(`Số lượng ship (${shipping}) không khớp với yêu cầu ticket (${required}) cho "${partName}". Vui lòng điều chỉnh số lượng.`, "error");
+                setShipmentSubmitting(false);
+                return;
+            }
+            
+            // Validate lại available quantity từ lots
+            const lots = availableLots[partId] || [];
+            const totalAvail = lots.reduce((s, l) => s + Number(l.availableQuantity || 0), 0);
+            if (shipping > totalAvail) {
+                const partName = shipmentItems.find(item => item.partId === partId)?.partName || partId;
+                notify(`Số lượng ship (${shipping}) vượt quá tồn kho (${totalAvail}) cho "${partName}". Vui lòng điều chỉnh số lượng.`, "error");
+                setShipmentSubmitting(false);
                 return;
             }
         }
+        
+        console.log("[createShipment] ✅ Final validation passed:", {
+            requiredByPartId: finalRequiredByPartId,
+            shippingByPartId: finalShippingByPartId
+        });
 
         setShipmentSubmitting(true);
         try {
@@ -1525,8 +1946,13 @@ function ReplenishmentTicketList() {
                     partName: item.partName,
                     partLotId: item.partLotId,
                     quantity: item.quantity,
+                    requiredQuantity: item.requiredQuantity,
                     availableQuantity: availableLots[item.partId]?.find(l => (l.partLotId || l.id) === item.partLotId)?.availableQuantity
                 })));
+                console.log("[createShipment] Required vs Shipping:", {
+                    required: finalRequiredByPartId,
+                    shipping: finalShippingByPartId
+                });
                 
                 const res = await shipmentService.createBetweenCenters(body);
                 console.log("[createShipment] API response:", res);
@@ -1787,78 +2213,6 @@ function ReplenishmentTicketList() {
                                         placeholder="Nhập lý do trước khi bấm TỪ CHỐI"
                                     />
                                 )}
-                                {/* Hiển thị center suggestions (tự động load khi mở ticket detail từ SC_STAFF) */}
-                                <Box>
-                                    {loadingSuggestions ? (
-                                        <Box sx={{ textAlign: "center", py: 2 }}>
-                                            <CircularProgress size={24} />
-                                            <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
-                                                Đang kiểm tra trung tâm có hàng...
-                                            </Typography>
-                                        </Box>
-                                    ) : hasNoCenters ? (
-                                        <Alert severity="warning" sx={{ mb: 2 }}>
-                                            Không có trung tâm nào có phụ tùng cho yêu cầu này.
-                                        </Alert>
-                                    ) : centerSuggestions.length > 0 ? (
-                                        <Box>
-                                            <Typography variant="subtitle2" sx={{ mb: 1, fontWeight: 600 }}>
-                                                Trung tâm gợi ý:
-                                            </Typography>
-                                            <Stack spacing={1}>
-                                                {centerSuggestions.map((suggestion, idx) => {
-                                                    const centerIds = Array.isArray(suggestion.centerIds) ? suggestion.centerIds : [suggestion.centerIds].filter(Boolean);
-                                                    const centerNames = Array.isArray(suggestion.centerNames) ? suggestion.centerNames : [suggestion.centerNames].filter(Boolean);
-                                                    const displayName = centerNames.length > 0
-                                                        ? centerNames.join(", ")
-                                                        : centerIds.length > 0
-                                                            ? centerIds.map(id => `Center ${id}`).join(", ")
-                                                            : `Gợi ý ${idx + 1}`;
-                                                    
-                                                    // Tính toán thông tin chi tiết về số lượng
-                                                    const partAvailabilities = suggestion.partAvailabilities || {};
-                                                    const ticketItems = viewData.items || [];
-                                                    let detailText = "";
-                                                    let hasInsufficient = false;
-                                                    
-                                                    // Kiểm tra từng part trong ticket
-                                                    ticketItems.forEach(item => {
-                                                        const partId = item.partId || item.part?.id;
-                                                        if (partId) {
-                                                            const required = Number(item.requireQuantity ?? item.quantity ?? 0);
-                                                            const available = partAvailabilities[partId] || 0;
-                                                            if (available < required) {
-                                                                hasInsufficient = true;
-                                                                if (detailText) detailText += ", ";
-                                                                detailText += `${available}/${required}`;
-                                                            }
-                                                        }
-                                                    });
-                                                    
-                                                    // Tạo label hiển thị
-                                                    let label = displayName;
-                                                    if (suggestion.canFulfillAll) {
-                                                        label += " ✓ Đủ hàng";
-                                                    } else if (hasInsufficient && detailText) {
-                                                        label += ` ⚠ Thiếu: ${detailText}`;
-                                                    } else {
-                                                        label += ` (${suggestion.partsCanFulfillFully}/${ticketItems.length} phụ tùng)`;
-                                                    }
-                                                    
-                                                    return (
-                                                        <Chip
-                                                            key={idx}
-                                                            label={label}
-                                                            color={suggestion.canFulfillAll ? "success" : hasInsufficient ? "warning" : "default"}
-                                                            variant="outlined"
-                                                            sx={{ justifyContent: "flex-start" }}
-                                                        />
-                                                    );
-                                                })}
-                                            </Stack>
-                                        </Box>
-                                    ) : null}
-                                </Box>
                                 {viewData?.status === TICKET_STATUS.APPROVED && (createdShipmentId || ticketShipment?.id) && (
                                     <InlineShipmentPanel shipmentId={createdShipmentId || ticketShipment?.id} />
                                 )}
@@ -2028,8 +2382,31 @@ function ReplenishmentTicketList() {
                                                                                 type="number"
                                                                                 label="Số lượng"
                                                                                 value={item.quantity ?? 1}
-                                                                                onChange={(e) => updateShipmentItem(item.id, "quantity", e.target.value)}
-                                                                                inputProps={{ min: 1, step: 1 }}
+                                                                                onChange={(e) => {
+                                                                                    const newValue = e.target.value;
+                                                                                    updateShipmentItem(item.id, "quantity", newValue);
+                                                                                }}
+                                                                                onBlur={(e) => {
+                                                                                    // ⚠️ Khi blur, đảm bảo số lượng = requiredQuantity
+                                                                                    const currentQty = Number(item.quantity || 0);
+                                                                                    const requiredQty = item.requiredQuantity || 0;
+                                                                                    if (requiredQty > 0 && currentQty !== requiredQty) {
+                                                                                        updateShipmentItem(item.id, "quantity", requiredQty);
+                                                                                    }
+                                                                                }}
+                                                                                inputProps={{ 
+                                                                                    min: Math.max(1, item.requiredQuantity || 1), // ⚠️ Min phải >= requiredQuantity
+                                                                                    max: getMaxQuantityByPartId[item.partId] || Infinity,
+                                                                                    step: 1 
+                                                                                }}
+                                                                                helperText={
+                                                                                    item.requiredQuantity 
+                                                                                        ? (Number(item.quantity || 0) !== item.requiredQuantity
+                                                                                            ? `⚠️ Yêu cầu: ${item.requiredQuantity} (hiện tại: ${item.quantity || 0})`
+                                                                                            : `✓ Yêu cầu: ${item.requiredQuantity}`)
+                                                                                        : ""
+                                                                                }
+                                                                                error={item.requiredQuantity && Number(item.quantity || 0) !== item.requiredQuantity}
                                                                                 sx={{
                                                                                     '& .MuiOutlinedInput-root': { borderRadius: 999 },
                                                                                     '& input': { textAlign: 'center', fontWeight: 600 }
@@ -2145,7 +2522,11 @@ function ReplenishmentTicketList() {
                         color="primary"
                         onClick={createShipment}
                         disabled={shipmentSubmitting || !canCreateShipment}
-                        title={!canCreateShipment && shipmentFromCenterId ? "Center không đủ hàng hoặc chưa chọn đầy đủ thông tin" : ""}
+                        title={!canCreateShipment ? (
+                            shipmentItems.length === 0 || !shipmentFromCenterId 
+                                ? "Vui lòng chọn trung tâm và phụ tùng" 
+                                : "Số lượng ship không khớp với yêu cầu ticket hoặc không đủ hàng"
+                        ) : ""}
                     >
                         {shipmentSubmitting ? "Đang tạo..." : "Tạo Shipment"}
                     </Button>
@@ -2176,7 +2557,34 @@ function ReplenishmentTicketList() {
    WarrantyRequests — Main Component
    ========================= */
 function WarrantyRequests() {
+    // ⚠️ QUAN TRỌNG: 
+    // - SC_MANAGER chỉ thấy "Yêu cầu bảo hành", không thấy "Yêu cầu bổ sung phụ tùng"
+    // - EVM_STAFF chỉ thấy "Yêu cầu bổ sung phụ tùng", không có mode switching
+    const currentRole = authService.getRole();
+    const isScManager = currentRole === "SC_MANAGER";
+    const isEvmStaff = currentRole === "EVM_STAFF";
+    
+    // ⚠️ EVM_STAFF: luôn hiển thị ReplenishmentTicketList, không có mode switching
+    if (isEvmStaff) {
+        return <ReplenishmentTicketList />;
+    }
+    
+    // SC_MANAGER luôn ở mode "warranty"
     const [mode, setMode] = useState("warranty");
+    
+    // ⚠️ Đảm bảo SC_MANAGER luôn ở mode "warranty"
+    useEffect(() => {
+        if (isScManager) {
+            if (mode === "ticket") {
+                console.warn("[WarrantyRequests] SC_MANAGER không được phép xem replenishment tickets, chuyển về warranty mode");
+                setMode("warranty");
+            }
+            // Đảm bảo SC_MANAGER luôn ở mode warranty
+            if (mode !== "warranty") {
+                setMode("warranty");
+            }
+        }
+    }, [mode, isScManager]);
 
     // ====== CLAIMS (warranty) ======
     const [requests, setRequests] = useState([]);
@@ -2403,15 +2811,12 @@ function WarrantyRequests() {
         return { all, under, approved, rejected };
     }, [requests]);
 
-    // Early return giờ an toàn
+    // Early return giờ an toàn (chỉ cho SC_MANAGER)
     if (mode === "warranty" && loading) {
         return (
             <Box sx={{ p: 4 }}>
                 <Stack direction="row" justifyContent="space-between" sx={{ mb: 2 }}>
                     <Typography variant="h5" fontWeight={700} sx={nonEditableSx}>Yêu cầu bảo hành</Typography>
-                    <Button variant="outlined" color="secondary" onClick={() => setMode("ticket")}>
-                        Chuyển sang: Yêu cầu bổ sung phụ tùng
-                    </Button>
                 </Stack>
                 <Box sx={{ py: 10, textAlign: "center" }}>
                     <CircularProgress />
@@ -2424,11 +2829,8 @@ function WarrantyRequests() {
         <Box sx={{ p: 4 }}>
             <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 2 }}>
                 <Typography variant="h5" fontWeight={700} sx={nonEditableSx}>
-                    {mode === "warranty" ? "Yêu cầu bảo hành" : "Yêu cầu bổ sung phụ tùng"}
+                    Yêu cầu bảo hành
                 </Typography>
-                <Button variant="outlined" color="secondary" onClick={() => setMode(mode === "warranty" ? "ticket" : "warranty")}>
-                    {mode === "warranty" ? "Chuyển sang: Yêu cầu bổ sung phụ tùng" : "Chuyển sang: Yêu cầu bảo hành"}
-                </Button>
             </Stack>
             {mode === "warranty" ? (
                 <>
@@ -2794,7 +3196,12 @@ function WarrantyRequests() {
                     </Snackbar>
                 </>
             ) : (
-                <ReplenishmentTicketList />
+                // ⚠️ SC_MANAGER không được phép xem replenishment tickets
+                <Box sx={{ p: 4, textAlign: "center" }}>
+                    <Typography variant="h6" color="text.secondary">
+                        SC_MANAGER chỉ có quyền xem "Yêu cầu bảo hành"
+                    </Typography>
+                </Box>
             )}
         </Box>
     );

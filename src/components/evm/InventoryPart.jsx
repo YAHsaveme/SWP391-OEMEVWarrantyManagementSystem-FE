@@ -194,7 +194,11 @@ function InventoryPartView({ onSwitch }) {
             }
             let parts = Array.isArray(data) ? data : (data?.inventoryParts || data?.content || []);
 
-            // Đồng bộ số lượng với tồn kho thực tế từ các Part Lot nếu đang filter theo Center
+            // ⚠️ KHÔNG đồng bộ số lượng với tồn kho thực tế từ các Part Lot
+            // Vì quantity trong inventoryPart là giá trị được quản lý riêng, không phải tổng từ lots
+            // Nếu cần xem tổng số lượng từ lots, nên dùng API summary hoặc tính riêng
+            // Comment out để giữ nguyên quantity từ inventoryPart API
+            /*
             if (centerId) {
                 try {
                     const lotsRes = await inventoryLotService.listByCenterWithId(centerId);
@@ -236,6 +240,7 @@ function InventoryPartView({ onSwitch }) {
                     console.warn("[InventoryPart] sync quantity with lots failed:", err);
                 }
             }
+            */
 
             setAllItems(parts);
             setTotalPages(1);
@@ -447,15 +452,31 @@ function InventoryPartView({ onSwitch }) {
     const handleEdit = async () => {
         try {
             setLoading(true);
-            const currentMin = Number(editing.minQty || 0);
-            const currentMax = Number(editing.maxQty || 0);
-            const currentQty = Number(editing.quantity || 0);
+            
+            // ⚠️ Lấy giá trị hiện tại từ editing (dữ liệu gốc) hoặc editForm (đã chỉnh sửa)
+            const currentMin = Number(editing?.minQty ?? 0);
+            const currentMax = Number(editing?.maxQty ?? 0);
+            const currentQty = Number(editing?.quantity ?? 0);
 
-            const nextMin = editForm.minQty === "" || editForm.minQty === undefined ? currentMin : Number(editForm.minQty);
-            const nextMax = editForm.maxQty === "" || editForm.maxQty === undefined ? currentMax : Number(editForm.maxQty);
-            const nextQty = editForm.quantity === "" || editForm.quantity === undefined ? currentQty : Number(editForm.quantity);
+            // ⚠️ Parse giá trị từ editForm - xử lý cả string và number
+            const parseValue = (val, defaultValue) => {
+                if (val === "" || val === null || val === undefined) return defaultValue;
+                const num = Number(val);
+                return Number.isNaN(num) ? defaultValue : num;
+            };
 
-            if ([nextMin, nextMax, nextQty].some(v => Number.isNaN(v))) {
+            const nextMin = parseValue(editForm.minQty, currentMin);
+            const nextMax = parseValue(editForm.maxQty, currentMax);
+            const nextQty = parseValue(editForm.quantity, currentQty);
+
+            console.log("[handleEdit] Values:", {
+                current: { min: currentMin, max: currentMax, qty: currentQty },
+                editForm: editForm,
+                next: { min: nextMin, max: nextMax, qty: nextQty }
+            });
+
+            // Validation
+            if (Number.isNaN(nextMin) || Number.isNaN(nextMax) || Number.isNaN(nextQty)) {
                 setLoading(false);
                 return notify("Giá trị số không hợp lệ", "warning");
             }
@@ -463,23 +484,35 @@ function InventoryPartView({ onSwitch }) {
                 setLoading(false);
                 return notify("minQty/maxQty/quantity phải ≥ 0", "warning");
             }
-            if (nextMax && nextMax < nextMin) {
+            if (nextMax > 0 && nextMax < nextMin) {
                 setLoading(false);
                 return notify("maxQty phải ≥ minQty", "warning");
             }
-            if (nextMax && nextQty > nextMax) {
+            if (nextMax > 0 && nextQty > nextMax) {
                 setLoading(false);
                 return notify("quantity không được vượt quá maxQty", "warning");
             }
 
-            const body = { minQty: nextMin, maxQty: nextMax, quantity: nextQty };
+            const body = { 
+                minQty: nextMin, 
+                maxQty: nextMax, 
+                quantity: nextQty 
+            };
+            
+            console.log("[handleEdit] Sending update request:", {
+                id: editing.id,
+                body: body
+            });
+            
             await inventoryPartService.update(editing.id, body);
             notify("Cập nhật thành công", "success");
             setOpenEdit(false);
             await reloadAll();
         } catch (e) {
-            console.error(e);
-            notify("Không thể cập nhật", "error");
+            console.error("[handleEdit] Error:", e);
+            console.error("[handleEdit] Error response:", e?.response?.data);
+            const errorMsg = e?.response?.data?.message || e?.message || "Không thể cập nhật";
+            notify(errorMsg, "error");
         } finally {
             setLoading(false);
         }
@@ -728,31 +761,69 @@ function InventoryPartView({ onSwitch }) {
                 <DialogContent>
                     {editing ? (
                         <Grid container spacing={2} mt={1}>
+                            {/* Quantity */}
+                            <Grid item xs={12} sm={6}>
+                                <TextField
+                                    fullWidth
+                                    type="number"
+                                    label="Số lượng (quantity)"
+                                    value={editForm.quantity ?? ""}
+                                    onChange={(e) => {
+                                        const val = e.target.value === "" ? "" : Number(e.target.value);
+                                        setEditForm({ ...editForm, quantity: val });
+                                    }}
+                                    inputProps={{ min: 0, step: 1 }}
+                                />
+                            </Grid>
+                            
+                            {/* MinQty */}
+                            <Grid item xs={12} sm={6}>
+                                <TextField
+                                    fullWidth
+                                    type="number"
+                                    label="Số lượng tối thiểu (minQty)"
+                                    value={editForm.minQty ?? ""}
+                                    onChange={(e) => {
+                                        const val = e.target.value === "" ? "" : Number(e.target.value);
+                                        setEditForm({ ...editForm, minQty: val });
+                                    }}
+                                    inputProps={{ min: 0, step: 1 }}
+                                />
+                            </Grid>
+                            
+                            {/* MaxQty */}
+                            <Grid item xs={12} sm={6}>
+                                <TextField
+                                    fullWidth
+                                    type="number"
+                                    label="Số lượng tối đa (maxQty)"
+                                    value={editForm.maxQty ?? ""}
+                                    onChange={(e) => {
+                                        const val = e.target.value === "" ? "" : Number(e.target.value);
+                                        setEditForm({ ...editForm, maxQty: val });
+                                    }}
+                                    inputProps={{ min: 0, step: 1 }}
+                                />
+                            </Grid>
+                            
+                            {/* Hiển thị các trường khác (read-only) */}
                             {Object.keys(editForm || {})
-                                .filter((k) => !["id", "centerId", "partId", "createAt", "belowMin", "__v"].includes(k))
+                                .filter((k) => !["id", "centerId", "partId", "createAt", "belowMin", "__v", "quantity", "minQty", "maxQty"].includes(k))
                                 .map((k) => {
-                                    const isNumeric = ["quantity", "minQty", "maxQty"].includes(k);
                                     const rawVal = typeof editForm[k] === "object" ? JSON.stringify(editForm[k]) : (editForm[k] ?? "");
                                     const value = (typeof rawVal === "number" && Number.isNaN(rawVal)) ? "" : rawVal;
-                                    const disabled = !isNumeric; // chỉ cho phép sửa 3 trường số
                                     return (
                                         <Grid key={k} item xs={12} sm={6}>
                                             <TextField
                                                 fullWidth
-                                                type={isNumeric ? "number" : "text"}
-                                                label={k}
+                                                type="text"
+                                                label={getColumnLabel(k)}
                                                 value={value}
-                                                onChange={(e) => {
-                                                    if (!isNumeric) return; // khoá các trường không phải nhập
-                                                    let val = e.target.value;
-                                                    setEditForm({ ...editForm, [k]: val === "" ? "" : Number(val) });
-                                                }}
-                                                disabled={disabled}
+                                                disabled
                                             />
                                         </Grid>
                                     );
                                 })}
-                            {!Object.keys(editForm || {}).length && <Typography>Không có trường nào</Typography>}
                         </Grid>
                     ) : (
                         <Box p={2} textAlign="center"><InfoOutlined /> Chọn 1 dòng để sửa</Box>

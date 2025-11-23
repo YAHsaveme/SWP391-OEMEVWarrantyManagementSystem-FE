@@ -13,7 +13,21 @@ const axiosInstance = axios.create({
 // 🧠 Interceptor request — tự động thêm token cho mọi request
 axiosInstance.interceptors.request.use(
   (config) => {
-    const token = localStorage.getItem("token");
+    // Ưu tiên lấy token theo role hiện tại, fallback về token chung
+    const currentRole = localStorage.getItem("currentRole");
+    let token = null;
+    
+    if (currentRole) {
+      token = localStorage.getItem(`token_${currentRole}`);
+    }
+    
+    // Fallback về token chung nếu không có token theo role
+    if (!token) {
+      token = localStorage.getItem("token") || 
+              localStorage.getItem("accessToken") || 
+              localStorage.getItem("access_token");
+    }
+    
     if (token) {
       config.headers.Authorization = `Bearer ${token}`;
     }
@@ -33,6 +47,18 @@ axiosInstance.interceptors.response.use(
     // KHÔNG đăng xuất cho status 400 (Bad Request) - có thể là validation error, thiếu field, v.v.
     if (status === 401) {
       console.warn("⚠️ Unauthorized — Token expired or invalid", errorData);
+      
+      // Chỉ xóa session của role hiện tại
+      const currentRole = localStorage.getItem("currentRole");
+      if (currentRole) {
+        localStorage.removeItem(`token_${currentRole}`);
+        localStorage.removeItem(`user_${currentRole}`);
+        localStorage.removeItem(`fullName_${currentRole}`);
+        localStorage.removeItem(`userId_${currentRole}`);
+        localStorage.removeItem(`technicianId_${currentRole}`);
+      }
+      
+      // Xóa thông tin chung (backward compatibility)
       localStorage.removeItem("token");
       localStorage.removeItem("accessToken");
       localStorage.removeItem("access_token");
@@ -40,6 +66,10 @@ axiosInstance.interceptors.response.use(
       localStorage.removeItem("fullName");
       localStorage.removeItem("role");
       localStorage.removeItem("userId");
+      localStorage.removeItem("technicianId");
+      localStorage.removeItem("currentRole");
+      localStorage.removeItem("currentUserId");
+      
       if (!window.location.pathname.includes("/login")) {
         window.location.href = "/login";
       }

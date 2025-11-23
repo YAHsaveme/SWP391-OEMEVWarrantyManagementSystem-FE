@@ -63,12 +63,13 @@ function Login() {
             const data = await authService.login(email, password)
 
             if (data?.token) {
-                localStorage.setItem("token", data.token)
-                localStorage.setItem("fullName", data.user.fullName)
-                localStorage.setItem("role", data.user.role)
+                // ⚠️ QUAN TRỌNG: authService.login() đã lưu đầy đủ token, user, role theo format mới
+                // Không cần lưu lại ở đây nữa để tránh conflict
+                // Chỉ cần điều hướng theo role
 
                 // Điều hướng theo role backend trả về
-                switch (data.user.role) {
+                const userRole = data?.user?.role || data?.role || "UNKNOWN";
+                switch (userRole) {
                     case "ADMIN":
                         navigate("/dashboard")
                         break

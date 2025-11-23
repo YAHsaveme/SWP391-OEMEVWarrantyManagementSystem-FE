@@ -3,7 +3,7 @@
 import React from "react";
 import PartManagement from "./PartManagement";
 import ProductManagement from "./ProductManagement";
-import WarrantyRequests from "../manager/WarrantyRequests";
+import WarrantyRequests from "./WarrantyRequests";
 import WarrantyPolicy from "./WarrantyPolicy";
 import ServiceCenters from "./ServiceCenters";
 import authService from "../../services/authService";
@@ -306,7 +306,7 @@ export default function Overview() {
                             <Tab iconPosition="start" icon={<PackageIcon />} label="Quản lý mẫu xe" />
                             <Tab iconPosition="start" icon={<BarChartIcon />} label="Kho phụ tùng" />
                             <Tab iconPosition="start" icon={<CompareArrowsIcon />} label="Luân chuyển kho" />
-                            <Tab iconPosition="start" icon={<FileText />} label="Yêu cầu bảo hành" />
+                            <Tab iconPosition="start" icon={<FileText />} label="Yêu cầu bổ sung phụ tùng" />
                             <Tab iconPosition="start" icon={<AssessmentIcon />} label="Báo cáo bảo hành" />
                             <Tab iconPosition="start" icon={<CarIcon />} label="Trung tâm Dịch vụ" />
                             <Tab iconPosition="start" icon={<FileText />} label="Chính sách Bảo hành" />

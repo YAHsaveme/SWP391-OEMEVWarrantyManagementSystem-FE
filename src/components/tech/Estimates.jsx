@@ -895,13 +895,11 @@ function EstimatesDialog({ open, onClose, claim, parts, partsLoading, setSnack }
                 </Stack>
 
                 {/* list of estimates (versions) */}
-                <Typography variant="subtitle1" fontWeight={600} sx={{ mb: 1 }}>
-                    Danh sách Báo giá hiện có
-                </Typography>
+                
 
                 {loadingLocal ? <CircularProgress /> : (
                     <Stack spacing={1} sx={{ mb: 2 }}>
-                        {list.length === 0 && <Typography color="text.secondary">Chưa có báo giá nào</Typography>}
+                        
 
                         {(showOnlyLatest ? (() => {
                             const sorted = [...list].sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
@@ -948,8 +946,8 @@ function EstimatesDialog({ open, onClose, claim, parts, partsLoading, setSnack }
 
                                                 <Box sx={{ mt: 1 }}>
                                                     <Typography variant="body2">Ghi chú: {e.note || "—"}</Typography>
-                                                    <Typography variant="body2">Tổng phụ tùng: {(e.partsSubtotalVND ?? e.partsSubtotal ?? 0).toLocaleString("vi-VN")} VNĐ</Typography>
-                                                    <Typography variant="body2">Tổng nhân công: {(e.laborSubtotalVND ?? e.laborSubtotal ?? 0).toLocaleString("vi-VN")} VNĐ</Typography>
+                                                    <Typography variant="body2">Tổng giá phụ tùng: {(e.partsSubtotalVND ?? e.partsSubtotal ?? 0).toLocaleString("vi-VN")} VNĐ</Typography>
+                                                    <Typography variant="body2">Tổng giá nhân công: {(e.laborSubtotalVND ?? e.laborSubtotal ?? 0).toLocaleString("vi-VN")} VNĐ</Typography>
                                                     <Typography variant="body2" color="primary" fontWeight={700}><strong>Tổng cộng:</strong> {(e.grandTotalVND ?? e.grandTotal ?? 0).toLocaleString("vi-VN")} VNĐ</Typography>
                                                 </Box>
                                             </Box>
@@ -970,10 +968,6 @@ function EstimatesDialog({ open, onClose, claim, parts, partsLoading, setSnack }
                             <Typography variant="subtitle1" fontWeight={600}>
                                 {editing ? "Chỉnh sửa Báo giá" : "Tạo Báo giá mới"}
                             </Typography>
-                            <Stack direction="row" spacing={1}>
-                                <Button variant="contained" size="small" onClick={() => { setCreating(true); setEditing(null); setForm(emptyForm); setViewMode(false); }}>Tạo mới</Button>
-                                <Button variant="outlined" size="small" onClick={() => handleNewFromLatest(list, setForm, setSnack, parts)}>Sao chép gần nhất</Button>
-                            </Stack>
                         </Stack>
 
                         {/* items table */}
@@ -1087,7 +1081,7 @@ function EstimatesDialog({ open, onClose, claim, parts, partsLoading, setSnack }
                         {/* totals + actions */}
                         <Box sx={{ p: 2, bgcolor: "action.hover", borderRadius: 2 }}>
                             <Grid container spacing={1}>
-                                <Grid item xs={6}><Typography variant="body2">Tổng phụ tùng:</Typography></Grid>
+                                <Grid item xs={6}><Typography variant="body2">Tổng giá phụ tùng:</Typography></Grid>
                                 <Grid item xs={6} textAlign="right"><Typography variant="body2" fontWeight={600}>{partsSubtotal.toLocaleString("vi-VN")} VNĐ</Typography></Grid>
 
                                 <Grid item xs={6}><Typography variant="body2">Tổng nhân công:</Typography></Grid>
@@ -1186,7 +1180,7 @@ function EstimatesDialog({ open, onClose, claim, parts, partsLoading, setSnack }
                                             <Box sx={{ p: 2, bgcolor: "background.paper", borderRadius: 1 }}>
                                                 <Stack spacing={1}>
                                                     <Stack direction="row" justifyContent="space-between">
-                                                        <Typography variant="body2">Tổng phụ tùng:</Typography>
+                                                        <Typography variant="body2">Tổng giá phụ tùng:</Typography>
                                                         <Typography variant="body2" fontWeight={600}>{(versionToView.partsSubtotalVND ?? versionToView.partsSubtotal ?? 0).toLocaleString("vi-VN")} VNĐ</Typography>
                                                     </Stack>
                                                     <Stack direction="row" justifyContent="space-between">

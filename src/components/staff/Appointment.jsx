@@ -530,41 +530,48 @@ export default function Appointment() {
             });
         }
         
+        const technicianId = appointment.technicianId || "";
+        
         setEditForm({
             note: appointment.note || "",
             requiredSkill: skillVi,
-            technicianId: appointment.technicianId || "",
+            technicianId: technicianId,
             selectedSlotKeys: initialSlotKeys
         });
         
         // Reset edit calendar
         const today = new Date();
-        setEditCalYear(today.getFullYear());
-        setEditCalMonth(today.getMonth());
+        const currentYear = today.getFullYear();
+        const currentMonth = today.getMonth();
+        setEditCalYear(currentYear);
+        setEditCalMonth(currentMonth);
         setEditActiveDate("");
         setEditSuggestions([]);
+        // Reset editMonthSlotsByTech trước
         setEditMonthSlotsByTech({});
         
-        // Load slots cho technician hiện tại nếu có
-        if (appointment.technicianId) {
+        setEditDialog({ open: true, appointment });
+        
+        // Tự động load slots cho kỹ thuật viên ban đầu (nếu có)
+        if (technicianId) {
             try {
-                await loadEditMonthSlotsForTech(appointment.technicianId);
+                await loadEditMonthSlotsForTech(technicianId, currentYear, currentMonth);
             } catch (err) {
-                console.warn("Failed to load slots for technician:", err);
+                console.warn("Failed to load initial slots for technician:", err);
             }
         }
-        
-        setEditDialog({ open: true, appointment });
     };
     
     // Load month slots for edit form
-    const loadEditMonthSlotsForTech = async (techId) => {
+    const loadEditMonthSlotsForTech = async (techId, year = null, month = null) => {
         if (!techId) return {};
-        const key = `${techId}_${editCalYear}_${editCalMonth}`;
+        const useYear = year !== null ? year : editCalYear;
+        const useMonth = month !== null ? month : editCalMonth;
+        const key = `${techId}_${useYear}_${useMonth}`;
         if (editMonthSlotsByTech[key]) return editMonthSlotsByTech[key];
         try {
-            const from = dayjs(new Date(editCalYear, editCalMonth, 1)).format("YYYY-MM-DD");
-            const to = dayjs(new Date(editCalYear, editCalMonth + 1, 0)).format("YYYY-MM-DD");
+            const from = dayjs(new Date(useYear, useMonth, 1)).format("YYYY-MM-DD");
+            const to = dayjs(new Date(useYear, useMonth + 1, 0)).format("YYYY-MM-DD");
             const res = await scheduleService.getTechnicianSlots(techId, from, to);
             const payload = res?.data ?? res ?? [];
             const map = {};
@@ -611,6 +618,15 @@ export default function Appointment() {
         return [];
     };
     
+    // Auto-load slots khi thay đổi tháng/năm (không load khi technicianId thay đổi vì đã xử lý trong onChange)
+    useEffect(() => {
+        if (editForm.technicianId && editDialog.open) {
+            // Chỉ load khi thay đổi tháng/năm, không load khi technicianId thay đổi (đã xử lý trong onChange)
+            loadEditMonthSlotsForTech(editForm.technicianId, editCalYear, editCalMonth).catch(() => {});
+        }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [editCalYear, editCalMonth, editDialog.open]);
+    
     // Toggle slot in edit form
     const toggleEditSlot = (slot) => {
         if (!editActiveDate) { showSnack("warning", "Chọn ngày trước."); return; }
@@ -626,10 +642,10 @@ export default function Appointment() {
         });
     };
     
-    // Auto-load slots when technician or month changes in edit form
+    // Auto-load slots when technician or month changes in edit form (giống create appointment)
     useEffect(() => {
         if (editDialog.open && editForm.technicianId) {
-            loadEditMonthSlotsForTech(editForm.technicianId).catch(() => {});
+            loadEditMonthSlotsForTech(editForm.technicianId, editCalYear, editCalMonth).catch(() => {});
         }
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [editForm.technicianId, editCalYear, editCalMonth, editDialog.open]);
@@ -1710,6 +1726,23 @@ export default function Appointment() {
                                 t.technicianId === apt.technicianId
                             );
                             const technicianName = apt.technicianName || technician?.fullName || technician?.name || technician?.technicianName || "—";
+                            
+                            // Lấy centerId từ appointment (ưu tiên: apt.centerId > apt.center?.id > claim?.centerId > technician?.centerId)
+                            const appointmentCenterId = apt.centerId 
+                                || apt.center?.id 
+                                || claim?.centerId 
+                                || technician?.centerId 
+                                || technician?.center?.id
+                                || null;
+                            
+                            // Filter technicians theo centerId của appointment
+                            const filteredTechnicians = appointmentCenterId 
+                                ? technicians.filter(tech => {
+                                    const techCenterId = tech.centerId || tech.center?.id || tech.user?.centerId || tech.user?.center?.id;
+                                    return String(techCenterId) === String(appointmentCenterId);
+                                })
+                                : technicians; // Nếu không có centerId, hiển thị tất cả
+                            
                             return (
                                 <Grid container spacing={2} sx={{ mt: 0.5 }}>
                                     {/* Thông tin Appointment (Read-only) */}
@@ -1761,22 +1794,39 @@ export default function Appointment() {
                                                 label="Kỹ thuật viên"
                                                 onChange={async (e) => {
                                                     const techId = e.target.value;
-                                                    setEditForm(prev => ({ ...prev, technicianId: techId }));
+                                                    // Reset selected slots và active date khi đổi kỹ thuật viên
+                                                    setEditForm(prev => ({ ...prev, technicianId: techId, selectedSlotKeys: new Set() }));
+                                                    setEditActiveDate("");
+                                                    
                                                     if (techId) {
                                                         try {
-                                                            await loadEditMonthSlotsForTech(techId);
+                                                            // Xóa cache slots cũ trước
+                                                            setEditMonthSlotsByTech({});
+                                                            // Load slots cho tháng hiện tại của calendar
+                                                            await loadEditMonthSlotsForTech(techId, editCalYear, editCalMonth);
+                                                            showSnack("success", `Đã tải lịch của kỹ thuật viên`);
                                                         } catch (err) {
                                                             console.warn("Failed to load slots:", err);
+                                                            showSnack("error", "Không thể tải lịch của kỹ thuật viên");
                                                         }
+                                                    } else {
+                                                        // Nếu bỏ chọn kỹ thuật viên, xóa slots
+                                                        setEditMonthSlotsByTech({});
                                                     }
                                                 }}
                                             >
                                                 <MenuItem value="">Chưa chọn</MenuItem>
-                                                {technicians.map(tech => (
-                                                    <MenuItem key={tech.id || tech.userId || tech.technicianId} value={tech.id || tech.userId || tech.technicianId}>
-                                                        {tech.fullName || tech.name || tech.technicianName || tech.id || "—"}
+                                                {filteredTechnicians.length === 0 ? (
+                                                    <MenuItem value="" disabled>
+                                                        Không có kỹ thuật viên thuộc trung tâm này
                                                     </MenuItem>
-                                                ))}
+                                                ) : (
+                                                    filteredTechnicians.map(tech => (
+                                                        <MenuItem key={tech.id || tech.userId || tech.technicianId} value={tech.id || tech.userId || tech.technicianId}>
+                                                            {tech.fullName || tech.name || tech.technicianName || tech.id || "—"}
+                                                        </MenuItem>
+                                                    ))
+                                                )}
                                             </Select>
                                             <Typography variant="caption" sx={{ mt: 0.5, display: "block", color: "text.secondary" }}>
                                                 Chọn kỹ thuật viên mới cho appointment này
@@ -1817,13 +1867,31 @@ export default function Appointment() {
                                                 {/* Edit Calendar */}
                                                 <Paper elevation={0} sx={{ p: 2, borderRadius: 2, border: "1px solid", borderColor: "divider" }}>
                                                     <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center", mb: 2 }}>
-                                                        <IconButton size="small" onClick={() => { if (editCalMonth === 0) { setEditCalMonth(11); setEditCalYear(y => y - 1); } else setEditCalMonth(m => m - 1); }}>
+                                                        <IconButton size="small" onClick={() => { 
+                                                            if (editCalMonth === 0) { 
+                                                                setEditCalMonth(11); 
+                                                                setEditCalYear(y => y - 1); 
+                                                            } else { 
+                                                                setEditCalMonth(m => m - 1); 
+                                                            }
+                                                            // Reset active date khi đổi tháng để tránh hiển thị slots của tháng cũ
+                                                            setEditActiveDate("");
+                                                        }}>
                                                             ◀
                                                         </IconButton>
                                                         <Typography sx={{ fontWeight: 700, fontSize: "0.95rem" }}>
                                                             {new Date(editCalYear, editCalMonth).toLocaleString("vi-VN", { month: "long", year: "numeric" })}
                                                         </Typography>
-                                                        <IconButton size="small" onClick={() => { if (editCalMonth === 11) { setEditCalMonth(0); setEditCalYear(y => y + 1); } else setEditCalMonth(m => m + 1); }}>
+                                                        <IconButton size="small" onClick={() => { 
+                                                            if (editCalMonth === 11) { 
+                                                                setEditCalMonth(0); 
+                                                                setEditCalYear(y => y + 1); 
+                                                            } else { 
+                                                                setEditCalMonth(m => m + 1); 
+                                                            }
+                                                            // Reset active date khi đổi tháng để tránh hiển thị slots của tháng cũ
+                                                            setEditActiveDate("");
+                                                        }}>
                                                             ▶
                                                         </IconButton>
                                                     </Box>
@@ -1843,7 +1911,22 @@ export default function Appointment() {
                                                             return (
                                                                 <Paper
                                                                     key={i}
-                                                                    onClick={() => d && !past && setEditActiveDate(fmtDate(d))}
+                                                                    onClick={() => {
+                                                                        if (d && !past) {
+                                                                            // Chỉ cho phép chọn ngày nếu đã chọn kỹ thuật viên
+                                                                            if (!editForm.technicianId) {
+                                                                                showSnack("warning", "Vui lòng chọn kỹ thuật viên trước khi chọn ngày");
+                                                                                return;
+                                                                            }
+                                                                            const dateStr = fmtDate(d);
+                                                                            setEditActiveDate(dateStr);
+                                                                            // Nếu chưa có slots cho tháng này, load ngay (giống create appointment)
+                                                                            const key = `${editForm.technicianId}_${editCalYear}_${editCalMonth}`;
+                                                                            if (!editMonthSlotsByTech[key] || !editMonthSlotsByTech[key][dateStr]) {
+                                                                                loadEditMonthSlotsForTech(editForm.technicianId, editCalYear, editCalMonth).catch(() => {});
+                                                                            }
+                                                                        }
+                                                                    }}
                                                                     sx={{
                                                                         aspectRatio: "1",
                                                                         minHeight: 40,
@@ -1871,7 +1954,13 @@ export default function Appointment() {
                                             </Grid>
                                             <Grid item xs={12} md={6}>
                                                 {/* Edit Slots Panel */}
-                                                {editActiveDate ? (
+                                                {!editForm.technicianId ? (
+                                                    <Paper elevation={0} sx={{ p: 2, borderRadius: 2, border: "1px solid", borderColor: "divider", textAlign: "center", py: 4 }}>
+                                                        <Typography variant="body2" sx={{ color: "text.secondary" }}>
+                                                            Vui lòng chọn kỹ thuật viên trước
+                                                        </Typography>
+                                                    </Paper>
+                                                ) : editActiveDate ? (
                                                     <Paper elevation={0} sx={{ p: 2, borderRadius: 2, border: "1px solid", borderColor: "divider" }}>
                                                         <Typography sx={{ fontWeight: 700, mb: 1.5, fontSize: "0.95rem" }}>
                                                             {dayjs(editActiveDate).format("DD/MM/YYYY")}

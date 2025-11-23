@@ -1884,8 +1884,29 @@ function ReplenishmentTicketList() {
    WarrantyRequests — Main Component
    ========================= */
 function WarrantyRequests() {
+    // ⚠️ QUAN TRỌNG: SC_MANAGER chỉ thấy "Yêu cầu bảo hành", không thấy "Yêu cầu bổ sung phụ tùng"
+    // EVM_STAFF thấy cả 2
+    const currentRole = authService.getRole();
+    const isScManager = currentRole === "SC_MANAGER";
+    const isEvmStaff = currentRole === "EVM_STAFF";
+    
+    // SC_MANAGER luôn ở mode "warranty", không cho phép chuyển sang "ticket"
     const [mode, setMode] = useState("warranty");
     const [centerId, setCenterId] = useState(null);
+    
+    // ⚠️ Đảm bảo SC_MANAGER luôn ở mode "warranty", không cho phép chuyển sang "ticket"
+    useEffect(() => {
+        if (isScManager) {
+            if (mode === "ticket") {
+                console.warn("[WarrantyRequests] SC_MANAGER không được phép xem replenishment tickets, chuyển về warranty mode");
+                setMode("warranty");
+            }
+            // Đảm bảo SC_MANAGER luôn ở mode warranty
+            if (mode !== "warranty") {
+                setMode("warranty");
+            }
+        }
+    }, [mode, isScManager]);
 
     // ====== CLAIMS (warranty) ======
     const [requests, setRequests] = useState([]);
@@ -2188,9 +2209,12 @@ function WarrantyRequests() {
             <Box sx={{ p: 4 }}>
                 <Stack direction="row" justifyContent="space-between" sx={{ mb: 2 }}>
                     <Typography variant="h5" fontWeight={700} sx={nonEditableSx}>Yêu cầu bảo hành</Typography>
-                    <Button variant="outlined" color="secondary" onClick={() => setMode("ticket")}>
-                        Chuyển sang: Yêu cầu bổ sung phụ tùng
-                    </Button>
+                    {/* ⚠️ Chỉ hiển thị button chuyển đổi cho EVM_STAFF, ẩn với SC_MANAGER */}
+                    {isEvmStaff && (
+                        <Button variant="outlined" color="secondary" onClick={() => setMode("ticket")}>
+                            Chuyển sang: Yêu cầu bổ sung phụ tùng
+                        </Button>
+                    )}
                 </Stack>
                 <Box sx={{ py: 10, textAlign: "center" }}>
                     <CircularProgress />
@@ -2205,9 +2229,12 @@ function WarrantyRequests() {
                 <Typography variant="h5" fontWeight={700} sx={nonEditableSx}>
                     {mode === "warranty" ? "Yêu cầu bảo hành" : "Yêu cầu bổ sung phụ tùng"}
                 </Typography>
-                <Button variant="outlined" color="secondary" onClick={() => setMode(mode === "warranty" ? "ticket" : "warranty")}>
-                    {mode === "warranty" ? "Chuyển sang: Yêu cầu bổ sung phụ tùng" : "Chuyển sang: Yêu cầu bảo hành"}
-                </Button>
+                {/* ⚠️ Chỉ hiển thị button chuyển đổi cho EVM_STAFF, ẩn với SC_MANAGER */}
+                {isEvmStaff && (
+                    <Button variant="outlined" color="secondary" onClick={() => setMode(mode === "warranty" ? "ticket" : "warranty")}>
+                        {mode === "warranty" ? "Chuyển sang: Yêu cầu bổ sung phụ tùng" : "Chuyển sang: Yêu cầu bảo hành"}
+                    </Button>
+                )}
             </Stack>
             {mode === "warranty" ? (
                 <>
@@ -2599,7 +2626,17 @@ function WarrantyRequests() {
                     </Snackbar>
                 </>
             ) : (
-                <ReplenishmentTicketList />
+                // ⚠️ QUAN TRỌNG: SC_MANAGER không được phép xem replenishment tickets
+                // Chỉ hiển thị ReplenishmentTicketList cho EVM_STAFF
+                isEvmStaff ? (
+                    <ReplenishmentTicketList />
+                ) : (
+                    <Box sx={{ p: 4, textAlign: "center" }}>
+                        <Typography variant="body1" color="text.secondary">
+                            SC_MANAGER chỉ có quyền xem "Yêu cầu bảo hành"
+                        </Typography>
+                    </Box>
+                )
             )}
         </Box>
     );
